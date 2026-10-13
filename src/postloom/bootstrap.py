@@ -14,6 +14,7 @@ from types import TracebackType
 
 from postloom.adapters.clock import SystemClock
 from postloom.adapters.llm.gemini import (
+    CHAT_FALLBACK_MODELS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EXTRACTION_MODEL,
@@ -208,7 +209,7 @@ def build_container(
         client = GeminiClient(settings.gemini_api_key)
         extractor = extractor or GeminiContentExtractor(client, settings.extraction_model)
         embedder = embedder or GeminiEmbeddings(client, settings.embedding_model)
-        chat = chat or GeminiChat(client, settings.chat_model)
+        chat = chat or GeminiChat(client, settings.chat_model, CHAT_FALLBACK_MODELS)
     database = SqliteDatabase(settings.index_path)
     return Container(
         repository=SqliteGraphRepository(database),

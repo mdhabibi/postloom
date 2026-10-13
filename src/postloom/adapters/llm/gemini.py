@@ -28,6 +28,8 @@ DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_EXTRACTION_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2"
 DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+CHAT_FALLBACK_MODELS = ("gemini-3.5-flash-lite",)
+"""Tried in order when the chat model is overloaded."""
 
 _RETRYABLE = frozenset({429, 500, 502, 503, 504})
 

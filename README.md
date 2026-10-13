@@ -71,7 +71,7 @@ uv run postloom reindex                                         # after upgradin
 | Gemini API key | `GEMINI_API_KEY` (wins over the saved key) | set in the app |
 | Model for restoring articles | `POSTLOOM_EXTRACTION_MODEL` | `gemini-3.5-flash-lite` |
 | Model for search | `POSTLOOM_EMBEDDING_MODEL` | `gemini-embedding-2` |
-| Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` |
+| Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` (falls back to `gemini-3.5-flash-lite` when busy) |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
 
 ## How it works

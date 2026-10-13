@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from postloom.adapters.llm.gemini import GeminiClient
+from postloom.adapters.llm.gemini_chat import GeminiChat
 from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
 from postloom.adapters.llm.http import CertificateError, HttpResponse, JsonObject
@@ -16,6 +17,7 @@ from postloom.application.errors import (
     ProviderError,
     ProviderUnavailableError,
 )
+from postloom.application.ports.chat import ChatMessage, Role
 from postloom.application.ports.embeddings import DocumentText
 from postloom.application.ports.extraction import ExtractionRequest
 
@@ -264,3 +266,53 @@ def test_malformed_embedding_responses_are_errors(body: JsonObject) -> None:
     embeddings = GeminiEmbeddings(GeminiClient("k", transport=transport), dimensions=2)
     with pytest.raises(ProviderError, match="embedding"):
         embeddings.embed_query("q")
+
+
+# -- chat -------------------------------------------------------------------------
+def text_reply(text: str) -> HttpResponse:
+    body = {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": "STOP"}]}
+    return HttpResponse(200, body)
+
+
+def busy() -> HttpResponse:
+    return HttpResponse(503, {"error": {"message": "This model is experiencing high demand."}})
+
+
+def test_chat_sends_roles_and_returns_text() -> None:
+    transport = FakeTransport([text_reply("  Split by time [1].  ")])
+    chat = GeminiChat(GeminiClient("k", transport=transport, sleep=Sleeps()), "big")
+    answer = chat.complete(
+        "system", [ChatMessage(Role.USER, "q1"), ChatMessage(Role.ASSISTANT, "a1")]
+    )
+    assert answer == "Split by time [1]."
+    assert chat.last_model == "big"
+    roles = [c["role"] for c in transport.calls[0].payload["contents"]]
+    assert roles == ["user", "model"]
+
+
+def test_overloaded_chat_model_falls_back_to_the_next_model() -> None:
+    transport = FakeTransport([busy(), busy(), busy(), text_reply("From the lite model.")])
+    chat = GeminiChat(GeminiClient("k", transport=transport, sleep=Sleeps()), "big", ["lite"])
+    assert chat.complete("system", [ChatMessage(Role.USER, "q")]) == "From the lite model."
+    assert chat.last_model == "lite"
+    assert [c.url.rsplit("/", 1)[1] for c in transport.calls] == [
+        "big:generateContent",
+        "big:generateContent",
+        "big:generateContent",
+        "lite:generateContent",
+    ]
+
+
+def test_all_models_busy_gives_one_clear_error() -> None:
+    transport = FakeTransport([busy() for _ in range(6)])
+    chat = GeminiChat(GeminiClient("k", transport=transport, sleep=Sleeps()), "big", ["lite"])
+    with pytest.raises(ProviderUnavailableError, match="big, lite all busy"):
+        chat.complete("system", [ChatMessage(Role.USER, "q")])
+
+
+def test_bad_key_is_not_masked_by_the_fallback() -> None:
+    transport = FakeTransport([HttpResponse(403, {"error": {"message": "denied"}})])
+    chat = GeminiChat(GeminiClient("k", transport=transport, sleep=Sleeps()), "big", ["lite"])
+    with pytest.raises(ProviderAuthError):
+        chat.complete("system", [ChatMessage(Role.USER, "q")])
+    assert len(transport.calls) == 1
