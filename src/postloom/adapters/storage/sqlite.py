@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -94,7 +94,7 @@ class SqliteGraphRepository:
                     self._db.execute(f"PRAGMA user_version = {version}")
 
     @contextmanager
-    def _transaction(self) -> Iterator[sqlite3.Connection]:
+    def _transaction(self) -> Generator[sqlite3.Connection, None, None]:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
