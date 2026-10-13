@@ -37,6 +37,10 @@ class Passage:
     excerpt: str
     chunk_index: int
     matched_by: frozenset[Method]
+    similarity: float | None = None
+    """Cosine similarity to the query (semantic match), for explaining results."""
+    keyword_score: float | None = None
+    """BM25 relevance (keyword match), for explaining results."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,10 +67,13 @@ class SearchContent:
         index: SearchIndex,
         repository: GraphRepository,
         embedder: EmbeddingProvider | None,
+        min_similarity: float = 0.0,
     ) -> None:
         self._index = index
         self._repository = repository
         self._embedder = embedder
+        self._min_similarity = min_similarity
+        """Semantic matches below this cosine similarity are dropped as unrelated."""
 
     def execute(self, query: str, limit: int = 5) -> SearchResults:
         query = query.strip()
@@ -80,9 +87,12 @@ class SearchContent:
         if self._embedder is not None:
             try:
                 vector = self._embedder.embed_query(query)
-                rankings[Method.SEMANTIC] = self._index.vector_search(
+                nearest = self._index.vector_search(
                     vector, self._embedder.name, CANDIDATES_PER_METHOD
                 )
+                rankings[Method.SEMANTIC] = [
+                    hit for hit in nearest if hit.score >= self._min_similarity
+                ]
             except ProviderError as error:
                 warnings.append(f"Semantic search unavailable, showing keyword matches: {error}")
 
@@ -91,13 +101,13 @@ class SearchContent:
 
     def _fuse(self, query: str, rankings: dict[Method, Sequence[ChunkHit]]) -> list[SearchResult]:
         scores: dict[tuple[NodeId, int], float] = defaultdict(float)
-        methods: dict[tuple[NodeId, int], set[Method]] = defaultdict(set)
+        raw: dict[tuple[NodeId, int], dict[Method, float]] = defaultdict(dict)
         hits: dict[tuple[NodeId, int], ChunkHit] = {}
         for method, ranked in rankings.items():
             for rank, hit in enumerate(ranked, start=1):
                 key = (hit.node, hit.index)
                 scores[key] += 1.0 / (RRF_K + rank)
-                methods[key].add(method)
+                raw[key][method] = hit.score
                 hits[key] = hit
 
         by_article: dict[NodeId, list[tuple[float, ChunkHit]]] = defaultdict(list)
@@ -114,7 +124,9 @@ class SearchContent:
                     heading=hit.heading,
                     excerpt=excerpt(hit.text, query),
                     chunk_index=hit.index,
-                    matched_by=frozenset(methods[(hit.node, hit.index)]),
+                    matched_by=frozenset(raw[(hit.node, hit.index)]),
+                    similarity=raw[(hit.node, hit.index)].get(Method.SEMANTIC),
+                    keyword_score=raw[(hit.node, hit.index)].get(Method.KEYWORD),
                 )
                 for _, hit in top
             )

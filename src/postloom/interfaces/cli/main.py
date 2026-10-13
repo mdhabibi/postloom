@@ -15,6 +15,7 @@ from postloom.application.use_cases import (
     IndexResult,
     IngestArticleCommand,
     IngestArticleResult,
+    Passage,
     SearchResults,
 )
 from postloom.bootstrap import Container, Settings, build_container
@@ -88,6 +89,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     search.add_argument("query", nargs="+", help="What you're looking for, in your own words.")
     search.add_argument("--limit", type=int, default=5, help="How many articles to show.")
+    search.add_argument(
+        "--explain", action="store_true", help="Show the relevance scores behind each match."
+    )
 
     commands.add_parser(
         "reindex",
@@ -159,11 +163,11 @@ def _search(args: argparse.Namespace, settings: Settings, make_container: Contai
     query = " ".join(args.query)
     with make_container(settings) as container:
         results = container.search().execute(query, limit=args.limit)
-    _print_search(results)
+    _print_search(results, explain=args.explain)
     return 0
 
 
-def _print_search(found: SearchResults) -> None:
+def _print_search(found: SearchResults, *, explain: bool = False) -> None:
     for warning in found.warnings:
         print(f"Warning: {warning}")
     if not found.results:
@@ -179,6 +183,8 @@ def _print_search(found: SearchResults) -> None:
             where = passage.heading or "Introduction"
             how = "+".join(sorted(passage.matched_by))
             print(f"   - [{where}] ({how})")
+            if explain:
+                print(f"     scores: {_scores(passage)}")
             print(f"     {passage.excerpt}")
 
 
@@ -197,6 +203,15 @@ def _print_result(result: IngestArticleResult) -> None:
     print(f"  Note:     {result.note_path}")
     for warning in result.warnings:
         print(f"  Warning:  {warning}")
+
+
+def _scores(passage: Passage) -> str:
+    parts: list[str] = []
+    if passage.similarity is not None:
+        parts.append(f"meaning similarity {passage.similarity:.3f}")
+    if passage.keyword_score is not None:
+        parts.append(f"keyword relevance {passage.keyword_score:.2f}")
+    return ", ".join(parts)
 
 
 def _count(n: int, noun: str) -> str:

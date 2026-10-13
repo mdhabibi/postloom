@@ -45,6 +45,7 @@ HOME_ENV = "POSTLOOM_HOME"
 GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
 EMBEDDING_MODEL_ENV = "POSTLOOM_EMBEDDING_MODEL"
+MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,10 @@ class Settings:
     embedding_model: str = field(
         default_factory=lambda: os.environ.get(EMBEDDING_MODEL_ENV) or DEFAULT_EMBEDDING_MODEL
     )
+    min_similarity: float = field(
+        default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or 0.0)
+    )
+    """Semantic matches below this cosine similarity are treated as unrelated."""
 
     def __repr__(self) -> str:  # never print the key
         key = "set" if self.gemini_api_key else "missing"
@@ -97,6 +102,7 @@ class Container:
     clock: Clock
     extractor: ContentExtractor | None = None
     embedder: EmbeddingProvider | None = None
+    min_similarity: float = 0.0
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
 
@@ -133,7 +139,7 @@ class Container:
         return ReindexAll(self.repository, self.index_article())
 
     def search(self) -> SearchContent:
-        return SearchContent(self.search_index, self.repository, self.embedder)
+        return SearchContent(self.search_index, self.repository, self.embedder, self.min_similarity)
 
 
 def build_container(
@@ -155,5 +161,6 @@ def build_container(
         clock=SystemClock(),
         extractor=extractor,
         embedder=embedder,
+        min_similarity=settings.min_similarity,
         closers=(database.close,),
     )

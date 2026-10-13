@@ -174,3 +174,10 @@ def test_reindex_reuses_existing_embeddings(
     out = capsys.readouterr().out
     assert "Indexed 1 article, " in out
     assert "(0 embedded," in out
+
+
+def test_search_explain_shows_scores(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    home = ingested_home(tmp_path)
+    capsys.readouterr()
+    main(["--home", home, "search", "cache", "--explain"], make_container=fake_container)
+    assert "scores: meaning similarity 0." in capsys.readouterr().out

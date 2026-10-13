@@ -157,3 +157,20 @@ def test_documents_carry_their_title_for_embedding() -> None:
     World(Recording()).index_article.execute(CACHING.id)
     assert {d.title for d in seen} == {CACHING.title}
     assert seen[0].text.startswith("Metrics\n\n")
+
+
+def test_semantic_matches_below_the_cutoff_are_dropped() -> None:
+    """Nearest-neighbour search always returns *something*; the cutoff removes noise."""
+    world = World(FakeEmbedder())
+    world.index_all()
+    strict = SearchContent(world.index, world.repository, world.embedder, min_similarity=0.99)
+    found = strict.execute("quantum gardening recipes")
+    assert found.results == ()
+
+
+def test_passages_explain_their_scores() -> None:
+    world = World(FakeEmbedder())
+    world.index_all()
+    passage = world.search.execute("temporal leakage").results[0].passages[0]
+    assert passage.keyword_score is not None and passage.keyword_score > 0
+    assert passage.similarity is not None and 0 < passage.similarity <= 1.0001
