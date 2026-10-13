@@ -131,9 +131,7 @@ def _sanitize(messages: Sequence[ParsedMessage], warnings: list[str]) -> list[Pa
         thread, reply_to = message.thread, message.reply_to
         if thread is not None and not (0 <= thread < index and fixed[thread].thread is None):
             thread = None
-        if thread is None:
-            reply_to = None
-        elif reply_to is not None and not (0 <= reply_to < index):
+        if thread is None or (reply_to is not None and not 0 <= reply_to < index):
             reply_to = None
         if (thread, reply_to) != (message.thread, message.reply_to):
             warnings.append(f"Check where message {index + 1} belongs; it was unclear.")

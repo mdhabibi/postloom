@@ -98,7 +98,7 @@ class BrowseContent:
                 posted_label=c.posted_label,
                 thread=c.thread,
                 reply_to=c.reply_to,
-                reply_to_name=by_id[c.reply_to].author_name if c.reply_to in by_id else None,
+                reply_to_name=_author_of(by_id, c.reply_to),
                 depth=conversation_depth(c, by_id),
             )
             for c in _conversation_order(comments)
@@ -121,6 +121,11 @@ class BrowseContent:
             series=article.series.name if article.series else None,
             series_part=article.series_part,
         )
+
+
+def _author_of(by_id: dict[NodeId, Comment], comment_id: NodeId | None) -> str | None:
+    target = by_id.get(comment_id) if comment_id is not None else None
+    return target.author_name if target is not None else None
 
 
 def _conversation_order(comments: list[Comment]) -> list[Comment]:

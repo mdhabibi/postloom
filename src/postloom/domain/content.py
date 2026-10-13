@@ -88,4 +88,3 @@ class Post:
     @staticmethod
     def key_for_article(article: Article) -> str:
         return article.slug
-

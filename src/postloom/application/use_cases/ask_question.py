@@ -130,8 +130,9 @@ class AskQuestion:
         sources: list[Source] = []
         for comment in comments:
             who = "Your reply" if comment.is_own else f"Comment by {comment.author_name}"
-            if comment.reply_to in names:
-                who += f" (answering {names[comment.reply_to]})"
+            answering = names.get(comment.reply_to) if comment.reply_to else None
+            if answering:
+                who += f" (answering {answering})"
             number = len(so_far) + len(sources) + 1
             sources.append(Source(number, article_id, title, who, comment.text))
         return sources

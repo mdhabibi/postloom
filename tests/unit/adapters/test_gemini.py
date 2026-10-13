@@ -9,8 +9,8 @@ import pytest
 from postloom.adapters.llm.gemini import GeminiClient
 from postloom.adapters.llm.gemini_chat import GeminiChat
 from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
-from postloom.adapters.llm.gemini_threads import GeminiThreadParser
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
+from postloom.adapters.llm.gemini_threads import GeminiThreadParser
 from postloom.adapters.llm.http import CertificateError, HttpResponse, JsonObject
 from postloom.application.errors import (
     ExtractionError,

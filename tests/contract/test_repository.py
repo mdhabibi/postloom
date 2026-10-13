@@ -137,7 +137,8 @@ def test_save_edge_refuses_superseded_edges(make: Callable[[], GraphRepository])
 @adapters
 def test_comments_round_trip_in_pasted_order(make: Callable[[], GraphRepository]) -> None:
     repo = make()
-    top = Comment(POST.id, NodeId("person:~jane-example"), "Jane Example", "Question?", 0, "4h")
+    jane = NodeId("person:~jane-example")
+    top = Comment(POST.id, jane, "Jane Example", "Question?", 0, posted_label="4h")
     reply = Comment(POST.id, OWNER, "Alex Author", "Answer.", 1, thread=top.id, reply_to=top.id)
     other = Comment(NodeId("post:other"), OWNER, "Alex Author", "Elsewhere", 0)
     for comment in (reply, other, top):

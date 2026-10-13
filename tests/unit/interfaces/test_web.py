@@ -202,8 +202,7 @@ def test_preview_then_save_a_comment_thread(tmp_path: Path) -> None:
     ]
 
     review = [
-        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")}
-        for m in messages
+        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")} for m in messages
     ]
     review[0]["profile_url"] = "linkedin.com/in/jane-example"
     saved = client.post("/api/comments", json_body={"article_id": article_id, "messages": review})
