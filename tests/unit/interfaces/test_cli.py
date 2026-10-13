@@ -16,6 +16,16 @@ def test_init_creates_a_vault_with_the_default_topics(
     assert "Vault ready" in capsys.readouterr().out
 
 
+def test_home_can_come_after_the_command(tmp_path: Path) -> None:
+    assert main(["init", "--home", str(tmp_path / "after")]) == 0
+    assert (tmp_path / "after" / "vault" / "topics" / "RAG.md").exists()
+
+
+def test_home_before_the_command_is_not_lost(tmp_path: Path) -> None:
+    assert main(["--home", str(tmp_path / "before"), "init"]) == 0
+    assert (tmp_path / "before" / "vault" / "topics" / "RAG.md").exists()
+
+
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exit_info:
         main(["--version"])

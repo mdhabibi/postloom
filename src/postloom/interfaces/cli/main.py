@@ -17,14 +17,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="postloom",
         description="Local-first knowledge graph and chat for your LinkedIn writing.",
     )
+    home_help = "Data folder (default: ~/Postloom, or $POSTLOOM_HOME)."
     parser.add_argument("--version", action="version", version=f"postloom {__version__}")
-    parser.add_argument("--home", type=Path, help="Data folder (default: ~/Postloom).")
+    parser.add_argument("--home", type=Path, help=home_help)
+
+    # Accept --home after the command too ("postloom init --home X"). SUPPRESS keeps a
+    # value given before the command from being overwritten when it is absent after it.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--home", type=Path, default=argparse.SUPPRESS, help=home_help)
+
     commands = parser.add_subparsers(dest="command", metavar="<command>")
-    commands.add_parser("init", help="Create your vault with the default topics.")
-    commands.add_parser("start", help="Start the local web app.")
+    commands.add_parser("init", parents=[common], help="Create your vault with the default topics.")
+    commands.add_parser("start", parents=[common], help="Start the local web app.")
 
     args = parser.parse_args(argv)
-    settings = Settings(home=args.home) if args.home else Settings()
+    home: Path | None = args.home
+    settings = Settings(home=home.expanduser()) if home else Settings()
 
     if args.command == "init":
         container = build_container(settings)
