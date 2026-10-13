@@ -149,9 +149,7 @@ def test_reingest_never_overrides_the_users_decisions(tmp_path: Path) -> None:
         "topic:ai-agents": Grade.VERIFIED,
         "topic:rag": Grade.REJECTED,
     }
-    assert {e.target for e in result.edges if e.kind is EdgeKind.BELONGS_TO} == {
-        "topic:ai-agents"
-    }
+    assert {e.target for e in result.edges if e.kind is EdgeKind.BELONGS_TO} == {"topic:ai-agents"}
 
 
 def test_series_part_comes_from_the_title_when_present(tmp_path: Path) -> None:
