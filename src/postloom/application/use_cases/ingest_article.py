@@ -28,9 +28,16 @@ from postloom.application.ports.vault import Vault
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.graph import Edge, EdgeKind
 from postloom.domain.provenance import Grade, Origin, Provenance
-from postloom.domain.text import detect_series_part, extract_hashtags, extract_urls
+from postloom.domain.text import (
+    content_size,
+    detect_series_part,
+    extract_hashtags,
+    extract_urls,
+)
 
 PARSER = "parser"
+MIN_COVERAGE = 0.85
+"""Below this share of the pasted text's content, the restored article is flagged."""
 _OWNED_KINDS = frozenset({EdgeKind.ANNOUNCES, EdgeKind.BELONGS_TO, EdgeKind.PART_OF})
 
 
@@ -83,6 +90,7 @@ class IngestArticle:
         )
         warnings: list[str] = []
         topics = _match_topics(extracted.topics, taxonomy, warnings)
+        _check_coverage(command.article_text, extracted, warnings)
 
         article = _build_article(command, extracted)
         post = Post(
@@ -170,6 +178,17 @@ def _match_topics(
     if not matched:
         warnings.append("No topic assigned; the article is unlinked until you add one.")
     return matched
+
+
+def _check_coverage(raw: str, extracted: ExtractedContent, warnings: list[str]) -> None:
+    """Flag extractions that look shortened: restoring formatting must not drop content."""
+    pasted = content_size(raw)
+    kept = content_size(extracted.title) + content_size(extracted.body_markdown)
+    if pasted and kept / pasted < MIN_COVERAGE:
+        warnings.append(
+            f"The restored article keeps only {kept / pasted:.0%} of the pasted text. "
+            "Compare it with the original before relying on it."
+        )
 
 
 def _build_article(command: IngestArticleCommand, extracted: ExtractedContent) -> Article:

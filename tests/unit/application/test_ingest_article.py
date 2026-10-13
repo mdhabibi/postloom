@@ -172,3 +172,17 @@ def test_seed_topics_is_idempotent(tmp_path: Path) -> None:
         [*DEFAULT_TOPICS, Topic("Reinforcement Learning")]
     )
     assert [t.name for t in created] == ["Reinforcement Learning"]
+
+
+def test_a_shortened_restoration_is_flagged(tmp_path: Path) -> None:
+    extractor = FakeExtractor(part3_extraction(body_markdown="## Metrics\n\nOnly a summary."))
+    result = World(tmp_path, extractor).ingest.execute(command())
+    assert any("keeps only" in w for w in result.warnings)
+
+
+def test_a_faithful_restoration_with_new_markdown_is_not_flagged(tmp_path: Path) -> None:
+    raw = fixture_text("semantic_caching_part3", "article.txt")
+    restored = raw.replace("1. The Observability", "\n\n## 1. The Observability")
+    extractor = FakeExtractor(part3_extraction(body_markdown=restored))
+    result = World(tmp_path, extractor).ingest.execute(command())
+    assert result.warnings == ()

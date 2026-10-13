@@ -28,7 +28,7 @@ layer imports an outer one, or if the domain imports anything outside the standa
 
 | Port | Purpose | Adapters |
 |---|---|---|
-| `ContentExtractor` | pasted text -> structured content | Gemini *(M1)*, fakes |
+| `ContentExtractor` | pasted text -> structured content | Gemini (REST, stdlib HTTP), fakes |
 | `GraphRepository` | queryable index of nodes and edges | in-memory, SQLite |
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
@@ -119,4 +119,6 @@ Chat can be scoped to one article or thread.
 | 2026-10-13 | Markdown vault as source of truth | User owns readable files, Obsidian for free, index rebuildable. |
 | 2026-10-13 | CortexDB not adopted (for now) | Go library reached from Python via a separate gRPC server; would break single-process install. Its provenance grades and supersession ideas were adopted. |
 | 2026-10-13 | Comments are pasted, not scraped | LinkedIn's terms prohibit scraping; individuals have no comments API. |
+| 2026-10-13 | Gemini via REST on the standard library, not Google's SDK | Smaller install; one tiny `HttpTransport` seam makes adapters testable without network. |
+| 2026-10-13 | Model names are settings (default `gemini-3.5-flash-lite`) | Google retires model versions often; users choose cost vs quality. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |

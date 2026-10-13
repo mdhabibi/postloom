@@ -71,6 +71,17 @@ def extract_urls(text: str) -> list[str]:
     return urls
 
 
+def content_size(text: str) -> int:
+    """Count letters and digits, ignoring hashtags, URLs, whitespace and Markdown syntax.
+
+    Used to check that a model restoring an article's formatting didn't drop content.
+    Counting characters rather than words is robust to copy-paste gluing words together.
+    """
+    without_links = _URL.sub(" ", text)
+    without_tags = _HASHTAG.sub(" ", without_links)
+    return sum(1 for ch in without_tags if ch.isalnum())
+
+
 def detect_series_part(title: str) -> int | None:
     """Detect a 'Part N' marker in a title and return N, or None."""
     match = _SERIES_PART.search(title)

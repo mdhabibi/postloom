@@ -13,17 +13,32 @@ from pathlib import Path
 from types import TracebackType
 
 from postloom.adapters.clock import SystemClock
+from postloom.adapters.llm.gemini import DEFAULT_EXTRACTION_MODEL, GeminiClient
+from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.adapters.vault.markdown_vault import MarkdownVault
+from postloom.application.errors import NotConfiguredError
 from postloom.application.ports import Clock, ContentExtractor, GraphRepository, Vault
 from postloom.application.use_cases import IngestArticle, SeedTopics
 
 HOME_ENV = "POSTLOOM_HOME"
+GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
+EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
 
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    """Runtime configuration. Read from the environment until the setup screen exists."""
+
     home: Path = field(default_factory=lambda: _default_home())
+    gemini_api_key: str | None = field(default_factory=lambda: _first_env(GEMINI_KEY_ENVS))
+    extraction_model: str = field(
+        default_factory=lambda: os.environ.get(EXTRACTION_MODEL_ENV) or DEFAULT_EXTRACTION_MODEL
+    )
+
+    def __repr__(self) -> str:  # never print the key
+        key = "set" if self.gemini_api_key else "missing"
+        return f"Settings(home={self.home!s}, gemini_api_key={key}, model={self.extraction_model})"
 
     @property
     def vault_dir(self) -> Path:
@@ -37,6 +52,14 @@ class Settings:
 def _default_home() -> Path:
     override = os.environ.get(HOME_ENV)
     return Path(override).expanduser() if override else Path.home() / "Postloom"
+
+
+def _first_env(names: tuple[str, ...]) -> str | None:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,11 +91,17 @@ class Container:
 
     def ingest_article(self) -> IngestArticle:
         if self.extractor is None:
-            raise RuntimeError("No content extractor configured; add an LLM API key in setup.")
+            raise NotConfiguredError(
+                "No Gemini API key found. Create one at aistudio.google.com, then run "
+                "`export GEMINI_API_KEY=...` in this terminal and try again."
+            )
         return IngestArticle(self.extractor, self.repository, self.vault, self.clock)
 
 
 def build_container(settings: Settings, extractor: ContentExtractor | None = None) -> Container:
+    if extractor is None and settings.gemini_api_key:
+        client = GeminiClient(settings.gemini_api_key)
+        extractor = GeminiContentExtractor(client, settings.extraction_model)
     repository = SqliteGraphRepository(settings.index_path)
     return Container(
         repository=repository,

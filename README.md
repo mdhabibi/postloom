@@ -41,6 +41,25 @@ uv run postloom init
 `init` creates your vault at `~/Postloom/vault` (override with `--home` or `POSTLOOM_HOME`)
 with a starter set of topics. Open that folder in Obsidian to browse it.
 
+### Add an article (command line, until the web app lands)
+
+1. Create a free Gemini API key at [aistudio.google.com](https://aistudio.google.com).
+2. Paste your article into one text file and its announcement post into another
+   (on macOS: copy the article, then `pbpaste > article.txt`; same for `post.txt`).
+3. Run:
+
+```bash
+export GEMINI_API_KEY=your-key-here
+uv run postloom ingest article.txt post.txt --url https://www.linkedin.com/pulse/... --date 2026-10-12
+```
+
+postloom restores the article's formatting, picks topics from your list, detects the
+series, and writes `articles/<slug>.md` and `posts/<slug>.md` into your vault. If the
+restored article looks shorter than what you pasted, it tells you.
+
+To use a different Gemini model, set `POSTLOOM_EXTRACTION_MODEL` (default:
+`gemini-3.5-flash-lite`).
+
 Once released, installation will be a single command:
 
 ```bash

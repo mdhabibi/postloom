@@ -49,11 +49,8 @@ def part3_extraction(**overrides: object) -> ExtractedContent:
             "Measuring What Matters: Observability, Metrics, and Building a "
             "Semantic Caching Agent in LangGraph - Part 3"
         ),
-        "body_markdown": (
-            "In Parts 1 and 2, we examined why AI agents burn through inference tokens...\n\n"
-            "## 1. The Observability Problem: What Should You Measure?\n\n"
-            "Deploying a cache without rigorous observability is a recipe for silent failures."
-        ),
+        # A faithful restoration keeps all of the pasted text (the coverage check relies on it).
+        "body_markdown": fixture_text("semantic_caching_part3", "article.txt"),
         "summary": "How to measure semantic cache quality and wire a cache into a LangGraph agent.",
         "topics": ("RAG", "AI Agents"),
         "entities": ("LangGraph", "Redis", "LLM-as-a-judge"),

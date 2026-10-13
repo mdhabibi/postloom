@@ -1,4 +1,10 @@
-from postloom.domain.text import detect_series_part, extract_hashtags, extract_urls, slugify
+from postloom.domain.text import (
+    content_size,
+    detect_series_part,
+    extract_hashtags,
+    extract_urls,
+    slugify,
+)
 from tests.fakes import fixture_text
 
 
@@ -68,3 +74,9 @@ def test_series_part_detection() -> None:
     assert detect_series_part("Semantic Caching in LangGraph - Part 3") == 3
     assert detect_series_part("part-12: the end") == 12
     assert detect_series_part("A departure from the norm") is None
+
+
+def test_content_size_ignores_markup_links_and_hashtags() -> None:
+    plain = "Hit rate matters"
+    marked = "## **Hit rate** matters\n\n- https://lnkd.in/abcdefgh #RAG"
+    assert content_size(marked) == content_size(plain) == 14
