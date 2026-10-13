@@ -1,4 +1,3 @@
-import os
 import stat
 import sys
 from pathlib import Path
@@ -53,7 +52,7 @@ def test_update_merges_and_none_removes(tmp_path: Path) -> None:
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
 def test_config_file_is_private(tmp_path: Path) -> None:
     update_config(tmp_path, gemini_api_key="secret")
-    mode = stat.S_IMODE(os.stat(config_path(tmp_path)).st_mode)
+    mode = stat.S_IMODE(config_path(tmp_path).stat().st_mode)
     assert mode == 0o600
 
 

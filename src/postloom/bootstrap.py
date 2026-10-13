@@ -27,7 +27,6 @@ from postloom.adapters.storage.search import SqliteSearchIndex
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.adapters.vault.markdown_vault import MarkdownVault
 from postloom.application.errors import NotConfiguredError
-from postloom.config import read_config
 from postloom.application.ports import (
     ChatModel,
     Clock,
@@ -46,6 +45,7 @@ from postloom.application.use_cases import (
     SearchContent,
     SeedTopics,
 )
+from postloom.config import read_config
 
 HOME_ENV = "POSTLOOM_HOME"
 GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")

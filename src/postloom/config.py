@@ -42,7 +42,7 @@ def update_config(home: Path, **values: object) -> None:
     home.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=home, prefix=".config.", suffix=".tmp")
     try:
-        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)  # 0600 before any secret is written
+        Path(tmp).chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600 before any secret is written
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)
         Path(tmp).replace(config_path(home))

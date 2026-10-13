@@ -17,7 +17,7 @@ don't block other requests.
 from __future__ import annotations
 
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -194,7 +194,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
     ]
 
     @asynccontextmanager
-    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+    async def lifespan(app: Starlette) -> AsyncGenerator[None, None]:
         yield
         state.close()
 
