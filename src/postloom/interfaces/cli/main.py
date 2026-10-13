@@ -10,8 +10,13 @@ from pathlib import Path
 
 from postloom import __version__
 from postloom.application.defaults import DEFAULT_TOPICS
-from postloom.application.errors import ApplicationError
-from postloom.application.use_cases import IngestArticleCommand, IngestArticleResult
+from postloom.application.errors import ApplicationError, ProviderError
+from postloom.application.use_cases import (
+    IndexResult,
+    IngestArticleCommand,
+    IngestArticleResult,
+    SearchResults,
+)
 from postloom.bootstrap import Container, Settings, build_container
 
 ContainerFactory = Callable[[Settings], Container]
@@ -32,6 +37,10 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _init(settings, make_container)
         if args.command == "ingest":
             return _ingest(args, settings, make_container)
+        if args.command == "reindex":
+            return _reindex(settings, make_container)
+        if args.command == "search":
+            return _search(args, settings, make_container)
         if args.command == "start":
             print("The web app arrives later in milestone 1. Use `postloom ingest` for now.")
             return 0
@@ -74,6 +83,18 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("--post-url", help="The post's LinkedIn URL.")
     ingest.add_argument("--date", type=date.fromisoformat, help="Publish date, YYYY-MM-DD.")
 
+    search = commands.add_parser(
+        "search", parents=[common], help="Search your articles by keywords and meaning."
+    )
+    search.add_argument("query", nargs="+", help="What you're looking for, in your own words.")
+    search.add_argument("--limit", type=int, default=5, help="How many articles to show.")
+
+    commands.add_parser(
+        "reindex",
+        parents=[common],
+        help="Rebuild the search index (after upgrading or changing the embedding model).",
+    )
+
     commands.add_parser("start", parents=[common], help="Start the local web app.")
     return parser
 
@@ -104,8 +125,61 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
     print("Restoring the article with Gemini; this can take up to a minute...")
     with make_container(settings) as container:
         result = container.ingest_article().execute(command)
-    _print_result(result)
+        _print_result(result)
+        try:
+            indexed = container.index_article().execute(result.article.id)
+        except ProviderError as error:
+            print(f"  Warning:  Saved, but not indexed for search ({error}).")
+            print("            Run `postloom reindex` to retry.")
+        else:
+            print(f"  Search:   {_index_summary(indexed)}")
     return 0
+
+
+def _index_summary(result: IndexResult) -> str:
+    if not result.semantic:
+        return f"{result.chunks} sections indexed for keyword search (no API key for meaning)."
+    return f"{result.chunks} sections indexed ({result.embedded} embedded, {result.reused} reused)."
+
+
+def _reindex(settings: Settings, make_container: ContainerFactory) -> int:
+    with make_container(settings) as container:
+        result = container.reindex_all().execute()
+        semantic = container.embedder is not None
+    print(
+        f"Indexed {_count(result.articles, 'article')}, {_count(result.chunks, 'section')} "
+        f"({result.embedded} embedded, {result.reused} reused)."
+    )
+    if not semantic:
+        print("No Gemini API key: keyword search only. Set GEMINI_API_KEY and reindex.")
+    return 0
+
+
+def _search(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
+    query = " ".join(args.query)
+    with make_container(settings) as container:
+        results = container.search().execute(query, limit=args.limit)
+    _print_search(results)
+    return 0
+
+
+def _print_search(found: SearchResults) -> None:
+    for warning in found.warnings:
+        print(f"Warning: {warning}")
+    if not found.results:
+        print(f'No articles match "{found.query}".')
+        return
+    methods = " + ".join(sorted(found.methods))
+    print(f'{_count(len(found.results), "article")} for "{found.query}" ({methods}):')
+    for rank, result in enumerate(found.results, start=1):
+        print(f"\n{rank}. {result.title}")
+        if result.url:
+            print(f"   {result.url}")
+        for passage in result.passages:
+            where = passage.heading or "Introduction"
+            how = "+".join(sorted(passage.matched_by))
+            print(f"   - [{where}] ({how})")
+            print(f"     {passage.excerpt}")
 
 
 def _print_result(result: IngestArticleResult) -> None:
@@ -123,6 +197,11 @@ def _print_result(result: IngestArticleResult) -> None:
     print(f"  Note:     {result.note_path}")
     for warning in result.warnings:
         print(f"  Warning:  {warning}")
+
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
 
 
 if __name__ == "__main__":

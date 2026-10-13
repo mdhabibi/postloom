@@ -6,7 +6,7 @@ import pytest
 from postloom.application.defaults import DEFAULT_TOPICS
 from postloom.bootstrap import Container, Settings, build_container
 from postloom.interfaces.cli.main import main
-from tests.fakes import FakeExtractor, fixture_text, part3_extraction
+from tests.fakes import FakeEmbedder, FakeExtractor, fixture_text, part3_extraction
 
 
 def test_init_creates_a_vault_with_the_default_topics(
@@ -47,7 +47,12 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
 
 # -- ingest ---------------------------------------------------------------------
 def fake_container(settings: Settings) -> Container:
-    return build_container(settings, extractor=FakeExtractor(part3_extraction()))
+    # No real key, even if the developer running the tests has one exported.
+    return build_container(
+        replace(settings, gemini_api_key=None),
+        extractor=FakeExtractor(part3_extraction()),
+        embedder=FakeEmbedder(),
+    )
 
 
 def no_key_container(settings: Settings) -> Container:
@@ -121,3 +126,53 @@ def test_ingest_with_a_missing_file_fails_cleanly(
 def test_settings_never_print_the_api_key(tmp_path: Path) -> None:
     settings = Settings(home=tmp_path, gemini_api_key="secret-123")
     assert "secret-123" not in repr(settings)
+
+
+# -- search -----------------------------------------------------------------------
+def ingested_home(tmp_path: Path) -> str:
+    home = str(tmp_path / "home")
+    main(["--home", home, "init"], make_container=fake_container)
+    article, post = write_inputs(tmp_path)
+    main(["--home", home, "ingest", article, post], make_container=fake_container)
+    return home
+
+
+def test_ingest_also_indexes_the_article_for_search(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ingested_home(tmp_path)
+    assert "Search:   " in capsys.readouterr().out
+
+
+def test_search_shows_matching_articles_and_passages(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ingested_home(tmp_path)
+    capsys.readouterr()
+
+    code = main(["--home", home, "search", "cache", "hit", "rate"], make_container=fake_container)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert '1 article for "cache hit rate" (keyword + semantic):' in out
+    assert "1. Measuring What Matters" in out
+    assert "(keyword+semantic)" in out
+
+
+def test_search_without_matches_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["--home", str(tmp_path), "init"], make_container=fake_container)
+    main(["--home", str(tmp_path), "search", "anything"], make_container=fake_container)
+    assert 'No articles match "anything".' in capsys.readouterr().out
+
+
+def test_reindex_reuses_existing_embeddings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ingested_home(tmp_path)
+    capsys.readouterr()
+    main(["--home", home, "reindex"], make_container=fake_container)
+    out = capsys.readouterr().out
+    assert "Indexed 1 article, " in out
+    assert "(0 embedded," in out

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 from postloom.adapters.llm.http import (
@@ -26,6 +26,7 @@ from postloom.application.errors import (
 
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_EXTRACTION_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2"
 
 _RETRYABLE = frozenset({429, 500, 502, 503, 504})
 
@@ -73,6 +74,30 @@ class GeminiClient:
         }
         body = self._post(f"{self._base_url}/models/{model}:generateContent", payload)
         return _json_from_candidate(body)
+
+    def embed_texts(
+        self,
+        model: str,
+        texts: Sequence[str],
+        *,
+        dimensions: int,
+        task_type: str | None = None,
+    ) -> list[list[float]]:
+        """Embed ``texts`` in one batch request. Returns raw vectors in input order."""
+        requests: list[JsonObject] = []
+        for text in texts:
+            item: JsonObject = {
+                "model": f"models/{model}",
+                "content": {"parts": [{"text": text}]},
+                "outputDimensionality": dimensions,
+            }
+            if task_type:
+                item["taskType"] = task_type
+            requests.append(item)
+        body = self._post(
+            f"{self._base_url}/models/{model}:batchEmbedContents", {"requests": requests}
+        )
+        return _vectors_from(body, expected=len(texts), dimensions=dimensions)
 
     def _post(self, url: str, payload: JsonObject) -> JsonObject:
         # The key goes in a header, never the URL, so it can't leak into logs or proxies.
@@ -159,3 +184,16 @@ def _json_from_candidate(body: JsonObject) -> JsonObject:
     if not isinstance(parsed, dict):
         raise ExtractionError("Gemini's answer was not a JSON object.")
     return cast(JsonObject, parsed)
+
+
+def _vectors_from(body: JsonObject, *, expected: int, dimensions: int) -> list[list[float]]:
+    embeddings = body.get("embeddings")
+    if not isinstance(embeddings, list) or len(cast(list[Any], embeddings)) != expected:
+        raise ProviderError("Gemini returned an unexpected embedding response.")
+    vectors: list[list[float]] = []
+    for item in cast(list[Any], embeddings):
+        values = cast(dict[str, Any], item).get("values") if isinstance(item, dict) else None
+        if not isinstance(values, list) or len(cast(list[Any], values)) != dimensions:
+            raise ProviderError("Gemini returned an embedding with the wrong size.")
+        vectors.append([float(v) for v in cast(list[Any], values)])
+    return vectors

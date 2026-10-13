@@ -13,17 +13,38 @@ from pathlib import Path
 from types import TracebackType
 
 from postloom.adapters.clock import SystemClock
-from postloom.adapters.llm.gemini import DEFAULT_EXTRACTION_MODEL, GeminiClient
+from postloom.adapters.llm.gemini import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EXTRACTION_MODEL,
+    GeminiClient,
+)
+from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
+from postloom.adapters.storage.database import SqliteDatabase
+from postloom.adapters.storage.search import SqliteSearchIndex
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.adapters.vault.markdown_vault import MarkdownVault
 from postloom.application.errors import NotConfiguredError
-from postloom.application.ports import Clock, ContentExtractor, GraphRepository, Vault
-from postloom.application.use_cases import IngestArticle, SeedTopics
+from postloom.application.ports import (
+    Clock,
+    ContentExtractor,
+    EmbeddingProvider,
+    GraphRepository,
+    SearchIndex,
+    Vault,
+)
+from postloom.application.use_cases import (
+    IndexArticle,
+    IngestArticle,
+    ReindexAll,
+    SearchContent,
+    SeedTopics,
+)
 
 HOME_ENV = "POSTLOOM_HOME"
 GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
+EMBEDDING_MODEL_ENV = "POSTLOOM_EMBEDDING_MODEL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,10 +56,16 @@ class Settings:
     extraction_model: str = field(
         default_factory=lambda: os.environ.get(EXTRACTION_MODEL_ENV) or DEFAULT_EXTRACTION_MODEL
     )
+    embedding_model: str = field(
+        default_factory=lambda: os.environ.get(EMBEDDING_MODEL_ENV) or DEFAULT_EMBEDDING_MODEL
+    )
 
     def __repr__(self) -> str:  # never print the key
         key = "set" if self.gemini_api_key else "missing"
-        return f"Settings(home={self.home!s}, gemini_api_key={key}, model={self.extraction_model})"
+        return (
+            f"Settings(home={self.home!s}, gemini_api_key={key}, "
+            f"extraction_model={self.extraction_model}, embedding_model={self.embedding_model})"
+        )
 
     @property
     def vault_dir(self) -> Path:
@@ -65,9 +92,11 @@ def _first_env(names: tuple[str, ...]) -> str | None:
 @dataclass(frozen=True, slots=True)
 class Container:
     repository: GraphRepository
+    search_index: SearchIndex
     vault: Vault
     clock: Clock
     extractor: ContentExtractor | None = None
+    embedder: EmbeddingProvider | None = None
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
 
@@ -97,16 +126,34 @@ class Container:
             )
         return IngestArticle(self.extractor, self.repository, self.vault, self.clock)
 
+    def index_article(self) -> IndexArticle:
+        return IndexArticle(self.repository, self.search_index, self.embedder)
 
-def build_container(settings: Settings, extractor: ContentExtractor | None = None) -> Container:
-    if extractor is None and settings.gemini_api_key:
+    def reindex_all(self) -> ReindexAll:
+        return ReindexAll(self.repository, self.index_article())
+
+    def search(self) -> SearchContent:
+        return SearchContent(self.search_index, self.repository, self.embedder)
+
+
+def build_container(
+    settings: Settings,
+    *,
+    extractor: ContentExtractor | None = None,
+    embedder: EmbeddingProvider | None = None,
+) -> Container:
+    """Wire the app. Gemini fills in any provider not passed explicitly, if a key is set."""
+    if settings.gemini_api_key and (extractor is None or embedder is None):
         client = GeminiClient(settings.gemini_api_key)
-        extractor = GeminiContentExtractor(client, settings.extraction_model)
-    repository = SqliteGraphRepository(settings.index_path)
+        extractor = extractor or GeminiContentExtractor(client, settings.extraction_model)
+        embedder = embedder or GeminiEmbeddings(client, settings.embedding_model)
+    database = SqliteDatabase(settings.index_path)
     return Container(
-        repository=repository,
+        repository=SqliteGraphRepository(database),
+        search_index=SqliteSearchIndex(database),
         vault=MarkdownVault(settings.vault_dir),
         clock=SystemClock(),
         extractor=extractor,
-        closers=(repository.close,),
+        embedder=embedder,
+        closers=(database.close,),
     )

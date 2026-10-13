@@ -57,8 +57,18 @@ postloom restores the article's formatting, picks topics from your list, detects
 series, and writes `articles/<slug>.md` and `posts/<slug>.md` into your vault. If the
 restored article looks shorter than what you pasted, it tells you.
 
-To use a different Gemini model, set `POSTLOOM_EXTRACTION_MODEL` (default:
-`gemini-3.5-flash-lite`).
+Ingest also indexes the article for search. Then search by keywords or in your own words:
+
+```bash
+uv run postloom search "how do I know if my cache serves wrong answers"
+```
+
+Search combines keyword matching with meaning-based matching (Gemini embeddings), and shows
+the best-matching sections of each article. Run `uv run postloom reindex` after upgrading
+postloom or changing the embedding model.
+
+To use different Gemini models, set `POSTLOOM_EXTRACTION_MODEL` (default:
+`gemini-3.5-flash-lite`) or `POSTLOOM_EMBEDDING_MODEL` (default: `gemini-embedding-2`).
 
 Once released, installation will be a single command:
 

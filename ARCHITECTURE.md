@@ -32,7 +32,8 @@ layer imports an outer one, or if the domain imports anything outside the standa
 | `GraphRepository` | queryable index of nodes and edges | in-memory, SQLite |
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
-| `EmbeddingProvider` *(M1)* | text/image -> vectors | Gemini Embedding 2, Ollama |
+| `EmbeddingProvider` | text -> unit vectors | Gemini Embedding 2 (768 dims), fakes |
+| `SearchIndex` | keyword + vector retrieval over chunks | SQLite (FTS5 + in-memory cosine) |
 | `ChatModel` *(M1)* | answers and reply drafts | Gemini, Claude, Ollama |
 
 Every adapter of a port must pass that port's contract tests (`tests/contract/`). Adding a
@@ -97,18 +98,26 @@ knowledge graphs turn into noise.
 
 - **Vault (source of truth)**: Markdown with YAML frontmatter and `[[wikilinks]]`,
   written atomically. It is a valid Obsidian vault.
-- **Index (derived, rebuildable)**: SQLite in a single file (`<home>/index.db`), using
-  only the Python standard library. Nodes are stored as JSON keyed by their stable id;
-  edges keep their history in the same table, with a partial unique index guaranteeing
-  one live edge per (source, target, kind). Schema changes are numbered migrations
-  tracked with `PRAGMA user_version`; file databases run in WAL mode. FTS5 keyword search
-  and sqlite-vec vectors are added in later migrations *(M1)*.
+- **Index (derived, rebuildable)**: one SQLite file (`<home>/index.db`), standard
+  library only, shared by the graph repository and the search index. Nodes are JSON keyed
+  by stable id; edges keep their history in the same table, with a partial unique index
+  guaranteeing one live edge per (source, target, kind). Schema changes are numbered
+  migrations tracked with `PRAGMA user_version`, so an existing `index.db` is upgraded on
+  first open. File databases run in WAL mode.
 
-## Retrieval (M1)
+## Retrieval
 
-Hybrid search (BM25 + vector) fused with reciprocal rank fusion, then a one-hop graph
-expansion: a hit in Part 3 brings in its post, its comment thread and its series siblings.
-Chat can be scoped to one article or thread.
+1. **Chunking** (`domain/chunking.py`): an article is split along its own `##`/`###`
+   sections; long sections are split between paragraphs and code blocks are never cut.
+   The summary is indexed as a chunk of its own.
+2. **Embedding cache**: every chunk has a content hash. Re-indexing reuses stored vectors
+   for unchanged chunks, so editing one section re-embeds only that section.
+3. **Hybrid search**: BM25 over FTS5 (porter stemming, user input quoted so it can't
+   break FTS syntax) plus cosine similarity over embeddings, fused with reciprocal rank
+   fusion (k = 60) and grouped by article with its best passages. Without an API key, or
+   when the provider is unreachable, search degrades to keywords with a warning.
+4. *(Next)* graph expansion: a hit in Part 3 brings in its post, comments and series
+   siblings as context for chat.
 
 ## Decision log
 
@@ -121,4 +130,6 @@ Chat can be scoped to one article or thread.
 | 2026-10-13 | Comments are pasted, not scraped | LinkedIn's terms prohibit scraping; individuals have no comments API. |
 | 2026-10-13 | Gemini via REST on the standard library, not Google's SDK | Smaller install; one tiny `HttpTransport` seam makes adapters testable without network. |
 | 2026-10-13 | Model names are settings (default `gemini-3.5-flash-lite`) | Google retires model versions often; users choose cost vs quality. |
+| 2026-10-13 | Brute-force cosine in Python instead of sqlite-vec | ~0.1 s for 5,000 chunks; no native extension to install on every OS. Same port can take sqlite-vec later. |
+| 2026-10-13 | Hybrid search with reciprocal rank fusion | Keywords catch names and exact terms, embeddings catch paraphrases; RRF needs no score calibration. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |

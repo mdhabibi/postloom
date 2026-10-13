@@ -5,6 +5,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
+from postloom.adapters.storage.database import SqliteDatabase
 from postloom.adapters.storage.sqlite import MIGRATIONS, SqliteGraphRepository
 from postloom.domain.content import Article, Topic
 from postloom.domain.graph import Edge, EdgeKind
@@ -76,3 +77,24 @@ def test_the_database_rejects_two_live_edges_for_one_key(tmp_path: Path) -> None
         except sqlite3.IntegrityError:
             return
     raise AssertionError("duplicate live edge was accepted")
+
+
+def test_a_version_1_database_is_upgraded_in_place(tmp_path: Path) -> None:
+    """Users who ran an earlier postloom keep their data when the schema grows."""
+    path = tmp_path / "index.db"
+    with closing(sqlite3.connect(path)) as db:
+        for statement in MIGRATIONS[0].split(";"):
+            if statement.strip():
+                db.execute(statement)
+        db.execute(
+            "INSERT INTO nodes (id, kind, data) VALUES (?, 'topic', ?)",
+            (RAG.id, '{"name": "RAG", "description": ""}'),
+        )
+        db.execute("PRAGMA user_version = 1")
+        db.commit()
+
+    database = SqliteDatabase(path)
+    assert database.schema_version == len(MIGRATIONS)
+    assert list(SqliteGraphRepository(database).list_topics()) == [RAG]
+    assert database.query("SELECT count(*) AS n FROM chunks")[0]["n"] == 0
+    database.close()

@@ -1,60 +1,26 @@
-"""SQLite GraphRepository: the default index, one file, standard library only.
+"""SQLite GraphRepository: the default graph index, standard library only.
 
-Design notes:
 - Nodes live in one table keyed by their stable id, with the entity as JSON. Adding a
   node kind needs no migration; columns are added only when we need to query by them.
 - Edges keep history in the same table: at most one *live* row per (source, target,
   kind), enforced by a partial unique index; superseded rows are never deleted.
-- Schema changes are numbered migrations tracked with ``PRAGMA user_version``.
-- One connection guarded by a lock, so the web server's worker threads can share it.
-- File databases use WAL so reads never block on a write.
+- Connection, locking and migrations live in ``database.SqliteDatabase``.
 """
 
 from __future__ import annotations
 
 import sqlite3
-import threading
-from collections.abc import Generator, Sequence
-from contextlib import contextmanager
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
 from postloom.adapters.storage import codec
+from postloom.adapters.storage.database import MEMORY, MIGRATIONS, SqliteDatabase
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind
 from postloom.domain.provenance import Grade, Origin, Provenance
 
-MEMORY = ":memory:"
-
-MIGRATIONS: tuple[str, ...] = (
-    # 1: nodes and edges
-    """
-    CREATE TABLE nodes (
-        id          TEXT PRIMARY KEY,
-        kind        TEXT NOT NULL,
-        data        TEXT NOT NULL
-    );
-    CREATE INDEX nodes_by_kind ON nodes(kind);
-
-    CREATE TABLE edges (
-        seq           INTEGER PRIMARY KEY AUTOINCREMENT,
-        source        TEXT NOT NULL,
-        target        TEXT NOT NULL,
-        kind          TEXT NOT NULL,
-        origin        TEXT NOT NULL,
-        grade         TEXT NOT NULL,
-        producer      TEXT NOT NULL,
-        recorded_at   TEXT NOT NULL,
-        evidence      TEXT,
-        weight        REAL,
-        superseded_at TEXT
-    );
-    CREATE UNIQUE INDEX edges_one_live_per_key
-        ON edges(source, target, kind) WHERE superseded_at IS NULL;
-    CREATE INDEX edges_by_source ON edges(source);
-    CREATE INDEX edges_by_target ON edges(target);
-    """,
-)
+__all__ = ["MIGRATIONS", "SqliteGraphRepository"]
 
 _EDGE_COLUMNS = (
     "source, target, kind, origin, grade, producer, recorded_at, evidence, weight, superseded_at"
@@ -62,47 +28,24 @@ _EDGE_COLUMNS = (
 
 
 class SqliteGraphRepository:
-    def __init__(self, path: Path | str = MEMORY) -> None:
-        if str(path) != MEMORY:
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
-        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys = ON")
-        if str(path) != MEMORY:
-            self._db.execute("PRAGMA journal_mode = WAL")
-            self._db.execute("PRAGMA synchronous = NORMAL")
-        self._migrate()
+    def __init__(self, database: SqliteDatabase | Path | str = MEMORY) -> None:
+        self._owns_database = not isinstance(database, SqliteDatabase)
+        self._database = (
+            database if isinstance(database, SqliteDatabase) else SqliteDatabase(database)
+        )
+        self._db = self._database.connection
+        self._lock = self._database.lock
+        self._transaction = self._database.transaction
 
     # -- lifecycle --------------------------------------------------------------
     @property
     def schema_version(self) -> int:
-        row = self._db.execute("PRAGMA user_version").fetchone()
-        return int(row[0])
+        return self._database.schema_version
 
     def close(self) -> None:
-        with self._lock:
-            self._db.close()
-
-    def _migrate(self) -> None:
-        with self._transaction():
-            current = self.schema_version
-            for version, script in enumerate(MIGRATIONS, start=1):
-                if version > current:
-                    for statement in _split_sql(script):
-                        self._db.execute(statement)
-                    self._db.execute(f"PRAGMA user_version = {version}")
-
-    @contextmanager
-    def _transaction(self) -> Generator[sqlite3.Connection, None, None]:
-        with self._lock:
-            self._db.execute("BEGIN IMMEDIATE")
-            try:
-                yield self._db
-            except BaseException:
-                self._db.execute("ROLLBACK")
-                raise
-            self._db.execute("COMMIT")
+        """Close the database if this repository opened it."""
+        if self._owns_database:
+            self._database.close()
 
     # -- nodes ------------------------------------------------------------------
     def _put(self, node_id: NodeId, kind: NodeKind, data: codec.Json) -> None:
@@ -217,8 +160,3 @@ def _edge_from_row(row: sqlite3.Row) -> Edge:
         weight=row["weight"],
         superseded_at=datetime.fromisoformat(superseded) if superseded else None,
     )
-
-
-def _split_sql(script: str) -> list[str]:
-    """Split a migration into statements (our migrations never contain ';' in literals)."""
-    return [s.strip() for s in script.split(";") if s.strip()]

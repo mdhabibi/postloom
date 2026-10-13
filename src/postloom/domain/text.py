@@ -82,6 +82,27 @@ def content_size(text: str) -> int:
     return sum(1 for ch in without_tags if ch.isalnum())
 
 
+def excerpt(text: str, query: str, width: int = 280) -> str:
+    """A window of ``text`` around the first query word it contains, on word boundaries."""
+    flat = " ".join(text.split())
+    if len(flat) <= width:
+        return flat
+    lowered = flat.lower()
+    positions = [
+        lowered.find(word) for word in re.findall(r"\w{3,}", query.lower()) if word in lowered
+    ]
+    centre = min(positions) if positions else 0
+    start = max(0, min(centre - width // 3, len(flat) - width))
+    end = start + width
+    if start > 0:
+        start = flat.find(" ", start) + 1 or start
+    if end < len(flat):
+        end = flat.rfind(" ", start, end) if flat.rfind(" ", start, end) > start else end
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(flat) else ""
+    return f"{prefix}{flat[start:end].strip()}{suffix}"
+
+
 def detect_series_part(title: str) -> int | None:
     """Detect a 'Part N' marker in a title and return N, or None."""
     match = _SERIES_PART.search(title)

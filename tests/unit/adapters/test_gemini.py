@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from postloom.adapters.llm.gemini import GeminiClient
+from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
 from postloom.adapters.llm.http import CertificateError, HttpResponse, JsonObject
 from postloom.application.errors import (
@@ -15,6 +16,7 @@ from postloom.application.errors import (
     ProviderError,
     ProviderUnavailableError,
 )
+from postloom.application.ports.embeddings import DocumentText
 from postloom.application.ports.extraction import ExtractionRequest
 
 TOPICS = ("RAG", "AI Agents", "MLOps")
@@ -209,3 +211,56 @@ def test_certificate_failures_are_explained_and_not_retried() -> None:
     with pytest.raises(ProviderUnavailableError, match="certificate"):
         subject.extract(request())
     assert len(transport.calls) == 1
+
+
+# -- embeddings ------------------------------------------------------------------
+def embedding_reply(*vectors: list[float]) -> HttpResponse:
+    return HttpResponse(200, {"embeddings": [{"values": v} for v in vectors]})
+
+
+def test_embedding_2_uses_task_prefixes_and_normalizes() -> None:
+    transport = FakeTransport([embedding_reply([3.0, 4.0]), embedding_reply([0.0, 2.0])])
+    embeddings = GeminiEmbeddings(GeminiClient("k", transport=transport), dimensions=2)
+
+    (doc,) = embeddings.embed_documents([DocumentText("Data Leakage", "Split by time.")])
+    query = embeddings.embed_query("leaky splits")
+
+    assert doc == pytest.approx([0.6, 0.8])
+    assert query == pytest.approx([0.0, 1.0])
+    assert embeddings.name == "gemini-embedding-2@2"
+    first = transport.calls[0]
+    assert first.url.endswith("/models/gemini-embedding-2:batchEmbedContents")
+    item = first.payload["requests"][0]
+    assert item["content"]["parts"][0]["text"] == "title: Data Leakage | text: Split by time."
+    assert item["outputDimensionality"] == 2
+    assert "taskType" not in item
+    query_item = transport.calls[1].payload["requests"][0]
+    assert query_item["content"]["parts"][0]["text"] == "task: search result | query: leaky splits"
+
+
+def test_older_embedding_models_use_task_type() -> None:
+    transport = FakeTransport([embedding_reply([1.0, 0.0])])
+    embeddings = GeminiEmbeddings(
+        GeminiClient("k", transport=transport), model="gemini-embedding-001", dimensions=2
+    )
+    embeddings.embed_query("q")
+    assert transport.calls[0].payload["requests"][0]["taskType"] == "RETRIEVAL_QUERY"
+
+
+def test_large_batches_are_split() -> None:
+    transport = FakeTransport([embedding_reply(*[[1.0, 0.0]] * 50), embedding_reply([0.0, 1.0])])
+    embeddings = GeminiEmbeddings(GeminiClient("k", transport=transport), dimensions=2)
+    vectors = embeddings.embed_documents([DocumentText("t", f"chunk {i}") for i in range(51)])
+    assert len(vectors) == 51
+    assert [len(c.payload["requests"]) for c in transport.calls] == [50, 1]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"embeddings": []}, {"embeddings": [{"values": [1.0]}]}, {"embeddings": ["x"]}],
+)
+def test_malformed_embedding_responses_are_errors(body: JsonObject) -> None:
+    transport = FakeTransport([HttpResponse(200, body)])
+    embeddings = GeminiEmbeddings(GeminiClient("k", transport=transport), dimensions=2)
+    with pytest.raises(ProviderError, match="embedding"):
+        embeddings.embed_query("q")
