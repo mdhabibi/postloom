@@ -146,7 +146,7 @@ def test_persistent_rate_limit_becomes_unavailable_error() -> None:
 )
 def test_bad_keys_give_an_actionable_message(response: HttpResponse) -> None:
     subject, transport = extractor(response)
-    with pytest.raises(ProviderAuthError, match="aistudio.google.com"):
+    with pytest.raises(ProviderAuthError, match=r"aistudio\.google\.com"):
         subject.extract(request())
     assert len(transport.calls) == 1  # never retried
 

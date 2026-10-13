@@ -118,8 +118,7 @@ def _error_for(status: int, body: JsonObject) -> ProviderError:
         )
     if status in _RETRYABLE:
         return ProviderUnavailableError(
-            "Gemini is busy or rate-limiting this key; try again in a minute. "
-            f"({detail or status})"
+            f"Gemini is busy or rate-limiting this key; try again in a minute. ({detail or status})"
         )
     return ProviderError(f"Gemini request failed with HTTP {status}. {detail}".strip())
 

@@ -2,7 +2,7 @@
 
 import json
 import threading
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def server() -> Iterator[str]:
+def server() -> Generator[str, None, None]:
     httpd = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()

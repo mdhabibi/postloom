@@ -54,7 +54,7 @@ class UrllibTransport:
 
 def _parse(raw: bytes) -> JsonObject:
     try:
-        parsed = json.loads(raw.decode("utf-8")) if raw else {}
+        parsed: object = json.loads(raw.decode("utf-8")) if raw else {}
     except (UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return cast(JsonObject, parsed) if isinstance(parsed, dict) else {}
