@@ -23,6 +23,7 @@ from postloom.adapters.llm.gemini import (
 from postloom.adapters.llm.gemini_chat import GeminiChat
 from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
+from postloom.adapters.llm.gemini_threads import GeminiThreadParser
 from postloom.adapters.storage.database import SqliteDatabase
 from postloom.adapters.storage.search import SqliteSearchIndex
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
@@ -37,12 +38,15 @@ from postloom.application.ports import (
     SearchIndex,
     Vault,
 )
+from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.use_cases import (
     AskQuestion,
     BrowseContent,
     IndexArticle,
     IngestArticle,
+    PreviewComments,
     ReindexAll,
+    SaveComments,
     SearchContent,
     SeedTopics,
 )
@@ -53,6 +57,7 @@ GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
 EMBEDDING_MODEL_ENV = "POSTLOOM_EMBEDDING_MODEL"
 CHAT_MODEL_ENV = "POSTLOOM_CHAT_MODEL"
+OWNER_NAME_ENV = "POSTLOOM_OWNER_NAME"
 MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
 DEFAULT_MIN_SIMILARITY = 0.66
 """Calibrated for gemini-embedding-2 @768 on real articles: on-topic passages scored
@@ -78,6 +83,8 @@ class Settings:
         default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or DEFAULT_MIN_SIMILARITY)
     )
     """Semantic matches below this cosine similarity are treated as unrelated."""
+    owner_name: str = ""
+    """The user's name as shown on LinkedIn, to recognise their own replies."""
     api_key_source: str = "environment"
     """Where the key came from: "environment", "config" or "missing"."""
 
@@ -105,6 +112,7 @@ class Settings:
             embedding_model=pick(EMBEDDING_MODEL_ENV, "embedding_model", DEFAULT_EMBEDDING_MODEL),
             chat_model=pick(CHAT_MODEL_ENV, "chat_model", DEFAULT_CHAT_MODEL),
             min_similarity=float(cutoff) if cutoff else DEFAULT_MIN_SIMILARITY,
+            owner_name=pick(OWNER_NAME_ENV, "owner_name", ""),
             api_key_source=source,
         )
 
@@ -147,6 +155,7 @@ class Container:
     extractor: ContentExtractor | None = None
     embedder: EmbeddingProvider | None = None
     chat: ChatModel | None = None
+    thread_parser: ThreadParser | None = None
     min_similarity: float = 0.0
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
@@ -183,6 +192,14 @@ class Container:
     def reindex_all(self) -> ReindexAll:
         return ReindexAll(self.repository, self.index_article())
 
+    def preview_comments(self) -> PreviewComments:
+        if self.thread_parser is None:
+            raise NotConfiguredError("Reading comments needs a Gemini API key. Add it in settings.")
+        return PreviewComments(self.thread_parser, self.repository)
+
+    def save_comments(self) -> SaveComments:
+        return SaveComments(self.repository, self.vault, self.clock)
+
     def browse(self) -> BrowseContent:
         return BrowseContent(self.repository)
 
@@ -203,13 +220,16 @@ def build_container(
     extractor: ContentExtractor | None = None,
     embedder: EmbeddingProvider | None = None,
     chat: ChatModel | None = None,
+    thread_parser: ThreadParser | None = None,
 ) -> Container:
     """Wire the app. Gemini fills in any provider not passed explicitly, if a key is set."""
-    if settings.gemini_api_key and (extractor is None or embedder is None or chat is None):
+    missing = None in (extractor, embedder, chat, thread_parser)
+    if settings.gemini_api_key and missing:
         client = GeminiClient(settings.gemini_api_key)
         extractor = extractor or GeminiContentExtractor(client, settings.extraction_model)
         embedder = embedder or GeminiEmbeddings(client, settings.embedding_model)
         chat = chat or GeminiChat(client, settings.chat_model, CHAT_FALLBACK_MODELS)
+        thread_parser = thread_parser or GeminiThreadParser(client, settings.extraction_model)
     database = SqliteDatabase(settings.index_path)
     return Container(
         repository=SqliteGraphRepository(database),
@@ -219,6 +239,7 @@ def build_container(
         extractor=extractor,
         embedder=embedder,
         chat=chat,
+        thread_parser=thread_parser,
         min_similarity=settings.min_similarity,
         closers=(database.close,),
     )

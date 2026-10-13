@@ -11,8 +11,11 @@ from postloom.application.use_cases import (
     Answer,
     ArticleDetail,
     ArticleSummary,
+    DiscussionPreview,
+    DraftMessage,
     IndexResult,
     IngestArticleResult,
+    SaveResult,
     SearchResults,
 )
 
@@ -25,8 +28,45 @@ class _Request(BaseModel):
 
 
 class SettingsUpdate(_Request):
+    """Only the fields present in the request are changed."""
+
     gemini_api_key: str | None = Field(default=None, max_length=512)
     """A new key to save, or null/empty to remove the saved key."""
+    owner_name: str | None = Field(default=None, max_length=200)
+    """Your name as LinkedIn shows it, to recognise your own replies."""
+
+
+class CommentsPreviewRequest(_Request):
+    article_id: str = Field(min_length=1, max_length=300)
+    text: str = Field(min_length=1, max_length=300_000)
+
+
+class DraftMessageModel(_Request):
+    author_name: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=20_000)
+    author_headline: str = Field(default="", max_length=500)
+    is_own: bool = False
+    posted_label: str = Field(default="", max_length=40)
+    thread: int | None = Field(default=None, ge=0)
+    reply_to: int | None = Field(default=None, ge=0)
+    profile_url: str | None = Field(default=None, max_length=500)
+
+    def to_draft(self) -> DraftMessage:
+        return DraftMessage(
+            author_name=self.author_name,
+            text=self.text,
+            author_headline=self.author_headline,
+            is_own=self.is_own,
+            posted_label=self.posted_label,
+            thread=self.thread,
+            reply_to=self.reply_to,
+            profile_url=self.profile_url or None,
+        )
+
+
+class SaveCommentsRequest(_Request):
+    article_id: str = Field(min_length=1, max_length=300)
+    messages: list[DraftMessageModel] = Field(min_length=1, max_length=1000)
 
 
 class IngestRequest(_Request):
@@ -64,6 +104,21 @@ def article_summary(summary: ArticleSummary) -> Json:
 
 def article_detail(detail: ArticleDetail) -> Json:
     article = detail.article
+    discussion = [
+        {
+            "id": c.id,
+            "author_name": c.author_name,
+            "author_headline": c.author_headline,
+            "is_own": c.is_own,
+            "text": c.text,
+            "posted_label": c.posted_label,
+            "thread": c.thread,
+            "reply_to": c.reply_to,
+            "reply_to_name": c.reply_to_name,
+            "depth": c.depth,
+        }
+        for c in detail.discussion
+    ]
     return {
         **article_summary(detail.summary),
         "body_markdown": article.body_markdown,
@@ -78,6 +133,37 @@ def article_detail(detail: ArticleDetail) -> Json:
             }
             for post in detail.posts
         ],
+        "discussion": discussion,
+    }
+
+
+def comments_preview(preview: DiscussionPreview) -> Json:
+    return {
+        "article_id": preview.article_id,
+        "warnings": list(preview.warnings),
+        "messages": [
+            {
+                "author_name": m.author_name,
+                "text": m.text,
+                "author_headline": m.author_headline,
+                "is_own": m.is_own,
+                "posted_label": m.posted_label,
+                "thread": m.thread,
+                "reply_to": m.reply_to,
+                "profile_url": m.profile_url,
+                "already_saved": m.already_saved,
+                "known_person": m.known_person,
+            }
+            for m in preview.messages
+        ],
+    }
+
+
+def comments_saved(result: SaveResult) -> Json:
+    return {
+        "added": result.added,
+        "already_saved": result.already_saved,
+        "new_people": result.new_people,
     }
 
 

@@ -1,0 +1,52 @@
+Jane Example
+ • 2nd
+Senior ML Engineer at Acme Analytics
+4h
+
+How do you choose the distance threshold in practice? Too loose and I get wrong answers, too strict and the hit rate collapses.
+
+Like
+Reply
+3 reactions
+3 Reactions
+
+Alex Author
+Author
+AI Engineer | Writing about LLM systems
+3h
+
+@Jane Example I start from a labelled validation set and sweep the threshold until precision stays above 95%.
+
+Like
+Reply
+
+Jane Example
+ • 2nd
+Senior ML Engineer at Acme Analytics
+2h
+
+And when traffic drifts? Do you re-tune it?
+
+Like
+Reply
+
+Alex Author
+Author
+AI Engineer | Writing about LLM systems
+1h
+
+Yes, weekly, with an LLM-as-a-judge sample of cache hits.
+
+Like
+Reply
+1 reaction
+
+John Sample
+ • 3rd+
+Staff Engineer at Example Corp
+2h
+
+Great series. Would love a part on cache invalidation.
+
+Like
+Reply

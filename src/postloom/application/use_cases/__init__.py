@@ -3,7 +3,15 @@ from postloom.application.use_cases.browse_content import (
     ArticleDetail,
     ArticleSummary,
     BrowseContent,
+    CommentView,
     TopicLink,
+)
+from postloom.application.use_cases.discussions import (
+    DiscussionPreview,
+    DraftMessage,
+    PreviewComments,
+    SaveComments,
+    SaveResult,
 )
 from postloom.application.use_cases.index_content import (
     IndexArticle,
@@ -31,6 +39,9 @@ __all__ = [
     "ArticleSummary",
     "AskQuestion",
     "BrowseContent",
+    "CommentView",
+    "DiscussionPreview",
+    "DraftMessage",
     "IndexArticle",
     "IndexResult",
     "IngestArticle",
@@ -38,8 +49,11 @@ __all__ = [
     "IngestArticleResult",
     "Method",
     "Passage",
+    "PreviewComments",
     "ReindexAll",
     "ReindexResult",
+    "SaveComments",
+    "SaveResult",
     "SearchContent",
     "SearchResult",
     "SearchResults",

@@ -11,7 +11,9 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from postloom.domain.content import Article, Post, Series, Topic
+from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, NodeId
+from postloom.domain.people import Person
 
 
 class GraphRepository(Protocol):
@@ -34,6 +36,21 @@ class GraphRepository(Protocol):
     def save_post(self, post: Post) -> None: ...
 
     def save_series(self, series: Series) -> None: ...
+
+    # -- discussions ----------------------------------------------------------
+    def get_comment(self, comment_id: NodeId) -> Comment | None: ...
+
+    def save_comment(self, comment: Comment) -> None: ...
+
+    def comments_on(self, post: NodeId) -> Sequence[Comment]:
+        """Every comment and reply on ``post``, in pasted order (``position``)."""
+        ...
+
+    def get_person(self, person_id: NodeId) -> Person | None: ...
+
+    def save_person(self, person: Person) -> None: ...
+
+    def list_people(self) -> Sequence[Person]: ...
 
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:

@@ -17,7 +17,9 @@ from pathlib import Path
 from postloom.adapters.storage import codec
 from postloom.adapters.storage.database import MEMORY, MIGRATIONS, SqliteDatabase
 from postloom.domain.content import Article, Post, Series, Topic
+from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind
+from postloom.domain.people import Person
 from postloom.domain.provenance import Grade, Origin, Provenance
 
 __all__ = ["MIGRATIONS", "SqliteGraphRepository"]
@@ -93,6 +95,32 @@ class SqliteGraphRepository:
 
     def save_series(self, series: Series) -> None:
         self._put(series.id, NodeKind.SERIES, codec.series_to_json(series))
+
+    # -- discussions --------------------------------------------------------------
+    def get_comment(self, comment_id: NodeId) -> Comment | None:
+        data = self._get(comment_id)
+        return codec.comment_from_json(data) if data else None
+
+    def save_comment(self, comment: Comment) -> None:
+        self._put(comment.id, NodeKind.COMMENT, codec.comment_to_json(comment))
+
+    def comments_on(self, post: NodeId) -> Sequence[Comment]:
+        rows = self._database.query(
+            "SELECT data FROM nodes WHERE kind = 'comment' AND json_extract(data, '$.post') = ? "
+            "ORDER BY json_extract(data, '$.position')",
+            (post,),
+        )
+        return [codec.comment_from_json(codec.loads(r["data"])) for r in rows]
+
+    def get_person(self, person_id: NodeId) -> Person | None:
+        data = self._get(person_id)
+        return codec.person_from_json(data) if data else None
+
+    def save_person(self, person: Person) -> None:
+        self._put(person.id, NodeKind.PERSON, codec.person_to_json(person))
+
+    def list_people(self) -> Sequence[Person]:
+        return [codec.person_from_json(d) for d in self._all(NodeKind.PERSON)]
 
     # -- edges ------------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:

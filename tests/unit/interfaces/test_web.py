@@ -11,7 +11,14 @@ from postloom.bootstrap import Container, Settings, build_container
 from postloom.config import read_config
 from postloom.interfaces.web.app import create_app
 from tests.asgi import AsgiClient
-from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, fixture_text, part3_extraction
+from tests.fakes import (
+    FakeChat,
+    FakeEmbedder,
+    FakeExtractor,
+    FakeThreadParser,
+    fixture_text,
+    part3_extraction,
+)
 
 ARTICLE = fixture_text("semantic_caching_part3", "article.txt")
 POST = fixture_text("semantic_caching_part3", "post.txt")
@@ -32,6 +39,7 @@ def client_for(
             return Settings(home=tmp_path, gemini_api_key="env", api_key_source="environment")
         return Settings(
             home=tmp_path,
+            owner_name=read_config(tmp_path).get("owner_name") or "",
             gemini_api_key=saved,
             api_key_source="config" if saved else "missing",
             min_similarity=0.0,
@@ -47,6 +55,7 @@ def client_for(
                 extractor=FakeExtractor(part3_extraction()),
                 embedder=FakeEmbedder(),
                 chat=chat,
+                thread_parser=FakeThreadParser(),
             )
         container.seed_topics().execute(DEFAULT_TOPICS)
         return container
@@ -72,7 +81,12 @@ def test_status_reports_features_without_leaking_the_key(tmp_path: Path) -> None
     client = client_for(tmp_path, env_key=True)
     status = client.get("/api/status").json
     assert status["api_key"] == "environment"
-    assert status["features"] == {"ingest": True, "semantic_search": True, "chat": True}
+    assert status["features"] == {
+        "ingest": True,
+        "semantic_search": True,
+        "chat": True,
+        "comments": True,
+    }
     assert status["articles"] == 0
     assert "RAG" in status["topics"]
     assert "env" not in str(status["models"])
@@ -170,6 +184,59 @@ def test_chat_without_api_key_is_409(tmp_path: Path) -> None:
     assert reply.status == 409
 
 
+# -- comments -------------------------------------------------------------------------
+def test_preview_then_save_a_comment_thread(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article_id = ingest(client)["id"]
+    pasted = fixture_text("comments", "caching_thread.txt")
+
+    preview = client.post(
+        "/api/comments/preview", json_body={"article_id": article_id, "text": pasted}
+    )
+    assert preview.status == 200, preview.text
+    messages = preview.json["messages"]
+    assert [(m["author_name"], m["thread"], m["reply_to"]) for m in messages][:3] == [
+        ("Jane Example", None, None),
+        ("Alex Author", 0, 0),
+        ("Jane Example", 0, 1),
+    ]
+
+    review = [
+        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")}
+        for m in messages
+    ]
+    review[0]["profile_url"] = "linkedin.com/in/jane-example"
+    saved = client.post("/api/comments", json_body={"article_id": article_id, "messages": review})
+    assert saved.status == 201, saved.text
+    assert saved.json == {"added": 5, "already_saved": 0, "new_people": 2}
+
+    discussion = client.get(f"/api/article?id={article_id}").json["discussion"]
+    assert [(c["author_name"], c["depth"]) for c in discussion] == [
+        ("Jane Example", 0),
+        ("Alex Author", 1),
+        ("Jane Example", 2),
+        ("Alex Author", 3),
+        ("John Sample", 0),
+    ]
+    assert discussion[1]["is_own"] and discussion[1]["reply_to_name"] == "Jane Example"
+    assert discussion[0]["author_headline"] == "Senior ML Engineer at Acme Analytics"
+
+
+def test_saving_a_broken_review_is_rejected(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article_id = ingest(client)["id"]
+    bad = [{"author_name": "Jane", "text": "x", "thread": 0, "reply_to": 0}]
+    reply = client.post("/api/comments", json_body={"article_id": article_id, "messages": bad})
+    assert reply.status == 400
+    assert "invalid thread" in reply.json["error"]
+
+
+def test_comments_need_an_api_key(tmp_path: Path) -> None:
+    client = client_for(tmp_path, providers=False)
+    reply = client.post("/api/comments/preview", json_body={"article_id": "a", "text": "x"})
+    assert reply.status == 409
+
+
 # -- settings -------------------------------------------------------------------------
 def test_saving_a_key_writes_config_and_reloads(tmp_path: Path) -> None:
     client = client_for(tmp_path)
@@ -189,6 +256,13 @@ def test_clearing_the_key_removes_it(tmp_path: Path) -> None:
     reply = client.put("/api/settings", json_body={"gemini_api_key": ""})
     assert reply.json["api_key"] == "missing"
     assert "gemini_api_key" not in read_config(tmp_path)
+
+
+def test_owner_name_is_saved_without_touching_the_key(tmp_path: Path) -> None:
+    client = client_for(tmp_path, env_key=True)  # key from env must not block this
+    reply = client.put("/api/settings", json_body={"owner_name": "Alex Author"})
+    assert reply.status == 200, reply.text
+    assert read_config(tmp_path) == {"owner_name": "Alex Author"}
 
 
 def test_environment_key_cannot_be_overridden_from_the_browser(tmp_path: Path) -> None:

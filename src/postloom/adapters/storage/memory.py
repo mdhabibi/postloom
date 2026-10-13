@@ -9,7 +9,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from postloom.domain.content import Article, Post, Series, Topic
+from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, EdgeKind, NodeId
+from postloom.domain.people import Person
 
 
 class InMemoryGraphRepository:
@@ -18,6 +20,8 @@ class InMemoryGraphRepository:
         self._series: dict[NodeId, Series] = {}
         self._articles: dict[NodeId, Article] = {}
         self._posts: dict[NodeId, Post] = {}
+        self._comments: dict[NodeId, Comment] = {}
+        self._people: dict[NodeId, Person] = {}
         self._live: dict[tuple[NodeId, NodeId, EdgeKind], Edge] = {}
         self._history: list[Edge] = []
 
@@ -46,6 +50,26 @@ class InMemoryGraphRepository:
 
     def save_series(self, series: Series) -> None:
         self._series[series.id] = series
+
+    # -- discussions ----------------------------------------------------------
+    def get_comment(self, comment_id: NodeId) -> Comment | None:
+        return self._comments.get(comment_id)
+
+    def save_comment(self, comment: Comment) -> None:
+        self._comments[comment.id] = comment
+
+    def comments_on(self, post: NodeId) -> Sequence[Comment]:
+        found = [c for c in self._comments.values() if c.post == post]
+        return sorted(found, key=lambda c: c.position)
+
+    def get_person(self, person_id: NodeId) -> Person | None:
+        return self._people.get(person_id)
+
+    def save_person(self, person: Person) -> None:
+        self._people[person.id] = person
+
+    def list_people(self) -> Sequence[Person]:
+        return list(self._people.values())
 
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:

@@ -7,10 +7,13 @@ Explicit per-type functions instead of reflection: the stored format is a contra
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Any, cast
 
 from postloom.domain.content import Article, Post, Series, Topic
+from postloom.domain.discussion import Comment
+from postloom.domain.graph import NodeId
+from postloom.domain.people import Person, ProfileObservation, ProfileUrl
 
 Json = dict[str, Any]
 
@@ -101,4 +104,72 @@ def post_from_json(data: Json) -> Post:
         hashtags=tuple(data.get("hashtags", ())),
         links=tuple(data.get("links", ())),
         banner_path=data.get("banner_path"),
+    )
+
+
+# -- comment -------------------------------------------------------------------
+def comment_to_json(comment: Comment) -> Json:
+    return {
+        "post": comment.post,
+        "author": comment.author,
+        "author_name": comment.author_name,
+        "text": comment.text,
+        "position": comment.position,
+        "thread": comment.thread,
+        "reply_to": comment.reply_to,
+        "posted_label": comment.posted_label,
+    }
+
+
+def comment_from_json(data: Json) -> Comment:
+    thread: str | None = data.get("thread")
+    reply_to: str | None = data.get("reply_to")
+    return Comment(
+        post=NodeId(data["post"]),
+        author=NodeId(data["author"]),
+        author_name=data["author_name"],
+        text=data["text"],
+        position=int(data["position"]),
+        thread=NodeId(thread) if thread else None,
+        reply_to=NodeId(reply_to) if reply_to else None,
+        posted_label=data.get("posted_label", ""),
+    )
+
+
+# -- person --------------------------------------------------------------------
+def person_to_json(person: Person) -> Json:
+    return {
+        "name": person.name,
+        "profile": person.profile.slug if person.profile else None,
+        "observations": [
+            {
+                "headline": o.headline,
+                "observed_at": o.observed_at.isoformat(),
+                "superseded_at": o.superseded_at.isoformat() if o.superseded_at else None,
+            }
+            for o in person.observations
+        ],
+        "notes": person.notes,
+        "tags": list(person.tags),
+    }
+
+
+def person_from_json(data: Json) -> Person:
+    slug: str | None = data.get("profile")
+    observations: list[Json] = data.get("observations", [])
+    return Person(
+        name=data["name"],
+        profile=ProfileUrl(slug) if slug else None,
+        observations=tuple(
+            ProfileObservation(
+                headline=o["headline"],
+                observed_at=datetime.fromisoformat(o["observed_at"]),
+                superseded_at=(
+                    datetime.fromisoformat(o["superseded_at"]) if o.get("superseded_at") else None
+                ),
+            )
+            for o in observations
+        ),
+        notes=data.get("notes", ""),
+        tags=tuple(data.get("tags", ())),
     )

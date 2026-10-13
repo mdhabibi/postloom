@@ -6,6 +6,7 @@ Layout::
       articles/<slug>.md      article body + metadata, links to its post and topics
       posts/<slug>.md         the announcement post, links back to its article
       topics/<Topic Name>.md  one note per topic, so [[RAG]] resolves in Obsidian
+      discussions/<slug>.md   every comment thread under a post, as conversations
 
 Notes carry YAML frontmatter (Obsidian "properties") and ``[[wikilinks]]``, so the folder
 works as an Obsidian vault with a graph view, with no plugins required. The SQLite index is
@@ -17,13 +18,16 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from postloom.domain.content import Article, Post, Topic
+from postloom.domain.discussion import Comment, conversation_depth
+from postloom.domain.graph import NodeId
+from postloom.domain.people import Person
 
 _UNSAFE_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f#^\[\]]')
 
@@ -74,6 +78,40 @@ class MarkdownVault:
         _write_note(post_path, post_meta, "\n".join(post_body))
         return article_path
 
+    def write_discussion(
+        self,
+        article: Article,
+        post: Post,
+        comments: Sequence[Comment],
+        people: Mapping[NodeId, Person],
+    ) -> Path:
+        path = self.root / "discussions" / f"{post.key}.md"
+        names = sorted({c.author_name for c in comments if not c.is_own})
+        meta: dict[str, Any] = {
+            "id": f"discussion:{post.key}",
+            "type": "discussion",
+            "article": _wikilink(f"articles/{article.slug}", article.title),
+            "post": _wikilink(f"posts/{post.key}", "Announcement post"),
+            "comments": len(comments),
+            "people": [_wikilink(_safe_name(n)) for n in names],
+        }
+        by_id = {c.id: c for c in comments}
+        lines = [f"# Discussion: {article.title}"]
+        for comment in comments:
+            if comment.thread is None:
+                lines += ["", f"## Thread started by {comment.author_name}", ""]
+            depth = conversation_depth(comment, by_id)
+            quote = ">" * (depth + 1) + " "
+            who = "You" if comment.is_own else f"[[{_safe_name(comment.author_name)}]]"
+            person = people.get(comment.author)
+            headline = person.headline if person is not None else None
+            label = ", ".join(x for x in (headline, comment.posted_label) if x)
+            lines.append(f"{quote}**{who}**" + (f" ({label})" if label else ""))
+            lines += [quote + row if row else quote.rstrip() for row in comment.text.splitlines()]
+            lines.append("")
+        _write_note(path, meta, "\n".join(lines))
+        return path
+
     def write_topic(self, topic: Topic) -> Path:
         path = self.root / "topics" / f"{_topic_filename(topic)}.md"
         meta: dict[str, Any] = {"id": topic.id, "type": "topic", "name": topic.name}
@@ -85,7 +123,11 @@ class MarkdownVault:
 # ---------------------------------------------------------------------- helpers
 def _topic_filename(topic: Topic) -> str:
     """Keep the human name (so ``[[AI Agents]]`` resolves) but strip unsafe characters."""
-    return _UNSAFE_FILENAME.sub("-", topic.name).strip() or "topic"
+    return _safe_name(topic.name) or "topic"
+
+
+def _safe_name(name: str) -> str:
+    return _UNSAFE_FILENAME.sub("-", name).strip()
 
 
 def _wikilink(target: str, alias: str | None = None) -> str:

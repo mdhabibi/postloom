@@ -328,14 +328,155 @@ async function articleView(id) {
     article.summary ? h("p", { class: "summary" }, article.summary) : null,
     htmlBlock("prose", markdown(article.body_markdown)),
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
-      h("h2", {}, "Announcement post"), h("p", {}, post.text))));
+      h("h2", {}, "Announcement post"), h("p", {}, post.text))),
+    article.posts.length ? discussionSection(article) : null);
+  const suggestions = article.discussion.length
+    ? ["What did people ask in the comments?", "Summarize the key takeaways", "Which questions did I not answer yet?"]
+    : ["Summarize the key takeaways", "What are the main trade-offs?", "Explain the code step by step"];
   setMain(h("div", { class: "article-layout" }, reader,
-    chatPanel(article.id, "Ask about this article", "Answers come only from this article and its post.", [
-      "Summarize the key takeaways",
-      "What are the main trade-offs?",
-      "Explain the code step by step",
-    ])));
+    chatPanel(article.id, "Ask about this article",
+      "Answers come only from this article, its post and its comments.", suggestions)));
   renderSidebar();
+}
+
+// ---------------------------------------------------------------------------- discussion
+function discussionSection(article) {
+  const comments = article.discussion;
+  const people = new Set(comments.filter((c) => !c.is_own).map((c) => c.author_name));
+  const summary = comments.length
+    ? `${comments.length} ${comments.length === 1 ? "message" : "messages"} from ${people.size} ${people.size === 1 ? "person" : "people"}`
+    : "No comments saved yet.";
+  const editor = h("div", { class: "comment-editor" });
+  const addButton = h("button", { class: "button", type: "button", onclick: () => {
+    addButton.hidden = true;
+    openPasteStep(article, editor, () => { addButton.hidden = false; });
+  } }, comments.length ? "Add more comments" : "Add comments");
+
+  return h("section", { class: "discussion", "aria-label": "Discussion" },
+    h("div", { class: "discussion-head" },
+      h("div", {}, h("h2", {}, "Discussion"), h("p", { class: "hint" }, summary)), addButton),
+    editor,
+    threadsOf(comments).map((thread) => h("ol", { class: "thread" },
+      thread.map((c) => commentRow(c, comments)))));
+}
+
+function threadsOf(comments) {
+  const threads = [];
+  for (const comment of comments) {
+    if (!comment.thread || !threads.length) threads.push([comment]);
+    else threads[threads.length - 1].push(comment);
+  }
+  return threads;
+}
+
+function commentRow(comment, all) {
+  const depth = Math.min(comment.depth, 4);
+  const target = all.find((c) => c.id === comment.reply_to);
+  const answering = target ? (target.is_own ? "you" : target.author_name) : null;
+  return h("li", { class: `comment${comment.is_own ? " own" : ""}`, "data-depth": depth },
+    h("p", { class: "comment-meta" },
+      h("strong", {}, comment.is_own ? "You" : comment.author_name),
+      answering ? h("span", { class: "replying" }, ` replying to ${answering}`) : null,
+      comment.posted_label ? h("span", { class: "age" }, `, ${comment.posted_label}`) : null),
+    comment.author_headline && !comment.is_own ? h("p", { class: "comment-headline" }, comment.author_headline) : null,
+    h("p", { class: "comment-text" }, comment.text));
+}
+
+function openPasteStep(article, container, onClose) {
+  const textarea = h("textarea", { id: "comments-paste", rows: 10, required: true,
+    placeholder: "Open your post on LinkedIn, expand all comments and replies, select the whole comment section, copy and paste it here." });
+  const read = h("button", { class: "button button-primary", type: "submit" }, "Read comments");
+  const status = h("div", {});
+  const form = h("form", { class: "paste-step", onsubmit: async (event) => {
+    event.preventDefault();
+    read.disabled = true;
+    read.textContent = "Reading the comments...";
+    status.replaceChildren();
+    try {
+      const preview = await api("/api/comments/preview", { method: "POST",
+        body: { article_id: article.id, text: textarea.value } });
+      openReviewStep(article, container, preview, onClose);
+    } catch (error) {
+      status.replaceChildren(notice("error", error.message));
+      read.disabled = false;
+      read.textContent = "Read comments";
+    }
+  } },
+    field("comments-paste", "Paste the comment section", textarea,
+      "Include your own replies. Pasting a section you added before only adds the new messages."),
+    status,
+    h("div", { class: "actions" }, read,
+      h("button", { class: "button", type: "button", onclick: () => { container.replaceChildren(); onClose(); } }, "Cancel")));
+  container.replaceChildren(form);
+  textarea.focus();
+}
+
+function openReviewStep(article, container, preview, onClose) {
+  const drafts = preview.messages.map((m) => ({ ...m }));
+  const list = h("ol", { class: "review-list" });
+  const saveButton = h("button", { class: "button button-primary", type: "button" }, "Save comments");
+  const status = h("div", {});
+
+  function label(index) {
+    const d = drafts[index];
+    const who = d.is_own ? "You" : d.author_name || `Message ${index + 1}`;
+    const text = d.text.length > 60 ? `${d.text.slice(0, 60)}...` : d.text;
+    return `${index + 1}. ${who}: ${text}`;
+  }
+
+  function render() {
+    list.replaceChildren(...drafts.map((d, i) => {
+      const replySelect = h("select", { "aria-label": `Where message ${i + 1} belongs`,
+        onchange: (e) => { setParent(i, e.target.value === "" ? null : Number(e.target.value)); render(); } },
+        h("option", { value: "", selected: d.reply_to === null }, "Starts a new thread"),
+        drafts.slice(0, i).map((_, j) => h("option", { value: j, selected: d.reply_to === j }, `Replies to ${label(j)}`)));
+      return h("li", { class: `review-item${d.is_own ? " own" : ""}${d.already_saved ? " saved" : ""}` },
+        h("div", { class: "review-row" },
+          h("label", {}, "Name", h("input", { value: d.author_name, oninput: (e) => { d.author_name = e.target.value; } })),
+          h("label", { class: "check" }, h("input", { type: "checkbox", checked: d.is_own,
+            onchange: (e) => { d.is_own = e.target.checked; render(); } }), "This is me")),
+        d.is_own ? null : h("div", { class: "review-row" },
+          h("label", {}, "Headline", h("input", { value: d.author_headline, oninput: (e) => { d.author_headline = e.target.value; } })),
+          h("label", {}, d.known_person ? "Profile link (known)" : "Profile link (optional)",
+            h("input", { type: "url", value: d.profile_url || "", placeholder: "https://www.linkedin.com/in/...",
+              oninput: (e) => { d.profile_url = e.target.value; } }))),
+        h("label", { class: "review-text" }, "Message",
+          h("textarea", { rows: 3, oninput: (e) => { d.text = e.target.value; } }, d.text)),
+        h("div", { class: "review-row" }, replySelect,
+          d.already_saved ? h("span", { class: "saved-badge" }, "Already saved, will be skipped") : null));
+    }));
+  }
+
+  function setParent(index, target) {
+    const d = drafts[index];
+    if (target === null) { d.thread = null; d.reply_to = null; }
+    else { d.reply_to = target; d.thread = drafts[target].thread ?? target; }
+    // Messages that pointed into a thread that just changed shape keep their own choice.
+  }
+
+  saveButton.addEventListener("click", async () => {
+    saveButton.disabled = true;
+    status.replaceChildren();
+    try {
+      const messages = drafts.map(({ already_saved, known_person, ...m }) => ({ ...m, profile_url: m.profile_url || null }));
+      const saved = await api("/api/comments", { method: "POST", body: { article_id: article.id, messages } });
+      toast(saved.added ? `Saved ${saved.added} ${saved.added === 1 ? "message" : "messages"}` : "Nothing new to save");
+      articleView(article.id);
+    } catch (error) {
+      status.replaceChildren(notice("error", error.message));
+      saveButton.disabled = false;
+    }
+  });
+
+  const newCount = drafts.filter((d) => !d.already_saved).length;
+  container.replaceChildren(h("div", { class: "review-step" },
+    h("h3", {}, `Check ${drafts.length} ${drafts.length === 1 ? "message" : "messages"} before saving`),
+    h("p", { class: "hint" }, `${newCount} new. Fix names or where a reply belongs, and add profile links so postloom recognises people next time.`),
+    ...preview.warnings.map((w) => notice("", w)),
+    list, status,
+    h("div", { class: "actions" }, saveButton,
+      h("button", { class: "button", type: "button", onclick: () => { container.replaceChildren(); onClose(); } }, "Cancel"))));
+  render();
 }
 
 async function searchView(query) {
@@ -368,7 +509,8 @@ async function settingsView() {
     h("ul", { class: "status-list" },
       h("li", { "data-on": String(s.features.ingest) }, "Adding articles"),
       h("li", { "data-on": String(s.features.semantic_search) }, "Search by meaning"),
-      h("li", { "data-on": String(s.features.chat) }, "Chat")),
+      h("li", { "data-on": String(s.features.chat) }, "Chat"),
+      h("li", { "data-on": String(s.features.comments) }, "Reading comments")),
     fromEnv
       ? notice("", "Your Gemini API key comes from the GEMINI_API_KEY environment variable. Change it there.")
       : field("gemini_api_key", "Gemini API key",
@@ -379,6 +521,12 @@ async function settingsView() {
             ". It's stored only in your Postloom folder.")),
     fromEnv ? null : h("div", {}, h("button", { class: "button button-primary", type: "submit" }, "Save key"), " ",
       s.api_key === "config" ? h("button", { class: "button", type: "button", onclick: removeKey }, "Remove saved key") : null),
+    h("h2", { class: "settings-heading" }, "Your name on LinkedIn"),
+    h("div", { class: "inline-field" },
+      h("label", { class: "visually-hidden", for: "owner_name" }, "Your name on LinkedIn"),
+      h("input", { id: "owner_name", value: s.owner_name || "", placeholder: "e.g. Alex Author", autocomplete: "name" }),
+      h("button", { class: "button", type: "button", onclick: saveOwnerName }, "Save name")),
+    h("p", { class: "hint" }, "Used to recognise your own replies when you paste comments."),
     h("h2", { class: "settings-heading" }, "Where your data lives"),
     h("p", { class: "path" }, s.vault),
     h("p", { class: "hint" }, "Open this folder in Obsidian to browse your articles as a graph."),
@@ -396,6 +544,16 @@ async function saveKey(event) {
     await api("/api/settings", { method: "PUT", body: { gemini_api_key: key } });
     toast("Key saved");
     settingsView();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function saveOwnerName() {
+  const name = document.getElementById("owner_name").value.trim();
+  try {
+    await api("/api/settings", { method: "PUT", body: { owner_name: name || null } });
+    toast(name ? "Name saved" : "Name removed");
   } catch (error) {
     toast(error.message);
   }

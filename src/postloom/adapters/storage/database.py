@@ -68,6 +68,11 @@ MIGRATIONS: tuple[str, ...] = (
         tokenize = 'porter unicode61 remove_diacritics 2'
     );
     """,
+    # 3: find a post's comments without scanning every node
+    """
+    CREATE INDEX nodes_comments_by_post
+        ON nodes(json_extract(data, '$.post')) WHERE kind = 'comment';
+    """,
 )
 
 

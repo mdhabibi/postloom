@@ -9,6 +9,7 @@ import pytest
 from postloom.adapters.llm.gemini import GeminiClient
 from postloom.adapters.llm.gemini_chat import GeminiChat
 from postloom.adapters.llm.gemini_embeddings import GeminiEmbeddings
+from postloom.adapters.llm.gemini_threads import GeminiThreadParser
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
 from postloom.adapters.llm.http import CertificateError, HttpResponse, JsonObject
 from postloom.application.errors import (
@@ -316,3 +317,33 @@ def test_bad_key_is_not_masked_by_the_fallback() -> None:
     with pytest.raises(ProviderAuthError):
         chat.complete("system", [ChatMessage(Role.USER, "q")])
     assert len(transport.calls) == 1
+
+
+# -- comment threads -----------------------------------------------------------------
+def test_thread_parser_sends_owner_post_and_comments() -> None:
+    reply = {
+        "messages": [
+            {"author_name": "Jane Example", "text": "Question?", "is_post_author": False},
+            {"author_name": "Alex Author", "text": "Answer.", "is_post_author": True, "thread": 0},
+        ]
+    }
+    transport = FakeTransport([answer(reply)])
+    parser = GeminiThreadParser(GeminiClient("k", transport=transport, sleep=Sleeps()), "lite")
+
+    parsed = parser.parse("Jane Example\n • 2nd\nQuestion?", "My post", "Alex Author")
+
+    assert [m.author_name for m in parsed.messages] == ["Jane Example", "Alex Author"]
+    assert parsed.messages[1].thread == 0 and parsed.messages[1].is_post_author
+    payload = transport.calls[0].payload
+    prompt = payload["contents"][0]["parts"][0]["text"]
+    assert prompt.startswith("Owner (the post's author): Alex Author")
+    assert "<post>\nMy post\n</post>" in prompt and "<comments>" in prompt
+    assert payload["generationConfig"]["temperature"] == 0.0
+    assert "Interface words are noise" in payload["systemInstruction"]["parts"][0]["text"]
+
+
+def test_thread_parser_rejects_malformed_answers() -> None:
+    transport = FakeTransport([answer({"messages": [{"author_name": "", "text": "x"}]})])
+    parser = GeminiThreadParser(GeminiClient("k", transport=transport, sleep=Sleeps()), "lite")
+    with pytest.raises(ExtractionError, match="couldn't split"):
+        parser.parse("x", "post", None)

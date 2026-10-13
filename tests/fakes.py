@@ -13,6 +13,7 @@ from pathlib import Path
 from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
 from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest
+from postloom.application.ports.thread_parser import ParsedMessage, ParsedThread
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -120,3 +121,61 @@ class FakeChat:
     @property
     def last_prompt(self) -> str:
         return self.calls[-1][1][-1].text
+
+
+def caching_thread() -> ParsedThread:
+    """What a good parser returns for ``fixtures/comments/caching_thread.txt``."""
+    return ParsedThread(
+        messages=(
+            ParsedMessage(
+                author_name="Jane Example",
+                author_headline="Senior ML Engineer at Acme Analytics",
+                text="How do you choose the distance threshold in practice?",
+                posted_label="4h",
+            ),
+            ParsedMessage(
+                author_name="Alex Author",
+                author_headline="AI Engineer | Writing about LLM systems",
+                is_post_author=True,
+                text="@Jane Example I start from a labelled validation set.",
+                posted_label="3h",
+                thread=0,
+            ),
+            ParsedMessage(
+                author_name="Jane Example",
+                author_headline="Senior ML Engineer at Acme Analytics",
+                text="And when traffic drifts? Do you re-tune it?",
+                posted_label="2h",
+                thread=0,
+            ),
+            ParsedMessage(
+                author_name="Alex Author",
+                is_post_author=True,
+                text="Yes, weekly, with an LLM-as-a-judge sample of cache hits.",
+                posted_label="1h",
+                thread=0,
+            ),
+            ParsedMessage(
+                author_name="John Sample",
+                author_headline="Staff Engineer at Example Corp",
+                text="Great series. Would love a part on cache invalidation.",
+                posted_label="2h",
+            ),
+        )
+    )
+
+
+@dataclass
+class FakeThreadParser:
+    result: ParsedThread = field(default_factory=caching_thread)
+    calls: list[tuple[str, str, str | None]] = field(
+        default_factory=list[tuple[str, str, str | None]]
+    )
+
+    @property
+    def name(self) -> str:
+        return "llm:fake-threads"
+
+    def parse(self, pasted: str, post_text: str, owner_name: str | None) -> ParsedThread:
+        self.calls.append((pasted, post_text, owner_name))
+        return self.result

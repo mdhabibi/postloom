@@ -111,6 +111,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
                 "home": str(settings.home),
                 "vault": str(settings.vault_dir),
                 "api_key": settings.api_key_source,
+                "owner_name": settings.owner_name,
                 "models": {
                     "extraction": settings.extraction_model,
                     "embedding": settings.embedding_model,
@@ -122,17 +123,23 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
                     "ingest": container.extractor is not None,
                     "semantic_search": container.embedder is not None,
                     "chat": container.chat is not None,
+                    "comments": container.thread_parser is not None,
                 },
             }
         )
 
     def update_settings(request: Request, body: schemas.SettingsUpdate) -> Response:
-        if state.settings.api_key_source == "environment":
-            raise ApplicationError(
-                "Your API key comes from the GEMINI_API_KEY environment variable, which "
-                "overrides saved settings. Change it there, or unset it to use this screen."
-            )
-        update_config(state.settings.home, gemini_api_key=body.gemini_api_key or None)
+        changes: dict[str, object] = {}
+        if "gemini_api_key" in body.model_fields_set:
+            if state.settings.api_key_source == "environment":
+                raise ApplicationError(
+                    "Your API key comes from the GEMINI_API_KEY environment variable, which "
+                    "overrides saved settings. Change it there, or unset it to use this screen."
+                )
+            changes["gemini_api_key"] = body.gemini_api_key or None
+        if "owner_name" in body.model_fields_set:
+            changes["owner_name"] = body.owner_name or None
+        update_config(state.settings.home, **changes)
         state.reload()
         return status(request)
 
@@ -178,6 +185,18 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         )
         return JSONResponse(schemas.answer(result))
 
+    def preview_comments(request: Request, body: schemas.CommentsPreviewRequest) -> Response:
+        owner = state.settings.owner_name or None
+        preview = state.container.preview_comments().execute(
+            NodeId(body.article_id), body.text, owner
+        )
+        return JSONResponse(schemas.comments_preview(preview))
+
+    def save_comments(request: Request, body: schemas.SaveCommentsRequest) -> Response:
+        drafts = [m.to_draft() for m in body.messages]
+        result = state.container.save_comments().execute(NodeId(body.article_id), drafts)
+        return JSONResponse(schemas.comments_saved(result), status_code=201)
+
     def index_page(request: Request) -> Response:
         return FileResponse(STATIC_DIR / "index.html")
 
@@ -190,6 +209,12 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         Route("/api/article", _json(get_article)),
         Route("/api/search", _json(search)),
         Route("/api/ask", _json(ask, schemas.AskRequest), methods=["POST"]),
+        Route(
+            "/api/comments/preview",
+            _json(preview_comments, schemas.CommentsPreviewRequest),
+            methods=["POST"],
+        ),
+        Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
         Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
     ]
 

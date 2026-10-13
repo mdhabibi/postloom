@@ -119,7 +119,22 @@ class AskQuestion:
                 if post is not None:
                     item = (article_id, article.title, "Announcement post", post.text)
                     sources.append(Source(len(sources) + 1, *item))
+                    sources += self._comment_sources(article_id, article.title, post.id, sources)
         return _fit(sources)
+
+    def _comment_sources(
+        self, article_id: NodeId, title: str, post: NodeId, so_far: list[Source]
+    ) -> list[Source]:
+        comments = list(self._repository.comments_on(post))
+        names = {c.id: ("you" if c.is_own else c.author_name) for c in comments}
+        sources: list[Source] = []
+        for comment in comments:
+            who = "Your reply" if comment.is_own else f"Comment by {comment.author_name}"
+            if comment.reply_to in names:
+                who += f" (answering {names[comment.reply_to]})"
+            number = len(so_far) + len(sources) + 1
+            sources.append(Source(number, article_id, title, who, comment.text))
+        return sources
 
     def _library_sources(self, question: str) -> list[Source]:
         hits: Sequence[ChunkHit]

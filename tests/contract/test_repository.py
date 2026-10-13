@@ -12,7 +12,9 @@ from postloom.adapters.storage.memory import InMemoryGraphRepository
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.application.ports.repository import GraphRepository
 from postloom.domain.content import Article, Post, Series, Topic
-from postloom.domain.graph import Edge, EdgeKind
+from postloom.domain.discussion import OWNER, Comment
+from postloom.domain.graph import Edge, EdgeKind, NodeId
+from postloom.domain.people import Person, ProfileUrl
 from postloom.domain.provenance import Grade, Origin, Provenance
 
 pytestmark = pytest.mark.contract
@@ -129,3 +131,32 @@ def test_save_edge_refuses_superseded_edges(make: Callable[[], GraphRepository])
     repo = make()
     with pytest.raises(ValueError):
         repo.save_edge(belongs().supersede(T1))
+
+
+# -- discussions --------------------------------------------------------------------
+@adapters
+def test_comments_round_trip_in_pasted_order(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    top = Comment(POST.id, NodeId("person:~jane-example"), "Jane Example", "Question?", 0, "4h")
+    reply = Comment(POST.id, OWNER, "Alex Author", "Answer.", 1, thread=top.id, reply_to=top.id)
+    other = Comment(NodeId("post:other"), OWNER, "Alex Author", "Elsewhere", 0)
+    for comment in (reply, other, top):
+        repo.save_comment(comment)
+
+    assert list(repo.comments_on(POST.id)) == [top, reply]
+    assert repo.get_comment(reply.id) == reply
+    assert repo.get_comment(NodeId("comment:none")) is None
+
+
+@adapters
+def test_people_round_trip_with_headline_history(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    jane = Person("Jane Example", ProfileUrl.parse("linkedin.com/in/jane-example"))
+    jane = jane.observe("Engineer at Acme", T0).observe("Lead at Beta", T1)
+    provisional = Person("John Sample", notes="Met at PyCon", tags=("speaker",))
+    repo.save_person(jane)
+    repo.save_person(provisional)
+
+    assert repo.get_person(jane.id) == jane
+    assert repo.get_person(provisional.id) == provisional
+    assert {p.name for p in repo.list_people()} == {"Jane Example", "John Sample"}

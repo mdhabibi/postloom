@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
 from postloom.domain.content import Article, Post, Topic
+from postloom.domain.discussion import Comment
+from postloom.domain.graph import NodeId
+from postloom.domain.people import Person
 
 
 class Vault(Protocol):
@@ -18,3 +21,13 @@ class Vault(Protocol):
         ...
 
     def write_topic(self, topic: Topic) -> Path: ...
+
+    def write_discussion(
+        self,
+        article: Article,
+        post: Post,
+        comments: Sequence[Comment],
+        people: Mapping[NodeId, Person],
+    ) -> Path:
+        """Write (or overwrite) the note holding every thread under ``post``."""
+        ...

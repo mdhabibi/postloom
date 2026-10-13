@@ -127,6 +127,27 @@ similarity cutoff when asked across the library. If nothing passes the cutoff, i
 "not found" without calling the model. Citations like `[2]` are parsed back
 deterministically, so the UI only shows sources the answer actually used.
 
+## Discussions
+
+LinkedIn shows two visual levels (top-level comments, and replies flat underneath), and
+says who answers whom only through @mentions and order. postloom stores the actual
+conversation: every message has a `thread` (the top-level comment it sits under) and a
+`reply_to` (the specific message it answers), so long back-and-forths become chains and
+parallel conversations inside one thread stay apart.
+
+1. **Parse** (`ThreadParser`, cheap model): the pasted section becomes messages with
+   author, headline, age and text, with LinkedIn's interface noise removed.
+2. **Infer** (`domain/discussion.py`, deterministic): an @mention answers that person's
+   latest earlier message in the thread; otherwise the reply answers the previous message
+   by someone else. Impossible indexes from the model are repaired, with a warning.
+3. **Review**: the user sees every message and its reply target before saving, fixes
+   anything, marks their own replies, and adds profile URLs.
+4. **Save** (deterministic): comments are identified by post, author and text, so a
+   section pasted again only adds new messages, and they attach to existing chains.
+   People are matched by profile URL, then by name. Edges: `authored`, `commented_on`,
+   `replied_to`. Each post's discussion is also written to `vault/discussions/` as nested
+   blockquotes with `[[Person]]` links.
+
 ## Web app
 
 `postloom start` serves a Starlette app on `127.0.0.1` with a static, build-free frontend
@@ -156,4 +177,5 @@ deterministically, so the UI only shows sources the answer actually used.
 | 2026-10-13 | Hybrid search with reciprocal rank fusion | Keywords catch names and exact terms, embeddings catch paraphrases; RRF needs no score calibration. |
 | 2026-10-13 | Starlette instead of FastAPI | Fewer dependencies; thin JSON handlers don't need FastAPI's extras. |
 | 2026-10-13 | Build-free vanilla JS frontend | Contributors need no Node toolchain; the app works offline. |
+| 2026-10-13 | Comments: model parses, rules infer, user reviews, save is deterministic | Parsing pasted LinkedIn text is the one guess in the pipeline; the user confirms it before anything is stored. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |

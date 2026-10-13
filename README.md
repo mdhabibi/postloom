@@ -9,8 +9,8 @@ links and hashtags you used, and every comment and reply. Then you can chat with
 and its discussion, see who engages with your work, and draft replies grounded in what you
 actually wrote.
 
-> **Status: alpha.** Adding articles, search and chat work end to end. Comments and the
-> people behind them come next. See the [roadmap](#roadmap).
+> **Status: alpha.** Articles, search, chat and comment threads work end to end. People
+> pages and reply drafts come next. See the [roadmap](#roadmap).
 
 ## Why postloom
 
@@ -49,6 +49,17 @@ uv run postloom start
    and ask across everything you've written. Answers cite the sections they come from, and
    when nothing relevant exists postloom says so instead of guessing.
 
+### Comments and replies
+
+On an article's page, click **Add comments**, then paste the comment section of your
+post. Open the post on LinkedIn, expand all comments and replies, select the whole
+section and copy it. postloom splits it into messages and works out who is answering
+whom, including long back-and-forths with one person. Before anything is saved you can
+check each message, fix where a reply belongs, mark your own replies, and add people's
+profile links so they're recognised next time. Pasting the same section again later only
+adds the new messages. Set **Your name on LinkedIn** in Settings so your replies are
+recognised automatically.
+
 Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
 folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
 articles as a graph.
@@ -73,6 +84,7 @@ uv run postloom reindex                                         # after upgradin
 | Model for search | `POSTLOOM_EMBEDDING_MODEL` | `gemini-embedding-2` |
 | Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` (falls back to `gemini-3.5-flash-lite` when busy) |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
+| Your name on LinkedIn (recognises your replies) | `POSTLOOM_OWNER_NAME` | set in the app |
 
 ## How it works
 
@@ -95,8 +107,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 - [x] Ingest use case, Markdown/Obsidian vault, architecture tests
 - [x] **Milestone 1 (MVP):** SQLite index, Gemini extraction and embeddings, hybrid
       search, local web app with paste-to-add, search and grounded chat
-- [ ] **Milestone 2:** comments, replies and people; who-engaged-with-what views;
-      reply drafting in your own voice
+- [ ] **Milestone 2:** comments, replies and people
+  - [x] Paste a comment section, review, save as conversation chains; chat sees them
+  - [ ] People pages: who engaged with what, headline history, profile links
+  - [ ] Reply drafts grounded in the article and the whole conversation
 - [ ] **Milestone 3:** graph view, link suggestions to accept or reject, banner embeddings
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
 
@@ -108,8 +122,8 @@ Contributions are welcome once the MVP lands. See [CONTRIBUTING.md](CONTRIBUTING
 
 postloom runs only on your computer and listens only on `127.0.0.1`, so nothing on your
 network can reach it. It refuses requests that don't come from its own page, so other
-websites you visit can't use it either. Once comments arrive, it will store names, headlines
-and profile URLs of people who comment on your posts, locally and only for your own use. Every person can be exported or deleted in one step.
+websites you visit can't use it either. It stores the names, headlines and profile URLs of
+people who comment on your posts, locally and only for your own use. Every person can be exported or deleted in one step.
 If you use a hosted model, the text you ingest is sent to that provider under their terms;
 check them (free tiers may use your data for training) or use a local model.
 

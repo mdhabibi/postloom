@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from postloom.domain.errors import EmptyContentError
 from postloom.domain.graph import NodeId, NodeKind, node_id
@@ -89,27 +89,3 @@ class Post:
     def key_for_article(article: Article) -> str:
         return article.slug
 
-
-@dataclass(frozen=True, slots=True)
-class Comment:
-    """A comment or reply under a post or article."""
-
-    key: str
-    target: NodeId
-    """The post or article this comment belongs to."""
-    author: NodeId
-    text: str
-    posted_at: datetime | None = None
-    parent: NodeId | None = None
-    """The comment this one replies to, if any."""
-    is_own_reply: bool = False
-    """True when the app user wrote it (their answer to someone)."""
-    reactions: int | None = None
-
-    def __post_init__(self) -> None:
-        if not self.text.strip():
-            raise EmptyContentError("comment text is empty")
-
-    @property
-    def id(self) -> NodeId:
-        return node_id(NodeKind.COMMENT, self.key)

@@ -260,6 +260,70 @@ main:focus { outline: none; }
 .post h2 { font: 600 var(--step-1)/1.3 var(--serif); margin: 0 0 0.5rem; }
 .post p { white-space: pre-wrap; margin: 0; font-size: 0.95rem; color: #39425a; }
 
+/* ---------------------------------------------------------------- discussion */
+.discussion { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); max-width: 68ch; }
+.discussion-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.discussion-head h2 { font: 600 var(--step-1)/1.3 var(--serif); margin: 0; }
+.discussion-head .hint { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.9rem; }
+
+.thread { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: 0.5rem; }
+.comment {
+  --indent: 0;
+  margin-left: calc(var(--indent) * 1.4rem);
+  padding: 0.65rem 0.85rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+.comment[data-depth="1"] { --indent: 1; }
+.comment[data-depth="2"] { --indent: 2; }
+.comment[data-depth="3"] { --indent: 3; }
+.comment[data-depth="4"] { --indent: 4; }
+.comment.own { border-left-color: var(--accent); background: #eef1f8; }
+.comment-meta { margin: 0; font-size: 0.9rem; }
+.comment-meta .replying, .comment-meta .age { color: var(--muted); }
+.comment-headline { margin: 0.05rem 0 0; color: var(--muted); font-size: 0.82rem; }
+.comment-text { margin: 0.4rem 0 0; white-space: pre-wrap; font-size: 0.95rem; line-height: 1.5; }
+
+.comment-editor:empty { display: none; }
+.comment-editor { margin-bottom: 1.5rem; }
+.paste-step, .review-step {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius-panel);
+  padding: 1rem 1.1rem;
+}
+.review-step h3 { margin: 0 0 0.2rem; font: 600 var(--step-0)/1.3 var(--sans); }
+.review-step > .hint { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+
+.review-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; counter-reset: review; }
+.review-item {
+  border: 1px solid var(--rule); border-left: 3px solid var(--rule);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  padding: 0.7rem 0.8rem; background: #fff; display: grid; gap: 0.5rem;
+}
+.review-item.own { border-left-color: var(--accent); }
+.review-item.saved { opacity: 0.6; }
+.review-row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: end; }
+.review-item label { display: grid; gap: 0.2rem; font-size: 0.82rem; font-weight: 600; color: var(--muted); flex: 1 1 12rem; }
+.review-item label.check { display: flex; align-items: center; gap: 0.4rem; flex: 0 0 auto; color: var(--ink); }
+.review-item input:not([type="checkbox"]), .review-item textarea, .review-item select {
+  font: inherit; font-size: 0.92rem; font-weight: 400; color: var(--ink);
+  padding: 0.4rem 0.55rem; border: 1px solid var(--rule); border-radius: var(--radius-control); background: var(--paper);
+}
+.review-item select { flex: 1 1 18rem; max-width: 100%; }
+.saved-badge { font-size: 0.82rem; color: var(--muted); }
+
+.inline-field { display: flex; gap: 0.5rem; max-width: 30rem; }
+.inline-field input {
+  flex: 1; font: inherit; padding: 0.55rem 0.75rem; border: 1px solid var(--rule);
+  border-radius: var(--radius-control); background: var(--paper); color: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .comment { margin-left: calc(var(--indent) * 0.6rem); }
+}
+
 /* ---------------------------------------------------------------- chat */
 .chat {
   position: sticky; top: 1.5rem;
