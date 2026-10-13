@@ -11,7 +11,12 @@ import time
 from collections.abc import Callable
 from typing import Any, cast
 
-from postloom.adapters.llm.http import HttpTransport, JsonObject, UrllibTransport
+from postloom.adapters.llm.http import (
+    CertificateError,
+    HttpTransport,
+    JsonObject,
+    UrllibTransport,
+)
 from postloom.application.errors import (
     ExtractionError,
     ProviderAuthError,
@@ -75,6 +80,12 @@ class GeminiClient:
         for attempt in range(self._max_retries + 1):
             try:
                 response = self._transport.post_json(url, payload, headers, self._timeout)
+            except CertificateError as error:
+                raise ProviderUnavailableError(
+                    "Couldn't verify Gemini's security certificate, so the connection was "
+                    "refused. If you're on a company network or VPN, ask IT to install its "
+                    f"root certificate in your system keychain. ({error})"
+                ) from error
             except OSError as error:
                 if attempt == self._max_retries:
                     raise ProviderUnavailableError(

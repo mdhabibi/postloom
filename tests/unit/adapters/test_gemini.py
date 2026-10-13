@@ -8,7 +8,7 @@ import pytest
 
 from postloom.adapters.llm.gemini import GeminiClient
 from postloom.adapters.llm.gemini_extractor import GeminiContentExtractor
-from postloom.adapters.llm.http import HttpResponse, JsonObject
+from postloom.adapters.llm.http import CertificateError, HttpResponse, JsonObject
 from postloom.application.errors import (
     ExtractionError,
     ProviderAuthError,
@@ -202,3 +202,10 @@ def test_thinking_parts_are_ignored() -> None:
 def test_empty_key_is_rejected_up_front() -> None:
     with pytest.raises(ProviderAuthError):
         GeminiClient("  ")
+
+
+def test_certificate_failures_are_explained_and_not_retried() -> None:
+    subject, transport = extractor(CertificateError("unable to get local issuer certificate"))
+    with pytest.raises(ProviderUnavailableError, match="certificate"):
+        subject.extract(request())
+    assert len(transport.calls) == 1

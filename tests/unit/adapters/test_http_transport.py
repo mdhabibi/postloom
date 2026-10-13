@@ -1,12 +1,13 @@
 """The real urllib transport against a throwaway local HTTP server."""
 
 import json
+import ssl
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from postloom.adapters.llm.http import UrllibTransport
+from postloom.adapters.llm.http import UrllibTransport, system_ssl_context
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -68,3 +69,9 @@ def test_non_json_error_bodies_become_empty() -> None:
         response = UrllibTransport().post_json(f"{base}/broken", {}, {}, 5)
     assert response.status == 500
     assert response.body == {}
+
+
+def test_tls_context_verifies_certificates_and_hostnames() -> None:
+    context = system_ssl_context()
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname

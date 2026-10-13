@@ -7,6 +7,7 @@ to install, and tests can swap in a fake transport without touching the network.
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -31,8 +32,30 @@ class HttpTransport(Protocol):
         ...
 
 
+class CertificateError(OSError):
+    """The server's TLS certificate could not be verified. Retrying won't help."""
+
+
+def system_ssl_context() -> ssl.SSLContext:
+    """TLS context that trusts the operating system's certificate store.
+
+    Python builds installed by uv/pyenv ship OpenSSL without access to the macOS keychain
+    or the Windows store, so the default context fails with CERTIFICATE_VERIFY_FAILED.
+    ``truststore`` makes Python use the OS store, which also covers corporate proxies
+    whose root certificate IT installed system-wide.
+    """
+    try:
+        import truststore
+    except ImportError:  # pragma: no cover - truststore is a declared dependency
+        return ssl.create_default_context()
+    return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+
 class UrllibTransport:
-    """Real transport. Honours HTTPS_PROXY and the system certificate store."""
+    """Real transport. Honours HTTPS_PROXY and the operating system's certificates."""
+
+    def __init__(self, context: ssl.SSLContext | None = None) -> None:
+        self._context = context or system_ssl_context()
 
     def post_json(
         self, url: str, payload: JsonObject, headers: dict[str, str], timeout: float
@@ -45,11 +68,15 @@ class UrllibTransport:
             headers={"Content-Type": "application/json", **headers},
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return HttpResponse(response.status, _parse(response.read()))
+            with urllib.request.urlopen(request, timeout=timeout, context=self._context) as reply:
+                return HttpResponse(reply.status, _parse(reply.read()))
         except urllib.error.HTTPError as error:
             retry_after = error.headers.get("Retry-After") if error.headers else None
             return HttpResponse(error.code, _parse(error.read()), _seconds(retry_after))
+        except urllib.error.URLError as error:
+            if isinstance(error.reason, ssl.SSLCertVerificationError):
+                raise CertificateError(str(error.reason)) from error
+            raise
 
 
 def _parse(raw: bytes) -> JsonObject:
