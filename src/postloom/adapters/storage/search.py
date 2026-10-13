@@ -94,6 +94,13 @@ class SqliteSearchIndex:
                 found[row["content_hash"]] = _unpack(row["vector"]).tolist()
         return found
 
+    def chunks_of(self, node: NodeId) -> Sequence[ChunkHit]:
+        rows = self._database.query(
+            "SELECT id, node, idx, title, heading, text FROM chunks WHERE node = ? ORDER BY idx",
+            (node,),
+        )
+        return [_hit(row, 0.0) for row in rows]
+
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]:
         expression = _fts_query(query)
         if not expression:

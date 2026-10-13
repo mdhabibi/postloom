@@ -82,3 +82,9 @@ def test_excerpt_centres_on_the_query_and_cuts_on_words() -> None:
 
 def test_short_text_excerpt_is_the_whole_text() -> None:
     assert excerpt("Short   text\nhere", "anything") == "Short text here"
+
+
+def test_excerpts_are_plain_text_without_markdown_syntax() -> None:
+    text = "* **Backtesting instead of one split.** See [docs](https://x.y) `code`"
+    snippet = excerpt(text, "split")
+    assert snippet == "Backtesting instead of one split. See docs code"

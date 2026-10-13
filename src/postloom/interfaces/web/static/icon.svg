@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <symbol id="loom" viewBox="0 0 24 24">
+    <g fill="none" stroke-width="2.2" stroke-linecap="round">
+      <path d="M6 3v18" stroke="#2E4A8B"/>
+      <path d="M12 3v18" stroke="#A63D40"/>
+      <path d="M18 3v18" stroke="#C99A1E"/>
+      <path d="M3 9h4m4 0h2m4 0h4" stroke="#1B2440"/>
+      <path d="M3 15h1m4 0h8m4 0h1" stroke="#1B2440"/>
+    </g>
+  </symbol>
+  <use href="#loom"/>
+</svg>

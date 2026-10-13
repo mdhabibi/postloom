@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>postloom</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Library">
+      <a class="wordmark" href="#/" aria-label="postloom home">
+        <svg class="wordmark-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="/static/icon.svg#loom"/></svg>
+        postloom
+      </a>
+
+      <form class="search" role="search" id="search-form">
+        <label class="visually-hidden" for="search-input">Search your articles</label>
+        <input id="search-input" type="search" placeholder="Search or ask your articles" autocomplete="off">
+      </form>
+
+      <a class="button button-primary add-button" href="#/add">Add article</a>
+      <button class="button browse-toggle" type="button" id="browse-toggle" aria-expanded="false" aria-controls="browse-panel">Browse articles</button>
+
+      <div class="browse-panel" id="browse-panel">
+        <nav class="threads" aria-label="Topics">
+          <h2 class="sidebar-heading">Threads</h2>
+          <ul id="thread-list"></ul>
+        </nav>
+
+        <nav class="library" aria-label="Articles">
+          <h2 class="sidebar-heading">Articles</h2>
+          <ul id="article-list"></ul>
+        </nav>
+
+        <a class="settings-link" href="#/settings" id="settings-link">Settings</a>
+      </div>
+    </aside>
+
+    <main id="main" tabindex="-1"></main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

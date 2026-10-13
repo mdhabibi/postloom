@@ -21,6 +21,7 @@ from postloom.application.use_cases import (
 from postloom.bootstrap import Container, Settings, build_container
 
 ContainerFactory = Callable[[Settings], Container]
+DEFAULT_PORT = 8765
 
 
 def _build(settings: Settings) -> Container:
@@ -31,7 +32,7 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
     parser = _parser()
     args = parser.parse_args(argv)
     home: Path | None = args.home
-    settings = Settings(home=home.expanduser()) if home else Settings()
+    settings = Settings.load(home)
 
     try:
         if args.command == "init":
@@ -43,8 +44,7 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
         if args.command == "search":
             return _search(args, settings, make_container)
         if args.command == "start":
-            print("The web app arrives later in milestone 1. Use `postloom ingest` for now.")
-            return 0
+            return _start(args, settings, make_container)
     except ApplicationError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
@@ -99,7 +99,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Rebuild the search index (after upgrading or changing the embedding model).",
     )
 
-    commands.add_parser("start", parents=[common], help="Start the local web app.")
+    start = commands.add_parser(
+        "start", parents=[common], help="Open postloom in your browser (runs on this computer)."
+    )
+    start.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on.")
+    start.add_argument("--no-browser", action="store_true", help="Don't open a browser tab.")
     return parser
 
 
@@ -212,6 +216,43 @@ def _scores(passage: Passage) -> str:
     if passage.keyword_score is not None:
         parts.append(f"keyword relevance {passage.keyword_score:.2f}")
     return ", ".join(parts)
+
+
+def _start(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from postloom.interfaces.web.app import create_app
+
+    port = _free_port(args.port)
+    url = f"http://127.0.0.1:{port}/"
+    home = settings.home
+    app = create_app(lambda: Settings.load(home), make_container)
+
+    with make_container(settings) as container:  # first run: make sure topics exist
+        container.seed_topics().execute(DEFAULT_TOPICS)
+
+    print(f"postloom is running at {url}")
+    print(f"Your data: {home}")
+    print("Press Ctrl+C to stop.")
+    if not args.no_browser:
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    # Listen on the loopback interface only: postloom is never reachable from the network.
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    return 0
+
+
+def _free_port(preferred: int) -> int:
+    """The preferred port, or the next free one if another program is using it."""
+    import socket
+
+    for port in range(preferred, preferred + 20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            if probe.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    raise ApplicationError(f"No free port between {preferred} and {preferred + 19}.")
 
 
 def _count(n: int, noun: str) -> str:

@@ -9,8 +9,8 @@ links and hashtags you used, and every comment and reply. Then you can chat with
 and its discussion, see who engages with your work, and draft replies grounded in what you
 actually wrote.
 
-> **Status: pre-alpha.** The domain model and ingest pipeline are in place; the web app,
-> SQLite index and LLM adapters are being built. See the [roadmap](#roadmap).
+> **Status: alpha.** Adding articles, search and chat work end to end. Comments and the
+> people behind them come next. See the [roadmap](#roadmap).
 
 ## Why postloom
 
@@ -29,57 +29,50 @@ actually wrote.
 
 ## Quick start
 
-> Not on PyPI yet. Until the first release, install from source.
+> Not on PyPI yet. Until the first release, install from source with [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/mdhabibi/postloom.git
 cd postloom
-uv sync            # https://docs.astral.sh/uv/
-uv run postloom init
+uv sync
+uv run postloom start
 ```
 
-`init` creates your vault at `~/Postloom/vault` (override with `--home` or `POSTLOOM_HOME`)
-with a starter set of topics. Open that folder in Obsidian to browse it.
+`postloom start` opens the app in your browser. On first run:
 
-### Add an article (command line, until the web app lands)
+1. Open **Settings** and paste a free Gemini API key from
+   [aistudio.google.com](https://aistudio.google.com/apikey). It's saved only in your
+   Postloom folder.
+2. Click **Add article**, paste a LinkedIn article and the post that announced it.
+   postloom restores the formatting, files it under your topics and indexes it.
+3. Open the article to read it and ask questions about it, or use the search box to search
+   and ask across everything you've written. Answers cite the sections they come from, and
+   when nothing relevant exists postloom says so instead of guessing.
 
-1. Create a free Gemini API key at [aistudio.google.com](https://aistudio.google.com).
-2. Paste your article into one text file and its announcement post into another
-   (on macOS: copy the article, then `pbpaste > article.txt`; same for `post.txt`).
-3. Run:
+Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
+folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
+articles as a graph.
+
+### Command line
+
+Everything the app does is also available from the terminal:
 
 ```bash
-export GEMINI_API_KEY=your-key-here
-uv run postloom ingest article.txt post.txt --url https://www.linkedin.com/pulse/... --date 2026-10-12
+uv run postloom ingest article.txt post.txt --date 2026-10-12   # add an article
+uv run postloom search "how do I know if my cache serves wrong answers" --explain
+uv run postloom reindex                                         # after upgrading
 ```
 
-postloom restores the article's formatting, picks topics from your list, detects the
-series, and writes `articles/<slug>.md` and `posts/<slug>.md` into your vault. If the
-restored article looks shorter than what you pasted, it tells you.
+### Settings
 
-Ingest also indexes the article for search. Then search by keywords or in your own words:
-
-```bash
-uv run postloom search "how do I know if my cache serves wrong answers"
-```
-
-Search combines keyword matching with meaning-based matching (Gemini embeddings), and shows
-the best-matching sections of each article. Run `uv run postloom reindex` after upgrading
-postloom or changing the embedding model.
-
-Add `--explain` to see why something matched (meaning similarity and keyword relevance).
-Meaning-based matches below a similarity of 0.66 are treated as unrelated; change this with
-`POSTLOOM_MIN_SIMILARITY`.
-
-To use different Gemini models, set `POSTLOOM_EXTRACTION_MODEL` (default:
-`gemini-3.5-flash-lite`) or `POSTLOOM_EMBEDDING_MODEL` (default: `gemini-embedding-2`).
-
-Once released, installation will be a single command:
-
-```bash
-pipx install postloom   # or: uvx postloom start
-postloom start          # opens the app in your browser
-```
+| Setting | Environment variable | Default |
+|---|---|---|
+| Data folder | `POSTLOOM_HOME` | `~/Postloom` |
+| Gemini API key | `GEMINI_API_KEY` (wins over the saved key) | set in the app |
+| Model for restoring articles | `POSTLOOM_EXTRACTION_MODEL` | `gemini-3.5-flash-lite` |
+| Model for search | `POSTLOOM_EMBEDDING_MODEL` | `gemini-embedding-2` |
+| Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` |
+| Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
 
 ## How it works
 
@@ -100,8 +93,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 
 - [x] Domain model with provenance and superseded history
 - [x] Ingest use case, Markdown/Obsidian vault, architecture tests
-- [ ] **Milestone 1 (MVP):** SQLite index (FTS5 + sqlite-vec), Gemini extraction and
-      embeddings, local web app with paste-to-ingest and chat scoped to an article
+- [x] **Milestone 1 (MVP):** SQLite index, Gemini extraction and embeddings, hybrid
+      search, local web app with paste-to-add, search and grounded chat
 - [ ] **Milestone 2:** comments, replies and people; who-engaged-with-what views;
       reply drafting in your own voice
 - [ ] **Milestone 3:** graph view, link suggestions to accept or reject, banner embeddings
@@ -113,8 +106,10 @@ Contributions are welcome once the MVP lands. See [CONTRIBUTING.md](CONTRIBUTING
 
 ## Privacy
 
-postloom stores names, headlines and profile URLs of people who comment on your posts,
-locally and only for your own use. Every person can be exported or deleted in one step.
+postloom runs only on your computer and listens only on `127.0.0.1`, so nothing on your
+network can reach it. It refuses requests that don't come from its own page, so other
+websites you visit can't use it either. Once comments arrive, it will store names, headlines
+and profile URLs of people who comment on your posts, locally and only for your own use. Every person can be exported or deleted in one step.
 If you use a hosted model, the text you ingest is sent to that provider under their terms;
 check them (free tiers may use your data for training) or use a local model.
 

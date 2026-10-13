@@ -22,7 +22,9 @@ classifiers = [
 dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
+    "starlette>=0.40",
     "truststore>=0.10",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]

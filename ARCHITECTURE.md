@@ -33,8 +33,8 @@ layer imports an outer one, or if the domain imports anything outside the standa
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
 | `EmbeddingProvider` | text -> unit vectors | Gemini Embedding 2 (768 dims), fakes |
+| `ChatModel` | grounded answers | Gemini (`gemini-3.8-flash`), fakes |
 | `SearchIndex` | keyword + vector retrieval over chunks | SQLite (FTS5 + in-memory cosine) |
-| `ChatModel` *(M1)* | answers and reply drafts | Gemini, Claude, Ollama |
 
 Every adapter of a port must pass that port's contract tests (`tests/contract/`). Adding a
 backend means adding its factory to the contract suite; nothing else changes.
@@ -119,6 +119,28 @@ knowledge graphs turn into noise.
 4. *(Next)* graph expansion: a hit in Part 3 brings in its post, comments and series
    siblings as context for chat.
 
+## Chat (grounded answers)
+
+`AskQuestion` only ever shows the model numbered sources from the user's own content:
+the whole article and its post when asked about one article, or passages above the
+similarity cutoff when asked across the library. If nothing passes the cutoff, it answers
+"not found" without calling the model. Citations like `[2]` are parsed back
+deterministically, so the UI only shows sources the answer actually used.
+
+## Web app
+
+`postloom start` serves a Starlette app on `127.0.0.1` with a static, build-free frontend
+(plain HTML/CSS/JS, system fonts, nothing loaded from the internet).
+
+- **Localhost only**: the server binds to the loopback interface and refuses any Host
+  header that isn't localhost, which blocks DNS-rebinding attacks.
+- **CSRF**: every write needs an `X-Postloom: 1` header, which other websites can't add
+  without a CORS preflight that postloom never approves.
+- **CSP**: `default-src 'self'` with no inline scripts; the Markdown renderer escapes all
+  input before adding the few tags it generates.
+- **Secrets**: the API key is stored in `<home>/config.json` with 0600 permissions and is
+  never sent to the browser. An environment variable overrides it.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -132,4 +154,6 @@ knowledge graphs turn into noise.
 | 2026-10-13 | Model names are settings (default `gemini-3.5-flash-lite`) | Google retires model versions often; users choose cost vs quality. |
 | 2026-10-13 | Brute-force cosine in Python instead of sqlite-vec | ~0.1 s for 5,000 chunks; no native extension to install on every OS. Same port can take sqlite-vec later. |
 | 2026-10-13 | Hybrid search with reciprocal rank fusion | Keywords catch names and exact terms, embeddings catch paraphrases; RRF needs no score calibration. |
+| 2026-10-13 | Starlette instead of FastAPI | Fewer dependencies; thin JSON handlers don't need FastAPI's extras. |
+| 2026-10-13 | Build-free vanilla JS frontend | Contributors need no Node toolchain; the app works offline. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |

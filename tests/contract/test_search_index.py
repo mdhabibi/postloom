@@ -113,3 +113,10 @@ def test_chunks_without_vectors_are_keyword_searchable_only(
     index.replace_chunks(LEAKAGE, [indexed(chunk(LEAKAGE, 0, "", "Leakage basics"), None)])
     assert len(index.keyword_search("leakage", 5)) == 1
     assert index.vector_search([1.0, 0.0, 0.0], SPACE, 5) == []
+
+
+@adapters
+def test_chunks_of_returns_a_nodes_chunks_in_order(make: Callable[[], SearchIndex]) -> None:
+    chunks = populated(make).chunks_of(LEAKAGE)
+    assert [(c.index, c.heading) for c in chunks] == [(0, ""), (1, "Fix")]
+    assert populated(make).chunks_of(NodeId("article:none")) == []

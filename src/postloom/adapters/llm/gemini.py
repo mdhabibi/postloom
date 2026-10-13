@@ -27,6 +27,7 @@ from postloom.application.errors import (
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_EXTRACTION_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2"
+DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
 
 _RETRYABLE = frozenset({429, 500, 502, 503, 504})
 
@@ -74,6 +75,27 @@ class GeminiClient:
         }
         body = self._post(f"{self._base_url}/models/{model}:generateContent", payload)
         return _json_from_candidate(body)
+
+    def generate_text(
+        self,
+        model: str,
+        *,
+        system: str,
+        turns: Sequence[tuple[str, str]],
+        temperature: float = 0.3,
+        max_output_tokens: int = 4096,
+    ) -> str:
+        """Continue a conversation. ``turns`` are (role, text) with role "user" or "model"."""
+        payload: JsonObject = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": role, "parts": [{"text": text}]} for role, text in turns],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_output_tokens,
+            },
+        }
+        body = self._post(f"{self._base_url}/models/{model}:generateContent", payload)
+        return _text_from_candidate(body, allow_truncation=True)
 
     def embed_texts(
         self,
@@ -159,7 +181,7 @@ def _error_for(status: int, body: JsonObject) -> ProviderError:
     return ProviderError(f"Gemini request failed with HTTP {status}. {detail}".strip())
 
 
-def _json_from_candidate(body: JsonObject) -> JsonObject:
+def _text_from_candidate(body: JsonObject, *, allow_truncation: bool = False) -> str:
     candidates = body.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         feedback = body.get("promptFeedback")
@@ -171,12 +193,16 @@ def _json_from_candidate(body: JsonObject) -> JsonObject:
         raise ExtractionError(f"Gemini returned no answer (blocked: {reason or 'unknown'}).")
     first = cast(dict[str, Any], cast(list[Any], candidates)[0])
     finish = first.get("finishReason")
-    if finish == "MAX_TOKENS":
+    if finish == "MAX_TOKENS" and not allow_truncation:
         raise ExtractionError("The article is too long for one extraction call.")
-    if finish not in (None, "STOP"):
+    if finish not in (None, "STOP", "MAX_TOKENS"):
         raise ExtractionError(f"Gemini stopped early (reason: {finish}).")
     parts = cast(list[dict[str, Any]], first.get("content", {}).get("parts", []))
-    text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+    return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+
+
+def _json_from_candidate(body: JsonObject) -> JsonObject:
+    text = _text_from_candidate(body)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as error:

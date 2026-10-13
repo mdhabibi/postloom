@@ -82,9 +82,23 @@ def content_size(text: str) -> int:
     return sum(1 for ch in without_tags if ch.isalnum())
 
 
+_MD_FENCE_LINE = re.compile(r"^\s*(```|~~~).*$", re.MULTILINE)
+_MD_LINE_PREFIX = re.compile(r"^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)", re.MULTILINE)
+_MD_EMPHASIS = re.compile(r"(\*\*|__|\*|`)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\((?:[^)]+)\)")
+
+
+def plain_text(markdown: str) -> str:
+    """Markdown reduced to readable plain text, for snippets and previews."""
+    text = _MD_FENCE_LINE.sub("", markdown)
+    text = _MD_LINE_PREFIX.sub("", text)
+    text = _MD_LINK.sub(r"\1", text)
+    return _MD_EMPHASIS.sub("", text)
+
+
 def excerpt(text: str, query: str, width: int = 280) -> str:
-    """A window of ``text`` around the first query word it contains, on word boundaries."""
-    flat = " ".join(text.split())
+    """A plain-text window of ``text`` around the first query word, on word boundaries."""
+    flat = " ".join(plain_text(text).split())
     if len(flat) <= width:
         return flat
     lowered = flat.lower()

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
 from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest
 
@@ -97,3 +98,25 @@ class FakeEmbedder:
             vector[int.from_bytes(digest[:4], "little") % self.dimensions] += 1.0
         norm = math.sqrt(sum(x * x for x in vector)) or 1.0
         return [x / norm for x in vector]
+
+
+@dataclass
+class FakeChat:
+    """Answers with a canned reply and records what it was asked."""
+
+    reply: str = "Use a time-ordered split [1]."
+    calls: list[tuple[str, list[ChatMessage]]] = field(
+        default_factory=list[tuple[str, list[ChatMessage]]]
+    )
+
+    @property
+    def name(self) -> str:
+        return "llm:fake-chat"
+
+    def complete(self, system: str, messages: Sequence[ChatMessage]) -> str:
+        self.calls.append((system, list(messages)))
+        return self.reply
+
+    @property
+    def last_prompt(self) -> str:
+        return self.calls[-1][1][-1].text
