@@ -16,6 +16,15 @@ def test_init_creates_a_vault_with_the_default_topics(
     assert "Vault ready" in capsys.readouterr().out
 
 
+def test_init_persists_so_a_second_run_creates_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["--home", str(tmp_path), "init"])
+    main(["--home", str(tmp_path), "init"])
+    assert (tmp_path / "index.db").exists()
+    assert "(0 topics created)" in capsys.readouterr().out.splitlines()[-2]
+
+
 def test_home_can_come_after_the_command(tmp_path: Path) -> None:
     assert main(["init", "--home", str(tmp_path / "after")]) == 0
     assert (tmp_path / "after" / "vault" / "topics" / "RAG.md").exists()

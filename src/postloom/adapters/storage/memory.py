@@ -35,6 +35,9 @@ class InMemoryGraphRepository:
     def save_article(self, article: Article) -> None:
         self._articles[article.id] = article
 
+    def list_articles(self) -> Sequence[Article]:
+        return list(self._articles.values())
+
     def get_post(self, post_id: NodeId) -> Post | None:
         return self._posts.get(post_id)
 

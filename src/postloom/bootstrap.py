@@ -7,11 +7,13 @@ implementation, e.g. Gemini for a local Ollama model, is a change here and nowhe
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
 
 from postloom.adapters.clock import SystemClock
-from postloom.adapters.storage.memory import InMemoryGraphRepository
+from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.adapters.vault.markdown_vault import MarkdownVault
 from postloom.application.ports import Clock, ContentExtractor, GraphRepository, Vault
 from postloom.application.use_cases import IngestArticle, SeedTopics
@@ -43,6 +45,23 @@ class Container:
     vault: Vault
     clock: Clock
     extractor: ContentExtractor | None = None
+    closers: tuple[Callable[[], None], ...] = ()
+    """Resources to release on shutdown (database connections...)."""
+
+    def close(self) -> None:
+        for close in self.closers:
+            close()
+
+    def __enter__(self) -> Container:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def seed_topics(self) -> SeedTopics:
         return SeedTopics(self.repository, self.vault)
@@ -54,10 +73,11 @@ class Container:
 
 
 def build_container(settings: Settings, extractor: ContentExtractor | None = None) -> Container:
-    # TODO(milestone-1): replace the in-memory index with the SQLite adapter.
+    repository = SqliteGraphRepository(settings.index_path)
     return Container(
-        repository=InMemoryGraphRepository(),
+        repository=repository,
         vault=MarkdownVault(settings.vault_dir),
         clock=SystemClock(),
         extractor=extractor,
+        closers=(repository.close,),
     )

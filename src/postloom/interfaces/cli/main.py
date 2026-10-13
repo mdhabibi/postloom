@@ -35,8 +35,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = Settings(home=home.expanduser()) if home else Settings()
 
     if args.command == "init":
-        container = build_container(settings)
-        created = container.seed_topics().execute(DEFAULT_TOPICS)
+        with build_container(settings) as container:
+            created = container.seed_topics().execute(DEFAULT_TOPICS)
         print(f"Vault ready at {settings.vault_dir} ({len(created)} topics created).")
         print("Open that folder in Obsidian to browse it as a graph.")
         return 0

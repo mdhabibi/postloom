@@ -29,7 +29,7 @@ layer imports an outer one, or if the domain imports anything outside the standa
 | Port | Purpose | Adapters |
 |---|---|---|
 | `ContentExtractor` | pasted text -> structured content | Gemini *(M1)*, fakes |
-| `GraphRepository` | queryable index of nodes and edges | in-memory, SQLite *(M1)* |
+| `GraphRepository` | queryable index of nodes and edges | in-memory, SQLite |
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
 | `EmbeddingProvider` *(M1)* | text/image -> vectors | Gemini Embedding 2, Ollama |
@@ -97,8 +97,12 @@ knowledge graphs turn into noise.
 
 - **Vault (source of truth)**: Markdown with YAML frontmatter and `[[wikilinks]]`,
   written atomically. It is a valid Obsidian vault.
-- **Index (derived, rebuildable)**: SQLite in a single file, with FTS5 for keyword search
-  and sqlite-vec for vectors *(M1)*. Graph traversal is plain SQL over an edges table.
+- **Index (derived, rebuildable)**: SQLite in a single file (`<home>/index.db`), using
+  only the Python standard library. Nodes are stored as JSON keyed by their stable id;
+  edges keep their history in the same table, with a partial unique index guaranteeing
+  one live edge per (source, target, kind). Schema changes are numbered migrations
+  tracked with `PRAGMA user_version`; file databases run in WAL mode. FTS5 keyword search
+  and sqlite-vec vectors are added in later migrations *(M1)*.
 
 ## Retrieval (M1)
 

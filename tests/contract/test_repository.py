@@ -4,11 +4,12 @@ To add an adapter, append its factory to FACTORIES; nothing else changes.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
 from postloom.adapters.storage.memory import InMemoryGraphRepository
+from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.application.ports.repository import GraphRepository
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.graph import Edge, EdgeKind
@@ -18,14 +19,32 @@ pytestmark = pytest.mark.contract
 
 FACTORIES: dict[str, Callable[[], GraphRepository]] = {
     "memory": InMemoryGraphRepository,
+    "sqlite": SqliteGraphRepository,
 }
 adapters = pytest.mark.parametrize("make", FACTORIES.values(), ids=FACTORIES.keys())
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 T1 = datetime(2026, 2, 1, tzinfo=UTC)
 RAG = Topic("RAG")
-ARTICLE = Article(title="Part 3", body_markdown="Body", series=Series("Caching"), series_part=3)
-POST = Post(key=ARTICLE.slug, text="Read part 3", links=("https://lnkd.in/euyuNU9y",))
+ARTICLE = Article(
+    title="Part 3",
+    body_markdown="## Metrics\n\nHit rate: précision 👇",
+    summary="Measuring caches.",
+    url="https://www.linkedin.com/pulse/part-3",
+    published_on=date(2026, 10, 12),
+    series=Series("Caching"),
+    series_part=3,
+    hashtags=("RAG", "LLM"),
+    entities=("LangGraph",),
+)
+POST = Post(
+    key=ARTICLE.slug,
+    text="Read part 3",
+    published_on=date(2026, 10, 12),
+    hashtags=("RAG",),
+    links=("https://lnkd.in/euyuNU9y",),
+    banner_path="assets/part3.png",
+)
 
 
 def belongs(grade: Grade = Grade.ASSERTED) -> Edge:
@@ -51,6 +70,16 @@ def test_content_round_trips_unchanged(make: Callable[[], GraphRepository]) -> N
     assert repo.get_article(ARTICLE.id) == ARTICLE
     assert repo.get_post(POST.id) == POST
     assert repo.get_article(Article(title="Missing", body_markdown="x").id) is None
+    assert repo.get_post(Post(key="missing", text="x").id) is None
+
+
+@adapters
+def test_articles_are_listed_in_first_save_order(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    repo.save_article(Article(title="First", body_markdown="a"))
+    repo.save_article(Article(title="Second", body_markdown="b"))
+    repo.save_article(Article(title="First", body_markdown="edited"))
+    assert [a.body_markdown for a in repo.list_articles()] == ["edited", "b"]
 
 
 @adapters
@@ -62,6 +91,16 @@ def test_saving_an_edge_twice_keeps_one_live_edge(make: Callable[[], GraphReposi
     assert len(edges) == 1
     assert edges[0].provenance.grade is Grade.VERIFIED
     assert list(repo.edges_to(RAG.id)) == edges
+
+
+@adapters
+def test_edges_round_trip_every_field(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    provenance = Provenance(Origin.SEMANTIC, Grade.ASSERTED, "embedding:x", T0, "cos=0.91")
+    other = Article(title="Part 2", body_markdown="Body")
+    edge = Edge(ARTICLE.id, other.id, EdgeKind.RELATED_TO, provenance, weight=0.91)
+    repo.save_edge(edge)
+    assert list(repo.edges_from(ARTICLE.id)) == [edge]
 
 
 @adapters
