@@ -130,8 +130,10 @@ def test_system_prompt_forbids_outside_knowledge(tmp_path: Path) -> None:
     world = World(tmp_path)
     world.ask().execute("Anything?", article_id=world.add(LEAKAGE))
     system, _ = world.chat.calls[0]
-    assert "Answer only from the numbered sources" in system
-    assert "Never guess" in system
+    assert "Use only the numbered sources" in system
+    assert "not outside knowledge" in system
+    assert "Start with the direct answer" in system
+    assert "Don't suggest searching the web" in system
 
 
 def test_history_is_passed_before_the_new_question(tmp_path: Path) -> None:
