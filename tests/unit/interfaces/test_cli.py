@@ -48,8 +48,9 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
 # -- ingest ---------------------------------------------------------------------
 def fake_container(settings: Settings) -> Container:
     # No real key, even if the developer running the tests has one exported.
+    # The fake embedder's similarities aren't calibrated like Gemini's, so no cutoff.
     return build_container(
-        replace(settings, gemini_api_key=None),
+        replace(settings, gemini_api_key=None, min_similarity=0.0),
         extractor=FakeExtractor(part3_extraction()),
         embedder=FakeEmbedder(),
     )
@@ -181,3 +182,10 @@ def test_search_explain_shows_scores(tmp_path: Path, capsys: pytest.CaptureFixtu
     capsys.readouterr()
     main(["--home", home, "search", "cache", "--explain"], make_container=fake_container)
     assert "scores: meaning similarity 0." in capsys.readouterr().out
+
+
+def test_default_similarity_cutoff_is_calibrated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POSTLOOM_MIN_SIMILARITY", raising=False)
+    assert Settings().min_similarity == 0.66
+    monkeypatch.setenv("POSTLOOM_MIN_SIMILARITY", "0.7")
+    assert Settings().min_similarity == 0.7

@@ -67,6 +67,10 @@ Search combines keyword matching with meaning-based matching (Gemini embeddings)
 the best-matching sections of each article. Run `uv run postloom reindex` after upgrading
 postloom or changing the embedding model.
 
+Add `--explain` to see why something matched (meaning similarity and keyword relevance).
+Meaning-based matches below a similarity of 0.66 are treated as unrelated; change this with
+`POSTLOOM_MIN_SIMILARITY`.
+
 To use different Gemini models, set `POSTLOOM_EXTRACTION_MODEL` (default:
 `gemini-3.5-flash-lite`) or `POSTLOOM_EMBEDDING_MODEL` (default: `gemini-embedding-2`).
 

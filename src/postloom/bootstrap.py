@@ -46,6 +46,9 @@ GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
 EMBEDDING_MODEL_ENV = "POSTLOOM_EMBEDDING_MODEL"
 MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
+DEFAULT_MIN_SIMILARITY = 0.66
+"""Calibrated for gemini-embedding-2 @768 on real articles: on-topic passages scored
+0.72-0.73, a same-field but wrong-topic query 0.62, an unrelated query 0.51."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +64,7 @@ class Settings:
         default_factory=lambda: os.environ.get(EMBEDDING_MODEL_ENV) or DEFAULT_EMBEDDING_MODEL
     )
     min_similarity: float = field(
-        default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or 0.0)
+        default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or DEFAULT_MIN_SIMILARITY)
     )
     """Semantic matches below this cosine similarity are treated as unrelated."""
 
