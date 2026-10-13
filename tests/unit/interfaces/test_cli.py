@@ -159,9 +159,7 @@ def test_search_shows_matching_articles_and_passages(
     assert "(keyword+semantic)" in out
 
 
-def test_search_without_matches_says_so(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_search_without_matches_says_so(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     main(["--home", str(tmp_path), "init"], make_container=fake_container)
     main(["--home", str(tmp_path), "search", "anything"], make_container=fake_container)
     assert 'No articles match "anything".' in capsys.readouterr().out

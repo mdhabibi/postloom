@@ -69,8 +69,10 @@ def test_content_hash_changes_only_with_content() -> None:
 
 
 def test_excerpt_centres_on_the_query_and_cuts_on_words() -> None:
-    text = " ".join(f"filler{i}" for i in range(80)) + " MinHash finds near duplicates. " + (
-        "tail " * 80
+    text = (
+        " ".join(f"filler{i}" for i in range(80))
+        + " MinHash finds near duplicates. "
+        + ("tail " * 80)
     )
     snippet = excerpt(text, "how does minhash work", width=120)
     assert "MinHash" in snippet

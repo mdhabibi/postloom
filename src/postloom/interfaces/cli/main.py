@@ -199,7 +199,6 @@ def _print_result(result: IngestArticleResult) -> None:
         print(f"  Warning:  {warning}")
 
 
-
 def _count(n: int, noun: str) -> str:
     return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
 
