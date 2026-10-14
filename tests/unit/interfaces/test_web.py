@@ -300,3 +300,50 @@ def test_responses_are_not_cached_or_sniffed(tmp_path: Path) -> None:
     headers = client_for(tmp_path).get("/api/status").headers
     assert headers["cache-control"] == "no-store"
     assert headers["x-content-type-options"] == "nosniff"
+
+
+# -- people ---------------------------------------------------------------------------
+def with_discussion(tmp_path: Path) -> tuple[AsgiClient, str]:
+    client = client_for(tmp_path)
+    article_id = ingest(client)["id"]
+    pasted = fixture_text("comments", "caching_thread.txt")
+    preview = client.post(
+        "/api/comments/preview", json_body={"article_id": article_id, "text": pasted}
+    ).json
+    review = [
+        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")}
+        for m in preview["messages"]
+    ]
+    client.post("/api/comments", json_body={"article_id": article_id, "messages": review})
+    return client, article_id
+
+
+def test_people_list_and_person_page(tmp_path: Path) -> None:
+    client, _ = with_discussion(tmp_path)
+    people = client.get("/api/people").json["people"]
+    assert [(p["name"], p["messages"]) for p in people] == [("Jane Example", 2), ("John Sample", 1)]
+    assert client.get("/api/status").json["people"] == 2
+
+    jane = client.get(f"/api/person?id={people[0]['id']}").json
+    assert jane["headlines"][0]["headline"] == "Senior ML Engineer at Acme Analytics"
+    (conversation,) = jane["conversations"]
+    assert [m["is_own"] for m in conversation["messages"]] == [False, True, False, True]
+
+
+def test_adding_a_profile_link_returns_the_new_identity(tmp_path: Path) -> None:
+    client, _ = with_discussion(tmp_path)
+    reply = client.put(
+        "/api/person",
+        json_body={"id": "person:~jane-example", "profile_url": "linkedin.com/in/jane-example"},
+    )
+    assert reply.status == 200, reply.text
+    assert reply.json == {"id": "person:jane-example"}
+    assert client.get("/api/person?id=person:~jane-example").status == 404
+    jane = client.get("/api/person?id=person:jane-example").json
+    assert jane["profile_url"] == "https://www.linkedin.com/in/jane-example"
+
+
+def test_person_notes_can_be_saved(tmp_path: Path) -> None:
+    client, _ = with_discussion(tmp_path)
+    client.put("/api/person", json_body={"id": "person:~john-sample", "notes": "Follow up"})
+    assert client.get("/api/person?id=person:~john-sample").json["notes"] == "Follow up"

@@ -122,6 +122,10 @@ class SqliteGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return [codec.person_from_json(d) for d in self._all(NodeKind.PERSON)]
 
+    def delete_person(self, person_id: NodeId) -> None:
+        with self._transaction() as db:
+            db.execute("DELETE FROM nodes WHERE id = ? AND kind = 'person'", (person_id,))
+
     # -- edges ------------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:

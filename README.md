@@ -9,8 +9,8 @@ links and hashtags you used, and every comment and reply. Then you can chat with
 and its discussion, see who engages with your work, and draft replies grounded in what you
 actually wrote.
 
-> **Status: alpha.** Articles, search, chat and comment threads work end to end. People
-> pages and reply drafts come next. See the [roadmap](#roadmap).
+> **Status: alpha.** Articles, search, chat, comment threads and people work end to end.
+> Reply drafts come next. See the [roadmap](#roadmap).
 
 ## Why postloom
 
@@ -59,6 +59,14 @@ check each message, fix where a reply belongs, mark your own replies, and add pe
 profile links so they're recognised next time. Pasting the same section again later only
 adds the new messages. Set **Your name on LinkedIn** in Settings so your replies are
 recognised automatically.
+
+### People
+
+**People** lists everyone who has commented on your posts, most engaged first. A person's
+page shows their headline (and earlier ones), your private notes, and every conversation
+you've had with them, grouped by article. Add someone's LinkedIn profile link once and
+postloom merges their comments into one identity and recognises them on every future
+post. Each person also gets a note in `vault/people/`, so they appear in Obsidian's graph.
 
 Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
 folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
@@ -109,7 +117,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
       search, local web app with paste-to-add, search and grounded chat
 - [ ] **Milestone 2:** comments, replies and people
   - [x] Paste a comment section, review, save as conversation chains; chat sees them
-  - [ ] People pages: who engaged with what, headline history, profile links
+  - [x] People pages: who engaged with what, headline history, profile links, notes
   - [ ] Reply drafts grounded in the article and the whole conversation
 - [ ] **Milestone 3:** graph view, link suggestions to accept or reject, banner embeddings
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release

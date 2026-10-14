@@ -20,6 +20,7 @@ from postloom.application.ports.clock import Clock
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.thread_parser import ParsedMessage, ThreadParser
 from postloom.application.ports.vault import Vault
+from postloom.application.use_cases.people import articles_discussed_by
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, Comment, Message, comment_key, infer_reply_targets
 from postloom.domain.errors import InvalidProfileUrlError
@@ -187,6 +188,11 @@ class SaveComments:
                 if (p := self._repository.get_person(c.author)) is not None
             }
             self._vault.write_discussion(article, post, comments, people)
+            for author in dict.fromkeys(c.author for c in added if not c.is_own):
+                person = people.get(author)
+                if person is not None:
+                    articles = articles_discussed_by(self._repository, author)
+                    self._vault.write_person(person, articles)
         return SaveResult(len(added), skipped, new_people, tuple(added))
 
     def _author(self, draft: DraftMessage, now: datetime) -> tuple[NodeId, bool]:

@@ -24,6 +24,13 @@ from postloom.application.use_cases.ingest_article import (
     IngestArticleCommand,
     IngestArticleResult,
 )
+from postloom.application.use_cases.people import (
+    Conversation,
+    PeopleDirectory,
+    PersonDetail,
+    PersonSummary,
+    UpdatePerson,
+)
 from postloom.application.use_cases.search_content import (
     Method,
     Passage,
@@ -40,6 +47,7 @@ __all__ = [
     "AskQuestion",
     "BrowseContent",
     "CommentView",
+    "Conversation",
     "DiscussionPreview",
     "DraftMessage",
     "IndexArticle",
@@ -49,6 +57,9 @@ __all__ = [
     "IngestArticleResult",
     "Method",
     "Passage",
+    "PeopleDirectory",
+    "PersonDetail",
+    "PersonSummary",
     "PreviewComments",
     "ReindexAll",
     "ReindexResult",
@@ -60,4 +71,5 @@ __all__ = [
     "SeedTopics",
     "Source",
     "TopicLink",
+    "UpdatePerson",
 ]

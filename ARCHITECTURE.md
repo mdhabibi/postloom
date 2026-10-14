@@ -148,6 +148,16 @@ parallel conversations inside one thread stay apart.
    `replied_to`. Each post's discussion is also written to `vault/discussions/` as nested
    blockquotes with `[[Person]]` links.
 
+## People
+
+A commenter pasted without a profile link gets a provisional id from their name
+(`person:~jane-example`). Adding the link later merges them into their permanent id
+(`person:jane-example`): comments are re-attributed, the old `authored` edges are
+superseded (kept as history) and replaced with new ones, and the provisional record is
+removed. If someone with that link already exists, the two records are combined
+(headline history, notes and tags are all kept). Headline changes are superseded
+observations, never overwritten.
+
 ## Web app
 
 `postloom start` serves a Starlette app on `127.0.0.1` with a static, build-free frontend

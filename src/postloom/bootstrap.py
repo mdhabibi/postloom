@@ -44,11 +44,13 @@ from postloom.application.use_cases import (
     BrowseContent,
     IndexArticle,
     IngestArticle,
+    PeopleDirectory,
     PreviewComments,
     ReindexAll,
     SaveComments,
     SearchContent,
     SeedTopics,
+    UpdatePerson,
 )
 from postloom.config import read_config
 
@@ -199,6 +201,12 @@ class Container:
 
     def save_comments(self) -> SaveComments:
         return SaveComments(self.repository, self.vault, self.clock)
+
+    def people(self) -> PeopleDirectory:
+        return PeopleDirectory(self.repository)
+
+    def update_person(self) -> UpdatePerson:
+        return UpdatePerson(self.repository, self.vault, self.clock)
 
     def browse(self) -> BrowseContent:
         return BrowseContent(self.repository)

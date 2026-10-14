@@ -71,6 +71,9 @@ class InMemoryGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return list(self._people.values())
 
+    def delete_person(self, person_id: NodeId) -> None:
+        self._people.pop(person_id, None)
+
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:

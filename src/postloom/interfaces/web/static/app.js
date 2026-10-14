@@ -212,6 +212,12 @@ function renderSidebar() {
 
   const visible = state.articles.filter((a) =>
     !state.topicFilter || a.topics.some((t) => t.name === state.topicFilter));
+  const peopleLink = document.getElementById("people-link");
+  peopleLink.textContent = state.status.people ? `People (${state.status.people})` : "People";
+  const onPeople = location.hash.startsWith("#/people") || location.hash.startsWith("#/person/");
+  peopleLink.setAttribute("aria-current", onPeople ? "page" : "false");
+  document.getElementById("settings-link").setAttribute("aria-current", location.hash === "#/settings" ? "page" : "false");
+
   const list = document.getElementById("article-list");
   const current = currentArticleId();
   list.replaceChildren(...(visible.length ? visible.map((a) => h("li", {},
@@ -375,7 +381,8 @@ function commentRow(comment, all) {
   const answering = target ? (target.is_own ? "you" : target.author_name) : null;
   return h("li", { class: `comment${comment.is_own ? " own" : ""}`, "data-depth": depth },
     h("p", { class: "comment-meta" },
-      h("strong", {}, comment.is_own ? "You" : comment.author_name),
+      h("strong", {}, comment.is_own ? "You"
+        : h("a", { href: `#/person/${encodeURIComponent(comment.author)}` }, comment.author_name)),
       answering ? h("span", { class: "replying" }, ` replying to ${answering}`) : null,
       comment.posted_label ? h("span", { class: "age" }, `, ${comment.posted_label}`) : null),
     comment.author_headline && !comment.is_own ? h("p", { class: "comment-headline" }, comment.author_headline) : null,
@@ -461,6 +468,7 @@ function openReviewStep(article, container, preview, onClose) {
       const messages = drafts.map(({ already_saved, known_person, ...m }) => ({ ...m, profile_url: m.profile_url || null }));
       const saved = await api("/api/comments", { method: "POST", body: { article_id: article.id, messages } });
       toast(saved.added ? `Saved ${saved.added} ${saved.added === 1 ? "message" : "messages"}` : "Nothing new to save");
+      await refresh();
       articleView(article.id);
     } catch (error) {
       status.replaceChildren(notice("error", error.message));
@@ -563,6 +571,94 @@ async function removeKey() {
   await api("/api/settings", { method: "PUT", body: { gemini_api_key: null } });
   toast("Saved key removed");
   settingsView();
+}
+
+// ---------------------------------------------------------------------------- people
+function initials(name) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+function avatar(name) {
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+  return h("span", { class: "initials", "aria-hidden": "true", vars: { "--thread": `var(--dye-${(hash % DYES) + 1})` } },
+    initials(name));
+}
+
+async function peopleView() {
+  const [{ people }] = await Promise.all([api("/api/people"), refresh()]);
+  const page = h("section", { class: "page" },
+    h("h1", {}, "People"),
+    h("p", { class: "lede" }, people.length
+      ? "Everyone who has commented on your posts, most engaged first."
+      : "No one yet. Open an article and add its comments to see who engages with your writing."));
+  if (people.length) {
+    page.append(h("ul", { class: "people-list" }, people.map((p) => h("li", {},
+      h("a", { class: "person-row", href: `#/person/${encodeURIComponent(p.id)}` }, avatar(p.name),
+        h("div", {}, h("h2", {}, p.name, p.profile_url ? null : h("span", { class: "badge" }, "no profile link")),
+          p.headline ? h("p", {}, p.headline) : null),
+        h("span", { class: "count" }, `${p.messages} ${p.messages === 1 ? "message" : "messages"}`,
+          h("br"), `${p.articles} ${p.articles === 1 ? "article" : "articles"}`))))));
+  }
+  setMain(page);
+  renderSidebar();
+}
+
+async function personView(id) {
+  let person;
+  try {
+    person = await api(`/api/person?id=${encodeURIComponent(id)}`);
+  } catch (error) {
+    return setMain(h("section", { class: "page" }, h("h1", {}, "Person not found"),
+      notice("error", error.message), h("a", { href: "#/people" }, "Back to people")));
+  }
+  const earlier = person.headlines.filter((x) => !x.current);
+  const profileField = h("input", { id: "profile_url", type: "url", value: person.profile_url || "",
+    placeholder: "https://www.linkedin.com/in/..." });
+  const notesField = h("textarea", { id: "person_notes", rows: 4 }, person.notes);
+
+  async function save(changes, message) {
+    try {
+      const { id: newId } = await api("/api/person", { method: "PUT", body: { id: person.id, ...changes } });
+      toast(message);
+      if (newId !== person.id) location.hash = `#/person/${encodeURIComponent(newId)}`;
+      else personView(newId);
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  setMain(h("section", { class: "page" },
+    h("div", { class: "person-head" }, avatar(person.name),
+      h("div", {}, h("h1", {}, person.name), person.headline ? h("p", {}, person.headline) : null)),
+    earlier.length ? h("ul", { class: "history", "aria-label": "Earlier headlines" },
+      earlier.map((x) => h("li", {}, `Earlier: ${x.headline}`))) : null,
+    h("p", { class: "byline" }, `${person.messages} ${person.messages === 1 ? "message" : "messages"} on ${person.articles} ${person.articles === 1 ? "article" : "articles"}. `,
+      person.profile_url ? h("a", { href: person.profile_url, target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn") : null),
+
+    h("div", { class: "person-section" },
+      h("h2", {}, "Profile link"),
+      person.profile_url ? null : h("p", { class: "hint" },
+        "Add their LinkedIn profile link so postloom recognises them on every post, even if their name is written differently."),
+      h("div", { class: "inline-field" },
+        h("label", { class: "visually-hidden", for: "profile_url" }, "LinkedIn profile link"), profileField,
+        h("button", { class: "button", type: "button",
+          onclick: () => save({ profile_url: profileField.value.trim() }, "Profile link saved") }, "Save link"))),
+
+    h("div", { class: "person-section" },
+      h("h2", {}, "Notes"),
+      field("person_notes", "Private notes about this person", notesField, "Only you see these. They're saved in your vault."),
+      h("button", { class: "button", type: "button",
+        onclick: () => save({ notes: notesField.value }, "Notes saved") }, "Save notes")),
+
+    h("div", { class: "person-section" },
+      h("h2", {}, "Conversations"),
+      person.conversations.map((c) => h("div", {},
+        h("h3", {}, h("a", { href: `#/article/${encodeURIComponent(c.article_id)}` }, c.article_title)),
+        threadsOf(c.messages).map((thread) => h("ol", { class: "thread" },
+          thread.map((m) => commentRow(m, c.messages)))))))));
+  renderSidebar();
 }
 
 // ---------------------------------------------------------------------------- chat
@@ -675,6 +771,8 @@ async function route() {
     }
     if (hash === "#/add") return addView();
     if (hash === "#/settings") return await settingsView();
+    if (hash === "#/people") return await peopleView();
+    if (hash.startsWith("#/person/")) return await personView(decodeURIComponent(hash.slice(9)));
     renderSidebar();
     return homeView();
   } catch (error) {

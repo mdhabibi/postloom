@@ -31,3 +31,11 @@ class Vault(Protocol):
     ) -> Path:
         """Write (or overwrite) the note holding every thread under ``post``."""
         ...
+
+    def write_person(self, person: Person, articles: Sequence[Article]) -> Path:
+        """Write (or overwrite) a person's note, linking the articles they discussed."""
+        ...
+
+    def remove_person(self, person: Person) -> None:
+        """Delete a person's note (after they were merged into another identity)."""
+        ...

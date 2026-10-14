@@ -52,6 +52,10 @@ class GraphRepository(Protocol):
 
     def list_people(self) -> Sequence[Person]: ...
 
+    def delete_person(self, person_id: NodeId) -> None:
+        """Remove a person node (after merging it into another identity)."""
+        ...
+
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         """Insert or replace the live edge for ``edge.key`` (source, target, kind).

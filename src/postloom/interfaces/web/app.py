@@ -118,6 +118,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
                     "chat": settings.chat_model,
                 },
                 "articles": len(container.repository.list_articles()),
+                "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
                 "features": {
                     "ingest": container.extractor is not None,
@@ -197,6 +198,23 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         result = state.container.save_comments().execute(NodeId(body.article_id), drafts)
         return JSONResponse(schemas.comments_saved(result), status_code=201)
 
+    def list_people(request: Request) -> Response:
+        people = state.container.people().list_people()
+        return JSONResponse({"people": [schemas.person_summary(p) for p in people]})
+
+    def get_person(request: Request) -> Response:
+        person_id = request.query_params.get("id", "")
+        detail = state.container.people().get_person(NodeId(person_id))
+        if detail is None:
+            return _error(404, "Person not found.")
+        return JSONResponse(schemas.person_detail(detail))
+
+    def update_person(request: Request, body: schemas.PersonUpdate) -> Response:
+        new_id = state.container.update_person().execute(
+            NodeId(body.id), profile_url=body.profile_url, notes=body.notes, tags=body.tags
+        )
+        return JSONResponse({"id": new_id})
+
     def index_page(request: Request) -> Response:
         return FileResponse(STATIC_DIR / "index.html")
 
@@ -215,6 +233,9 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
             methods=["POST"],
         ),
         Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
+        Route("/api/people", _json(list_people)),
+        Route("/api/person", _json(get_person)),
+        Route("/api/person", _json(update_person, schemas.PersonUpdate), methods=["PUT"]),
         Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
     ]
 

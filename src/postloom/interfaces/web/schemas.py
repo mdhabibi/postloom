@@ -11,10 +11,13 @@ from postloom.application.use_cases import (
     Answer,
     ArticleDetail,
     ArticleSummary,
+    CommentView,
     DiscussionPreview,
     DraftMessage,
     IndexResult,
     IngestArticleResult,
+    PersonDetail,
+    PersonSummary,
     SaveResult,
     SearchResults,
 )
@@ -64,6 +67,15 @@ class DraftMessageModel(_Request):
         )
 
 
+class PersonUpdate(_Request):
+    """Only the fields present are changed."""
+
+    id: str = Field(min_length=1, max_length=300)
+    profile_url: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=20_000)
+    tags: list[str] | None = Field(default=None, max_length=50)
+
+
 class SaveCommentsRequest(_Request):
     article_id: str = Field(min_length=1, max_length=300)
     messages: list[DraftMessageModel] = Field(min_length=1, max_length=1000)
@@ -102,23 +114,60 @@ def article_summary(summary: ArticleSummary) -> Json:
     }
 
 
+def comment_view(c: CommentView) -> Json:
+    return {
+        "id": c.id,
+        "author": c.author,
+        "author_name": c.author_name,
+        "author_headline": c.author_headline,
+        "is_own": c.is_own,
+        "text": c.text,
+        "posted_label": c.posted_label,
+        "thread": c.thread,
+        "reply_to": c.reply_to,
+        "reply_to_name": c.reply_to_name,
+        "depth": c.depth,
+    }
+
+
+def person_summary(p: PersonSummary) -> Json:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "headline": p.headline,
+        "profile_url": p.profile_url,
+        "messages": p.messages,
+        "articles": p.articles,
+    }
+
+
+def person_detail(detail: PersonDetail) -> Json:
+    return {
+        **person_summary(detail.summary),
+        "notes": detail.notes,
+        "tags": list(detail.tags),
+        "headlines": [
+            {
+                "headline": o.headline,
+                "observed_at": o.observed_at.isoformat(),
+                "current": o.is_current,
+            }
+            for o in detail.observations
+        ],
+        "conversations": [
+            {
+                "article_id": c.article_id,
+                "article_title": c.article_title,
+                "messages": [comment_view(m) for m in c.messages],
+            }
+            for c in detail.conversations
+        ],
+    }
+
+
 def article_detail(detail: ArticleDetail) -> Json:
     article = detail.article
-    discussion = [
-        {
-            "id": c.id,
-            "author_name": c.author_name,
-            "author_headline": c.author_headline,
-            "is_own": c.is_own,
-            "text": c.text,
-            "posted_label": c.posted_label,
-            "thread": c.thread,
-            "reply_to": c.reply_to,
-            "reply_to_name": c.reply_to_name,
-            "depth": c.depth,
-        }
-        for c in detail.discussion
-    ]
+    discussion = [comment_view(c) for c in detail.discussion]
     return {
         **article_summary(detail.summary),
         "body_markdown": article.body_markdown,

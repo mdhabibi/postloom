@@ -34,6 +34,7 @@ class ArticleSummary:
 @dataclass(frozen=True, slots=True)
 class CommentView:
     id: NodeId
+    author: NodeId
     author_name: str
     author_headline: str | None
     is_own: bool
@@ -77,32 +78,8 @@ class BrowseContent:
             if (post := self._repository.get_post(edge.source)) is not None
         ]
         comments = [c for post in posts for c in self._repository.comments_on(post.id)]
-        return ArticleDetail(
-            self._summarize(article), article, tuple(posts), self._discussion(comments)
-        )
-
-    def _discussion(self, comments: list[Comment]) -> tuple[CommentView, ...]:
-        by_id = {c.id: c for c in comments}
-        headlines: dict[NodeId, str | None] = {}
-        for comment in comments:
-            if comment.author not in headlines:
-                person = self._repository.get_person(comment.author)
-                headlines[comment.author] = person.headline if person else None
-        return tuple(
-            CommentView(
-                id=c.id,
-                author_name=c.author_name,
-                author_headline=headlines.get(c.author),
-                is_own=c.is_own,
-                text=c.text,
-                posted_label=c.posted_label,
-                thread=c.thread,
-                reply_to=c.reply_to,
-                reply_to_name=_author_of(by_id, c.reply_to),
-                depth=conversation_depth(c, by_id),
-            )
-            for c in _conversation_order(comments)
-        )
+        discussion = comment_views(self._repository, comments)
+        return ArticleDetail(self._summarize(article), article, tuple(posts), discussion)
 
     def _summarize(self, article: Article) -> ArticleSummary:
         names = {t.id: t.name for t in self._repository.list_topics()}
@@ -121,6 +98,32 @@ class BrowseContent:
             series=article.series.name if article.series else None,
             series_part=article.series_part,
         )
+
+
+def comment_views(repository: GraphRepository, comments: list[Comment]) -> tuple[CommentView, ...]:
+    """Comments as conversation rows: threaded order, depth and who each one answers."""
+    by_id = {c.id: c for c in comments}
+    headlines: dict[NodeId, str | None] = {}
+    for comment in comments:
+        if comment.author not in headlines:
+            person = repository.get_person(comment.author)
+            headlines[comment.author] = person.headline if person else None
+    return tuple(
+        CommentView(
+            id=c.id,
+            author=c.author,
+            author_name=c.author_name,
+            author_headline=headlines.get(c.author),
+            is_own=c.is_own,
+            text=c.text,
+            posted_label=c.posted_label,
+            thread=c.thread,
+            reply_to=c.reply_to,
+            reply_to_name=_author_of(by_id, c.reply_to),
+            depth=conversation_depth(c, by_id),
+        )
+        for c in _conversation_order(comments)
+    )
 
 
 def _author_of(by_id: dict[NodeId, Comment], comment_id: NodeId | None) -> str | None:

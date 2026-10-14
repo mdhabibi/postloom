@@ -7,6 +7,7 @@ Layout::
       posts/<slug>.md         the announcement post, links back to its article
       topics/<Topic Name>.md  one note per topic, so [[RAG]] resolves in Obsidian
       discussions/<slug>.md   every comment thread under a post, as conversations
+      people/<Name>.md        one note per commenter, so [[Jane Example]] resolves
 
 Notes carry YAML frontmatter (Obsidian "properties") and ``[[wikilinks]]``, so the folder
 works as an Obsidian vault with a graph view, with no plugins required. The SQLite index is
@@ -111,6 +112,32 @@ class MarkdownVault:
             lines.append("")
         _write_note(path, meta, "\n".join(lines))
         return path
+
+    def write_person(self, person: Person, articles: Sequence[Article]) -> Path:
+        path = self.root / "people" / f"{_safe_name(person.name) or 'person'}.md"
+        meta: dict[str, Any] = {
+            "id": person.id,
+            "type": "person",
+            "name": person.name,
+            "linkedin": person.profile.url if person.profile else None,
+            "headline": person.headline,
+            "tags": list(person.tags),
+            "articles": [_wikilink(f"articles/{a.slug}", a.title) for a in articles],
+        }
+        lines = [f"# {person.name}"]
+        if person.headline:
+            lines += ["", person.headline]
+        history = [o for o in person.observations if not o.is_current]
+        if history:
+            lines += ["", "## Earlier headlines", ""]
+            lines += [f"- {o.headline} (until {o.superseded_at:%Y-%m-%d})" for o in history]
+        if person.notes:
+            lines += ["", "## Notes", "", person.notes]
+        _write_note(path, meta, "\n".join(lines))
+        return path
+
+    def remove_person(self, person: Person) -> None:
+        (self.root / "people" / f"{_safe_name(person.name) or 'person'}.md").unlink(missing_ok=True)
 
     def write_topic(self, topic: Topic) -> Path:
         path = self.root / "topics" / f"{_topic_filename(topic)}.md"
