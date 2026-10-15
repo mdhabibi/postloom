@@ -186,6 +186,7 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
         titles = {a.id: a.title for a in container.repository.list_articles()}
     if not result.semantic:
         print("Link suggestions need a Gemini API key (they compare articles by meaning).")
+        print(_KEY_HELP.format(home=settings.home))
         return 1
     print(
         f"{_count(result.added, 'new suggestion')}, {result.updated} updated, "
@@ -198,6 +199,13 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
             print(f" {mark} {pair.similarity:.3f}  {_clip(first)}  <->  {_clip(second)}")
     print("Review suggestions on each article's page, or in the graph view.")
     return 0
+
+
+_KEY_HELP = (
+    "Save your key once in the app (postloom start, then Settings); it is kept in "
+    "{home}/config.json and used by every command. Or set it for this terminal only "
+    "with: export GEMINI_API_KEY=..."
+)
 
 
 def _clip(text: str, width: int = 40) -> str:
