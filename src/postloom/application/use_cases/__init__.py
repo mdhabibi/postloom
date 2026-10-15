@@ -31,6 +31,7 @@ from postloom.application.use_cases.people import (
     PersonSummary,
     UpdatePerson,
 )
+from postloom.application.use_cases.reply_drafts import DraftReply, ReplyDraft
 from postloom.application.use_cases.search_content import (
     Method,
     Passage,
@@ -50,6 +51,7 @@ __all__ = [
     "Conversation",
     "DiscussionPreview",
     "DraftMessage",
+    "DraftReply",
     "IndexArticle",
     "IndexResult",
     "IngestArticle",
@@ -63,6 +65,7 @@ __all__ = [
     "PreviewComments",
     "ReindexAll",
     "ReindexResult",
+    "ReplyDraft",
     "SaveComments",
     "SaveResult",
     "SearchContent",

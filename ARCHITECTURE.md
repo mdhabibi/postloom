@@ -33,7 +33,7 @@ layer imports an outer one, or if the domain imports anything outside the standa
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
 | `EmbeddingProvider` | text -> unit vectors | Gemini Embedding 2 (768 dims), fakes |
-| `ChatModel` | grounded answers | Gemini (`gemini-3.8-flash`), fakes |
+| `ChatModel` | grounded answers, reply drafts | Gemini (`gemini-3.8-flash`, with fallbacks), fakes |
 | `SearchIndex` | keyword + vector retrieval over chunks | SQLite (FTS5 + in-memory cosine) |
 
 Every adapter of a port must pass that port's contract tests (`tests/contract/`). Adding a
@@ -158,6 +158,21 @@ removed. If someone with that link already exists, the two records are combined
 (headline history, notes and tags are all kept). Headline changes are superseded
 observations, never overwritten.
 
+## Reply drafts
+
+`DraftReply` writes one reply to one message, as the author. The model sees the article
+and its post (so claims match what was actually written), the thread up to the message
+being answered (later messages are left out, and the target is marked), the commenter's
+headline, the author's private notes and their earlier exchanges on other articles, and up
+to five of the author's own replies from outside this thread as examples of tone only.
+The prompt forbids invented results, links or promises and asks for plain LinkedIn text;
+leftover quotes and Markdown bold are stripped deterministically. Reply drafts use their
+own model setting (`reply_model`), so users can pick a stronger model for the one task
+where quality is most visible, while routine parsing stays on the cheap one.
+
+Drafts are never stored and never posted. The loop closes through the normal paste flow:
+once the author has replied on LinkedIn, pasting the comments again saves the real reply.
+
 ## Web app
 
 `postloom start` serves a Starlette app on `127.0.0.1` with a static, build-free frontend
@@ -189,3 +204,4 @@ observations, never overwritten.
 | 2026-10-13 | Build-free vanilla JS frontend | Contributors need no Node toolchain; the app works offline. |
 | 2026-10-13 | Comments: model parses, rules infer, user reviews, save is deterministic | Parsing pasted LinkedIn text is the one guess in the pipeline; the user confirms it before anything is stored. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |
+| 2026-10-15 | Reply drafts are copied, never posted or stored | LinkedIn has no posting API for comments; the user stays the author, and the real reply enters the graph through the same paste and review flow. |

@@ -86,6 +86,7 @@ def test_status_reports_features_without_leaking_the_key(tmp_path: Path) -> None
         "semantic_search": True,
         "chat": True,
         "comments": True,
+        "reply_drafts": True,
     }
     assert status["articles"] == 0
     assert "RAG" in status["topics"]
@@ -305,7 +306,10 @@ def test_responses_are_not_cached_or_sniffed(tmp_path: Path) -> None:
 # -- people ---------------------------------------------------------------------------
 def with_discussion(tmp_path: Path) -> tuple[AsgiClient, str]:
     client = client_for(tmp_path)
-    article_id = ingest(client)["id"]
+    return with_discussion_on(client, ingest(client)["id"])
+
+
+def with_discussion_on(client: AsgiClient, article_id: str) -> tuple[AsgiClient, str]:
     pasted = fixture_text("comments", "caching_thread.txt")
     preview = client.post(
         "/api/comments/preview", json_body={"article_id": article_id, "text": pasted}
@@ -347,3 +351,39 @@ def test_person_notes_can_be_saved(tmp_path: Path) -> None:
     client, _ = with_discussion(tmp_path)
     client.put("/api/person", json_body={"id": "person:~john-sample", "notes": "Follow up"})
     assert client.get("/api/person?id=person:~john-sample").json["notes"] == "Follow up"
+
+
+# -- reply drafts ---------------------------------------------------------------------
+def test_draft_a_reply_to_a_comment(tmp_path: Path) -> None:
+    chat = FakeChat(reply="Thanks John, invalidation is next.")
+    client = client_for(tmp_path, chat=chat)
+    article_id = ingest(client)["id"]
+    with_discussion_on(client, article_id)
+    discussion = client.get(f"/api/article?id={article_id}").json["discussion"]
+    john = next(c for c in discussion if c["author_name"] == "John Sample")
+
+    reply = client.post(
+        "/api/reply-draft", json_body={"comment_id": john["id"], "guidance": "warmer"}
+    )
+    assert reply.status == 200, reply.text
+    assert reply.json == {
+        "comment_id": john["id"],
+        "replying_to": "John Sample",
+        "text": "Thanks John, invalidation is next.",
+        "already_answered": False,
+        "model": "llm:fake-chat",
+    }
+    assert "warmer" in chat.last_prompt
+
+
+def test_drafting_a_reply_to_your_own_message_is_400(tmp_path: Path) -> None:
+    client, article_id = with_discussion(tmp_path)
+    discussion = client.get(f"/api/article?id={article_id}").json["discussion"]
+    own = next(c for c in discussion if c["is_own"])
+    assert client.post("/api/reply-draft", json_body={"comment_id": own["id"]}).status == 400
+
+
+def test_reply_drafts_need_an_api_key(tmp_path: Path) -> None:
+    client = client_for(tmp_path, providers=False)
+    reply = client.post("/api/reply-draft", json_body={"comment_id": "comment:x"})
+    assert reply.status == 409

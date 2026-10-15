@@ -9,8 +9,8 @@ links and hashtags you used, and every comment and reply. Then you can chat with
 and its discussion, see who engages with your work, and draft replies grounded in what you
 actually wrote.
 
-> **Status: alpha.** Articles, search, chat, comment threads and people work end to end.
-> Reply drafts come next. See the [roadmap](#roadmap).
+> **Status: alpha.** Articles, search, chat, comment threads, people and reply drafts work
+> end to end. See the [roadmap](#roadmap).
 
 ## Why postloom
 
@@ -60,6 +60,15 @@ profile links so they're recognised next time. Pasting the same section again la
 adds the new messages. Set **Your name on LinkedIn** in Settings so your replies are
 recognised automatically.
 
+### Reply drafts
+
+Every comment has a **Draft reply** button. postloom writes a reply in your voice from your
+article, the whole conversation up to that message, what you know about the person
+(their headline, your notes, your earlier exchanges on other articles) and a few of your
+earlier replies as examples of your tone. Tell it how to change the next draft ("shorter",
+"mention part 4") and click **Redraft**. postloom never posts anything: edit the draft,
+copy it and reply on LinkedIn, then paste the comments again to save your real reply.
+
 ### People
 
 **People** lists everyone who has commented on your posts, most engaged first. A person's
@@ -91,6 +100,7 @@ uv run postloom reindex                                         # after upgradin
 | Model for restoring articles | `POSTLOOM_EXTRACTION_MODEL` | `gemini-3.5-flash-lite` |
 | Model for search | `POSTLOOM_EMBEDDING_MODEL` | `gemini-embedding-2` |
 | Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` (falls back to `gemini-3.5-flash-lite` when busy) |
+| Model for reply drafts (worth your strongest model) | `POSTLOOM_REPLY_MODEL` | `gemini-3.8-flash` |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
 | Your name on LinkedIn (recognises your replies) | `POSTLOOM_OWNER_NAME` | set in the app |
 
@@ -115,10 +125,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 - [x] Ingest use case, Markdown/Obsidian vault, architecture tests
 - [x] **Milestone 1 (MVP):** SQLite index, Gemini extraction and embeddings, hybrid
       search, local web app with paste-to-add, search and grounded chat
-- [ ] **Milestone 2:** comments, replies and people
+- [x] **Milestone 2:** comments, replies and people
   - [x] Paste a comment section, review, save as conversation chains; chat sees them
   - [x] People pages: who engaged with what, headline history, profile links, notes
-  - [ ] Reply drafts grounded in the article and the whole conversation
+  - [x] Reply drafts grounded in the article and the whole conversation
 - [ ] **Milestone 3:** graph view, link suggestions to accept or reject, banner embeddings
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
 

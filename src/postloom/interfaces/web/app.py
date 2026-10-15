@@ -116,6 +116,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
                     "extraction": settings.extraction_model,
                     "embedding": settings.embedding_model,
                     "chat": settings.chat_model,
+                    "reply": settings.reply_model,
                 },
                 "articles": len(container.repository.list_articles()),
                 "people": len(container.repository.list_people()),
@@ -125,6 +126,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
                     "semantic_search": container.embedder is not None,
                     "chat": container.chat is not None,
                     "comments": container.thread_parser is not None,
+                    "reply_drafts": (container.reply_chat or container.chat) is not None,
                 },
             }
         )
@@ -198,6 +200,12 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         result = state.container.save_comments().execute(NodeId(body.article_id), drafts)
         return JSONResponse(schemas.comments_saved(result), status_code=201)
 
+    def draft_reply(request: Request, body: schemas.ReplyDraftRequest) -> Response:
+        draft = state.container.draft_reply().execute(
+            NodeId(body.comment_id), guidance=body.guidance
+        )
+        return JSONResponse(schemas.reply_draft(draft))
+
     def list_people(request: Request) -> Response:
         people = state.container.people().list_people()
         return JSONResponse({"people": [schemas.person_summary(p) for p in people]})
@@ -233,6 +241,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
             methods=["POST"],
         ),
         Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
+        Route("/api/reply-draft", _json(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
         Route("/api/people", _json(list_people)),
         Route("/api/person", _json(get_person)),
         Route("/api/person", _json(update_person, schemas.PersonUpdate), methods=["PUT"]),

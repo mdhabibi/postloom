@@ -42,6 +42,7 @@ from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.use_cases import (
     AskQuestion,
     BrowseContent,
+    DraftReply,
     IndexArticle,
     IngestArticle,
     PeopleDirectory,
@@ -59,6 +60,7 @@ GEMINI_KEY_ENVS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 EXTRACTION_MODEL_ENV = "POSTLOOM_EXTRACTION_MODEL"
 EMBEDDING_MODEL_ENV = "POSTLOOM_EMBEDDING_MODEL"
 CHAT_MODEL_ENV = "POSTLOOM_CHAT_MODEL"
+REPLY_MODEL_ENV = "POSTLOOM_REPLY_MODEL"
 OWNER_NAME_ENV = "POSTLOOM_OWNER_NAME"
 MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
 DEFAULT_MIN_SIMILARITY = 0.66
@@ -81,6 +83,10 @@ class Settings:
     chat_model: str = field(
         default_factory=lambda: os.environ.get(CHAT_MODEL_ENV) or DEFAULT_CHAT_MODEL
     )
+    reply_model: str = field(
+        default_factory=lambda: os.environ.get(REPLY_MODEL_ENV) or DEFAULT_CHAT_MODEL
+    )
+    """Model for reply drafts; worth setting to your strongest model."""
     min_similarity: float = field(
         default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or DEFAULT_MIN_SIMILARITY)
     )
@@ -113,6 +119,7 @@ class Settings:
             ),
             embedding_model=pick(EMBEDDING_MODEL_ENV, "embedding_model", DEFAULT_EMBEDDING_MODEL),
             chat_model=pick(CHAT_MODEL_ENV, "chat_model", DEFAULT_CHAT_MODEL),
+            reply_model=pick(REPLY_MODEL_ENV, "reply_model", DEFAULT_CHAT_MODEL),
             min_similarity=float(cutoff) if cutoff else DEFAULT_MIN_SIMILARITY,
             owner_name=pick(OWNER_NAME_ENV, "owner_name", ""),
             api_key_source=source,
@@ -123,7 +130,7 @@ class Settings:
         return (
             f"Settings(home={self.home!s}, gemini_api_key={key}, "
             f"extraction_model={self.extraction_model}, embedding_model={self.embedding_model}, "
-            f"chat_model={self.chat_model})"
+            f"chat_model={self.chat_model}, reply_model={self.reply_model})"
         )
 
     @property
@@ -158,6 +165,8 @@ class Container:
     embedder: EmbeddingProvider | None = None
     chat: ChatModel | None = None
     thread_parser: ThreadParser | None = None
+    reply_chat: ChatModel | None = None
+    """Model for reply drafts; falls back to ``chat``."""
     min_similarity: float = 0.0
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
@@ -218,6 +227,12 @@ class Container:
             self.chat, self.search_index, self.repository, self.embedder, self.min_similarity
         )
 
+    def draft_reply(self) -> DraftReply:
+        chat = self.reply_chat or self.chat
+        if chat is None:
+            raise NotConfiguredError("Reply drafts need a Gemini API key. Add one in settings.")
+        return DraftReply(chat, self.repository)
+
     def search(self) -> SearchContent:
         return SearchContent(self.search_index, self.repository, self.embedder, self.min_similarity)
 
@@ -229,15 +244,17 @@ def build_container(
     embedder: EmbeddingProvider | None = None,
     chat: ChatModel | None = None,
     thread_parser: ThreadParser | None = None,
+    reply_chat: ChatModel | None = None,
 ) -> Container:
     """Wire the app. Gemini fills in any provider not passed explicitly, if a key is set."""
-    missing = None in (extractor, embedder, chat, thread_parser)
+    missing = None in (extractor, embedder, chat, thread_parser, reply_chat)
     if settings.gemini_api_key and missing:
         client = GeminiClient(settings.gemini_api_key)
         extractor = extractor or GeminiContentExtractor(client, settings.extraction_model)
         embedder = embedder or GeminiEmbeddings(client, settings.embedding_model)
         chat = chat or GeminiChat(client, settings.chat_model, CHAT_FALLBACK_MODELS)
         thread_parser = thread_parser or GeminiThreadParser(client, settings.extraction_model)
+        reply_chat = reply_chat or GeminiChat(client, settings.reply_model, CHAT_FALLBACK_MODELS)
     database = SqliteDatabase(settings.index_path)
     return Container(
         repository=SqliteGraphRepository(database),
@@ -248,6 +265,7 @@ def build_container(
         embedder=embedder,
         chat=chat,
         thread_parser=thread_parser,
+        reply_chat=reply_chat,
         min_similarity=settings.min_similarity,
         closers=(database.close,),
     )

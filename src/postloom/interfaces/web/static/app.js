@@ -386,7 +386,66 @@ function commentRow(comment, all) {
       answering ? h("span", { class: "replying" }, ` replying to ${answering}`) : null,
       comment.posted_label ? h("span", { class: "age" }, `, ${comment.posted_label}`) : null),
     comment.author_headline && !comment.is_own ? h("p", { class: "comment-headline" }, comment.author_headline) : null,
-    h("p", { class: "comment-text" }, comment.text));
+    h("p", { class: "comment-text" }, comment.text),
+    !comment.is_own && state.status?.features?.reply_drafts ? replyDrafter(comment) : null);
+}
+
+// ---------------------------------------------------------------------------- reply drafts
+function replyDrafter(comment) {
+  const box = h("div", { class: "reply-draft" });
+  const open = h("button", { class: "link-button", type: "button", onclick: () => {
+    open.hidden = true;
+    draftReply(comment, box, "", () => { open.hidden = false; });
+  } }, "Draft reply");
+  return h("div", { class: "comment-actions" }, open, box);
+}
+
+async function draftReply(comment, box, guidance, onClose) {
+  const first = comment.author_name.split(/\s+/)[0];
+  box.replaceChildren(h("p", { class: "hint" }, `Writing a reply to ${first}...`));
+  let draft;
+  try {
+    draft = await api("/api/reply-draft", { method: "POST", body: { comment_id: comment.id, guidance } });
+  } catch (error) {
+    box.replaceChildren(h("p", { class: "notice error" }, error.message),
+      h("div", { class: "actions" },
+        h("button", { class: "button", type: "button", onclick: () => draftReply(comment, box, guidance, onClose) }, "Try again"),
+        h("button", { class: "button", type: "button", onclick: () => { box.replaceChildren(); onClose(); } }, "Close")));
+    return;
+  }
+  const id = `draft-${comment.id.replace(/[^a-z0-9]/gi, "-")}`;
+  const text = h("textarea", { id, rows: Math.min(12, Math.max(4, Math.ceil(draft.text.length / 70))) });
+  text.value = draft.text;
+  const steer = h("input", { type: "text", id: `${id}-steer`, value: guidance,
+    placeholder: "Optional: shorter, more technical, mention part 4..." });
+  const copy = h("button", { class: "button button-primary", type: "button", onclick: async () => {
+    await copyText(text);
+    copy.textContent = "Copied";
+    setTimeout(() => { copy.textContent = "Copy reply"; }, 1600);
+  } }, "Copy reply");
+  box.replaceChildren(...[
+    h("label", { for: id }, `Draft reply to ${first}`),
+    draft.already_answered ? h("p", { class: "hint" }, "You've already replied to this message.") : null,
+    text,
+    h("label", { class: "visually-hidden", for: steer.id }, "How should the next draft change?"),
+    steer,
+    h("div", { class: "actions" },
+      copy,
+      h("button", { class: "button", type: "button", onclick: () => draftReply(comment, box, steer.value.trim(), onClose) }, "Redraft"),
+      h("button", { class: "button", type: "button", onclick: () => { box.replaceChildren(); onClose(); } }, "Close")),
+    h("p", { class: "hint" },
+      "postloom never posts anything. Edit, copy and reply on LinkedIn, then paste the comments again to save your reply."),
+  ].filter(Boolean));
+  text.focus();
+}
+
+async function copyText(textarea) {
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+  } catch {
+    textarea.select();
+    document.execCommand("copy");
+  }
 }
 
 function openPasteStep(article, container, onClose) {
@@ -539,7 +598,7 @@ async function settingsView() {
     h("p", { class: "path" }, s.vault),
     h("p", { class: "hint" }, "Open this folder in Obsidian to browse your articles as a graph."),
     h("h2", { class: "settings-heading" }, "Models"),
-    h("p", {}, `Restoring articles: ${s.models.extraction}. Search: ${s.models.embedding}. Chat: ${s.models.chat}.`),
+    h("p", {}, `Restoring articles: ${s.models.extraction}. Search: ${s.models.embedding}. Chat: ${s.models.chat}. Reply drafts: ${s.models.reply}.`),
     h("p", { class: "hint" }, `postloom ${s.version}`));
   setMain(form);
 }

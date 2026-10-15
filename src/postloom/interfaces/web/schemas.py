@@ -18,6 +18,7 @@ from postloom.application.use_cases import (
     IngestArticleResult,
     PersonDetail,
     PersonSummary,
+    ReplyDraft,
     SaveResult,
     SearchResults,
 )
@@ -74,6 +75,12 @@ class PersonUpdate(_Request):
     profile_url: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=20_000)
     tags: list[str] | None = Field(default=None, max_length=50)
+
+
+class ReplyDraftRequest(_Request):
+    comment_id: str = Field(min_length=1, max_length=300)
+    guidance: str = Field(default="", max_length=1000)
+    """Optional instruction, e.g. "shorter" or "mention part 4"."""
 
 
 class SaveCommentsRequest(_Request):
@@ -213,6 +220,16 @@ def comments_saved(result: SaveResult) -> Json:
         "added": result.added,
         "already_saved": result.already_saved,
         "new_people": result.new_people,
+    }
+
+
+def reply_draft(draft: ReplyDraft) -> Json:
+    return {
+        "comment_id": draft.comment_id,
+        "replying_to": draft.replying_to,
+        "text": draft.text,
+        "already_answered": draft.already_answered,
+        "model": draft.model,
     }
 
 
