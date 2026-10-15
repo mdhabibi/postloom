@@ -224,3 +224,14 @@ def test_links_need_an_api_key(tmp_path: Path, capsys: pytest.CaptureFixture[str
     main(["--home", str(tmp_path), "init"], make_container=no_key_container)
     assert main(["--home", str(tmp_path), "links"], make_container=no_key_container) == 1
     assert "need a Gemini API key" in capsys.readouterr().out
+
+
+def test_links_with_one_article_explain_why_nothing_was_compared(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ["--home", str(tmp_path)]
+    main([*home, "init"], make_container=fake_container)
+    main([*home, "ingest", *write_inputs(tmp_path)], make_container=fake_container)
+    capsys.readouterr()
+    main([*home, "links"], make_container=fake_container)
+    assert "1 article of 1 has embeddings" in capsys.readouterr().out

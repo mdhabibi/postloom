@@ -22,7 +22,7 @@ import array
 import math
 import operator
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from postloom.application.errors import ApplicationError
@@ -67,6 +67,9 @@ class SuggestResult:
     """Every compared pair, most similar first (for ``--explain`` and calibration)."""
     semantic: bool
     """False when there is no embedding provider, so nothing could be compared."""
+    compared: int = 0
+    """Articles that had embeddings in the current vector space."""
+    articles: int = 0
 
 
 # -- reading -------------------------------------------------------------------------
@@ -160,7 +163,7 @@ class SuggestLinks:
         }
         pairs = _all_pairs(centroids)
         wanted = self._choose(pairs)
-        return self._apply(wanted, pairs)
+        return replace(self._apply(wanted, pairs), compared=len(centroids), articles=len(articles))
 
     def _choose(self, pairs: list[PairScore]) -> dict[tuple[NodeId, NodeId], float]:
         """Each article keeps its closest neighbours above the cutoff; a pair is wanted

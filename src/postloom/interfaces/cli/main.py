@@ -192,6 +192,13 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
         f"{_count(result.added, 'new suggestion')}, {result.updated} updated, "
         f"{result.retired} retired (cutoff {settings.related_similarity:.2f})."
     )
+    if result.compared < 2:
+        print(
+            f"Nothing to compare yet: {_count(result.compared, 'article')} of "
+            f"{result.articles} {'has' if result.compared == 1 else 'have'} embeddings, and "
+            "suggestions need at least two. Add another article"
+            + (", or run `postloom reindex`." if result.compared < result.articles else ".")
+        )
     if args.explain:
         for pair in result.pairs:
             mark = "+" if pair.similarity >= settings.related_similarity else " "
