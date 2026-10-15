@@ -20,7 +20,7 @@ async function api(path, options = {}) {
   try {
     response = await fetch(path, init);
   } catch {
-    throw new Error("postloom isn't running. Start it again with `postloom start`.");
+    throw new Error("postloom isn't running. In your terminal, go to the postloom folder and run `uv run postloom start`, then reload this page.");
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);

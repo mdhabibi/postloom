@@ -210,7 +210,7 @@ class Container:
         if self.extractor is None:
             raise NotConfiguredError(
                 "No Gemini API key found. Create one at aistudio.google.com, then save it "
-                "in the app (postloom start, then Settings) so every command can use it, "
+                "in the app (uv run postloom start, then Settings) so every command can use it, "
                 "or run `export GEMINI_API_KEY=...` in this terminal."
             )
         return IngestArticle(self.extractor, self.repository, self.vault, self.clock)

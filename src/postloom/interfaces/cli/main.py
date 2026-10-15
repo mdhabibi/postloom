@@ -209,7 +209,7 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
 
 
 _KEY_HELP = (
-    "Save your key once in the app (postloom start, then Settings); it is kept in "
+    "Save your key once in the app (uv run postloom start, then Settings); it is kept in "
     "{home}/config.json and used by every command. Or set it for this terminal only "
     "with: export GEMINI_API_KEY=..."
 )
