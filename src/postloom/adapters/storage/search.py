@@ -101,6 +101,17 @@ class SqliteSearchIndex:
         )
         return [_hit(row, 0.0) for row in rows]
 
+    def vectors_by_node(self, space: str) -> dict[NodeId, list[Vector]]:
+        rows = self._database.query(
+            "SELECT node, vector FROM chunks WHERE vector_space = ? AND vector IS NOT NULL "
+            "ORDER BY node, idx",
+            (space,),
+        )
+        grouped: dict[NodeId, list[Vector]] = {}
+        for row in rows:
+            grouped.setdefault(NodeId(row["node"]), []).append(_unpack(row["vector"]).tolist())
+        return grouped
+
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]:
         expression = _fts_query(query)
         if not expression:

@@ -13,6 +13,7 @@ from postloom.application.use_cases.discussions import (
     SaveComments,
     SaveResult,
 )
+from postloom.application.use_cases.graph_view import GraphData, GraphLink, GraphNode, GraphOverview
 from postloom.application.use_cases.index_content import (
     IndexArticle,
     IndexResult,
@@ -23,6 +24,14 @@ from postloom.application.use_cases.ingest_article import (
     IngestArticle,
     IngestArticleCommand,
     IngestArticleResult,
+)
+from postloom.application.use_cases.links import (
+    Decision,
+    PairScore,
+    RelatedLink,
+    ReviewLink,
+    SuggestLinks,
+    SuggestResult,
 )
 from postloom.application.use_cases.people import (
     Conversation,
@@ -49,15 +58,21 @@ __all__ = [
     "BrowseContent",
     "CommentView",
     "Conversation",
+    "Decision",
     "DiscussionPreview",
     "DraftMessage",
     "DraftReply",
+    "GraphData",
+    "GraphLink",
+    "GraphNode",
+    "GraphOverview",
     "IndexArticle",
     "IndexResult",
     "IngestArticle",
     "IngestArticleCommand",
     "IngestArticleResult",
     "Method",
+    "PairScore",
     "Passage",
     "PeopleDirectory",
     "PersonDetail",
@@ -65,7 +80,9 @@ __all__ = [
     "PreviewComments",
     "ReindexAll",
     "ReindexResult",
+    "RelatedLink",
     "ReplyDraft",
+    "ReviewLink",
     "SaveComments",
     "SaveResult",
     "SearchContent",
@@ -73,6 +90,8 @@ __all__ = [
     "SearchResults",
     "SeedTopics",
     "Source",
+    "SuggestLinks",
+    "SuggestResult",
     "TopicLink",
     "UpdatePerson",
 ]

@@ -40,7 +40,7 @@ from postloom.application.errors import (
     ProviderError,
 )
 from postloom.application.ports.chat import ChatMessage, Role
-from postloom.application.use_cases import IngestArticleCommand
+from postloom.application.use_cases import Decision, IngestArticleCommand
 from postloom.bootstrap import Container, Settings
 from postloom.config import update_config
 from postloom.domain.errors import DomainError
@@ -167,12 +167,16 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
             published_on=body.published_on,
         )
         result = container.ingest_article().execute(command)
+        suggested = 0
         try:
             indexed = container.index_article().execute(result.article.id)
             index_error = None
         except ProviderError as error:
             indexed, index_error = None, str(error)
-        return JSONResponse(schemas.ingest_result(result, indexed, index_error), status_code=201)
+        else:
+            suggested = container.suggest_links().execute().added
+        view = schemas.ingest_result(result, indexed, index_error, suggested)
+        return JSONResponse(view, status_code=201)
 
     def search(request: Request) -> Response:
         query = request.query_params.get("q", "")
@@ -205,6 +209,19 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
             NodeId(body.comment_id), guidance=body.guidance
         )
         return JSONResponse(schemas.reply_draft(draft))
+
+    def graph(request: Request) -> Response:
+        return JSONResponse(schemas.graph_data(state.container.graph().execute()))
+
+    def review_link(request: Request, body: schemas.LinkReviewRequest) -> Response:
+        link = state.container.review_link().execute(
+            NodeId(body.article_id), NodeId(body.other_id), Decision(body.decision)
+        )
+        return JSONResponse(schemas.related_link(link))
+
+    def suggest_links(request: Request) -> Response:
+        result = state.container.suggest_links().execute()
+        return JSONResponse(schemas.suggest_result(result))
 
     def list_people(request: Request) -> Response:
         people = state.container.people().list_people()
@@ -242,6 +259,9 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         ),
         Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
         Route("/api/reply-draft", _json(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
+        Route("/api/graph", _json(graph)),
+        Route("/api/links", _json(review_link, schemas.LinkReviewRequest), methods=["POST"]),
+        Route("/api/links/suggest", _json(suggest_links), methods=["POST"]),
         Route("/api/people", _json(list_people)),
         Route("/api/person", _json(get_person)),
         Route("/api/person", _json(update_person, schemas.PersonUpdate), methods=["PUT"]),

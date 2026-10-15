@@ -9,8 +9,8 @@ links and hashtags you used, and every comment and reply. Then you can chat with
 and its discussion, see who engages with your work, and draft replies grounded in what you
 actually wrote.
 
-> **Status: alpha.** Articles, search, chat, comment threads, people and reply drafts work
-> end to end. See the [roadmap](#roadmap).
+> **Status: alpha.** Articles, search, chat, comment threads, people, reply drafts, related
+> article links and the graph view work end to end. See the [roadmap](#roadmap).
 
 ## Why postloom
 
@@ -77,6 +77,19 @@ you've had with them, grouped by article. Add someone's LinkedIn profile link on
 postloom merges their comments into one identity and recognises them on every future
 post. Each person also gets a note in `vault/people/`, so they appear in Obsidian's graph.
 
+### Related articles and the graph
+
+When you add an article, postloom compares it by meaning with everything you've written
+and suggests links to the closest ones. Each article page lists them under **Related
+articles**: **Accept** keeps a link, **Dismiss** hides it for good, and you can link any
+two articles by hand. Only links you accept are written to your vault (as `related:` in
+the article note), so Obsidian's graph shows your decisions, not a model's guesses.
+
+**Graph** (in the sidebar) shows your articles, topics, series and the people who
+discussed them. Suggested links are dashed until you review them; the list under the
+graph lets you go through them all at once. Hover a node to see its neighbours, click to
+open it, drag to pan and scroll to zoom.
+
 Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
 folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
 articles as a graph.
@@ -89,6 +102,7 @@ Everything the app does is also available from the terminal:
 uv run postloom ingest article.txt post.txt --date 2026-10-12   # add an article
 uv run postloom search "how do I know if my cache serves wrong answers" --explain
 uv run postloom reindex                                         # after upgrading
+uv run postloom links --explain                                 # how similar your articles are
 ```
 
 ### Settings
@@ -102,6 +116,7 @@ uv run postloom reindex                                         # after upgradin
 | Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` (falls back to `gemini-3.5-flash-lite` when busy) |
 | Model for reply drafts (worth your strongest model) | `POSTLOOM_REPLY_MODEL` | `gemini-3.8-flash` |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
+| Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | `0.75` |
 | Your name on LinkedIn (recognises your replies) | `POSTLOOM_OWNER_NAME` | set in the app |
 
 ## How it works
@@ -129,7 +144,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
   - [x] Paste a comment section, review, save as conversation chains; chat sees them
   - [x] People pages: who engaged with what, headline history, profile links, notes
   - [x] Reply drafts grounded in the article and the whole conversation
-- [ ] **Milestone 3:** graph view, link suggestions to accept or reject, banner embeddings
+- [ ] **Milestone 3:** graph and links
+  - [x] Related-article suggestions you accept or dismiss, or link by hand
+  - [x] Graph view of articles, topics, series and people
+  - [ ] Banner images in the graph and search
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
 
 ## Contributing

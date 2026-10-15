@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from postloom.application.defaults import DEFAULT_TOPICS
+from postloom.application.ports.extraction import ExtractedContent
 from postloom.bootstrap import Container, Settings, build_container
 from postloom.interfaces.cli.main import main
 from tests.fakes import FakeEmbedder, FakeExtractor, fixture_text, part3_extraction
@@ -189,3 +191,36 @@ def test_default_similarity_cutoff_is_calibrated(monkeypatch: pytest.MonkeyPatch
     assert Settings().min_similarity == 0.66
     monkeypatch.setenv("POSTLOOM_MIN_SIMILARITY", "0.7")
     assert Settings().min_similarity == 0.7
+
+
+# -- links ----------------------------------------------------------------------
+def extracting(extraction: ExtractedContent) -> Callable[[Settings], Container]:
+    def make(settings: Settings) -> Container:
+        offline = replace(settings, gemini_api_key=None)
+        return build_container(
+            offline, extractor=FakeExtractor(extraction), embedder=FakeEmbedder()
+        )
+
+    return make
+
+
+def test_links_explain_lists_every_compared_pair(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ["--home", str(tmp_path)]
+    for title in ("First article", "Second article"):
+        make = extracting(part3_extraction(title=title))
+        main([*home, "init"], make_container=make)
+        main([*home, "ingest", *write_inputs(tmp_path)], make_container=make)
+    capsys.readouterr()
+
+    assert main([*home, "links", "--explain"], make_container=fake_container) == 0
+    out = capsys.readouterr().out
+    assert "First article  <->  Second article" in out
+    assert "(cutoff 0.75)" in out
+
+
+def test_links_need_an_api_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    main(["--home", str(tmp_path), "init"], make_container=no_key_container)
+    assert main(["--home", str(tmp_path), "links"], make_container=no_key_container) == 1
+    assert "need a Gemini API key" in capsys.readouterr().out

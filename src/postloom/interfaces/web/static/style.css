@@ -488,3 +488,73 @@ main:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------------------------------------------------------------- related articles */
+.related { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); max-width: 68ch; }
+.related h2, .suggestions h2 { font: 600 var(--step-1)/1.3 var(--serif); margin: 0 0 0.75rem; }
+.related > .hint, .suggestions > .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem; }
+.related-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; gap: 0.5rem; }
+.related-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.6rem 0.85rem; background: var(--paper);
+  border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+.related-item.suggested { border-left-style: dashed; border-left-color: var(--muted); }
+.related-item a { color: var(--ink); font-weight: 600; text-decoration: none; }
+.related-item a:hover { text-decoration: underline; }
+.related-item .hint { margin: 0.1rem 0 0; color: var(--muted); font-size: 0.82rem; }
+.related-item .pair-sep { color: var(--muted); }
+.related-actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
+.link-by-hand { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.link-by-hand select {
+  flex: 1 1 16rem; min-width: 0; font: inherit; font-size: 0.92rem; color: var(--ink);
+  padding: 0.45rem 0.55rem; border: 1px solid var(--rule); border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+/* ---------------------------------------------------------------- graph */
+.graph-page { max-width: 72rem; }
+.graph-page h1 { font: 600 var(--step-2)/1.2 var(--serif); margin: 0 0 0.4rem; }
+.graph-page .lede { color: var(--muted); margin: 0 0 1rem; max-width: 44rem; }
+.graph-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
+.graph-controls .check { display: flex; align-items: center; gap: 0.35rem; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; margin: 0 0 0 auto; padding: 0; color: var(--muted); font-size: 0.82rem; }
+.graph-legend li { display: flex; align-items: center; gap: 0.35rem; }
+.key { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; }
+.key-topic { background: var(--dye-3); }
+.key-article { background: var(--paper); border: 2px solid var(--ink); }
+.key-person { background: var(--muted); width: 0.6rem; height: 0.6rem; }
+.key-linked, .key-suggested { width: 1.4rem; height: 0; border-radius: 0; border-top: 2px solid var(--accent); }
+.key-suggested { border-top: 2px dashed var(--muted); }
+.graph-canvas {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+.graph { display: block; width: 100%; height: min(70vh, 44rem); cursor: grab; touch-action: none; }
+.graph.dragging { cursor: grabbing; }
+.graph-empty { padding: 2rem; color: var(--muted); }
+.edge { stroke: var(--rule); stroke-width: 1.2; transition: opacity 120ms; }
+.edge-belongs_to { stroke-width: 1.4; opacity: 0.55; }
+.edge-part_of { stroke: var(--ink); stroke-dasharray: 2 3; opacity: 0.6; }
+.edge-related_to { stroke: var(--accent); stroke-width: 2.2; }
+.edge-related_to.suggested { stroke: var(--muted); stroke-dasharray: 6 4; stroke-width: 1.6; }
+.edge-discussed { stroke: #b9c1cb; }
+.node { stroke: var(--paper); stroke-width: 2; transition: opacity 120ms; }
+.node-article { fill: var(--paper); stroke: var(--ink); stroke-width: 2.2; }
+.node-series { fill: var(--ink); }
+.node-person { fill: var(--muted); }
+.graph-node { cursor: pointer; outline: none; }
+.graph-node:focus-visible .node { stroke: var(--accent); stroke-width: 4; }
+.label { font: 500 11px/1 var(--sans); fill: var(--ink); text-anchor: middle; pointer-events: none;
+  paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round; }
+.label-topic, .label-series { font-weight: 700; font-size: 12px; }
+.label-person { fill: var(--muted); font-size: 10px; }
+.graph.focused .graph-node:not(.near) { opacity: 0.18; }
+.graph.focused .edge:not(.near) { opacity: 0.08; }
+.graph.focused .edge.near { opacity: 1; }
+.suggestions { margin-top: 1.75rem; max-width: 52rem; }
+@media (max-width: 720px) {
+  .graph-legend { margin-left: 0; }
+  .related-item { flex-direction: column; align-items: flex-start; }
+}

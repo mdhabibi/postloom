@@ -38,7 +38,13 @@ class MarkdownVault:
         self.root = root
 
     # ------------------------------------------------------------------ public
-    def write_article(self, article: Article, post: Post, topics: Sequence[Topic]) -> Path:
+    def write_article(
+        self,
+        article: Article,
+        post: Post,
+        topics: Sequence[Topic],
+        related: Sequence[Article] = (),
+    ) -> Path:
         article_path = self.root / "articles" / f"{article.slug}.md"
         post_path = self.root / "posts" / f"{post.key}.md"
         article_link = _wikilink(f"articles/{article.slug}", article.title)
@@ -53,6 +59,7 @@ class MarkdownVault:
             "series": article.series.name if article.series else None,
             "series_part": article.series_part,
             "topics": [_wikilink(_topic_filename(t)) for t in topics],
+            "related": [_wikilink(f"articles/{r.slug}", r.title) for r in related],
             "post": post_link,
             "hashtags": list(article.hashtags),
             "entities": list(article.entities),

@@ -41,6 +41,8 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _ingest(args, settings, make_container)
         if args.command == "reindex":
             return _reindex(settings, make_container)
+        if args.command == "links":
+            return _links(args, settings, make_container)
         if args.command == "search":
             return _search(args, settings, make_container)
         if args.command == "start":
@@ -99,6 +101,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Rebuild the search index (after upgrading or changing the embedding model).",
     )
 
+    links = commands.add_parser(
+        "links",
+        parents=[common],
+        help="Suggest links between related articles (you accept or dismiss them in the app).",
+    )
+    links.add_argument(
+        "--explain", action="store_true", help="Show the similarity of every pair of articles."
+    )
+
     start = commands.add_parser(
         "start", parents=[common], help="Open postloom in your browser (runs on this computer)."
     )
@@ -141,6 +152,9 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
             print("            Run `postloom reindex` to retry.")
         else:
             print(f"  Search:   {_index_summary(indexed)}")
+            suggested = container.suggest_links().execute()
+            if suggested.added:
+                print(f"  Links:    {_count(suggested.added, 'related article')} suggested")
     return 0
 
 
@@ -154,13 +168,40 @@ def _reindex(settings: Settings, make_container: ContainerFactory) -> int:
     with make_container(settings) as container:
         result = container.reindex_all().execute()
         semantic = container.embedder is not None
+        links = container.suggest_links().execute()
     print(
         f"Indexed {_count(result.articles, 'article')}, {_count(result.chunks, 'section')} "
         f"({result.embedded} embedded, {result.reused} reused)."
     )
     if not semantic:
         print("No Gemini API key: keyword search only. Set GEMINI_API_KEY and reindex.")
+    elif links.added or links.retired:
+        print(f"Links: {links.added} new suggestions, {links.retired} retired.")
     return 0
+
+
+def _links(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
+    with make_container(settings) as container:
+        result = container.suggest_links().execute()
+        titles = {a.id: a.title for a in container.repository.list_articles()}
+    if not result.semantic:
+        print("Link suggestions need a Gemini API key (they compare articles by meaning).")
+        return 1
+    print(
+        f"{_count(result.added, 'new suggestion')}, {result.updated} updated, "
+        f"{result.retired} retired (cutoff {settings.related_similarity:.2f})."
+    )
+    if args.explain:
+        for pair in result.pairs:
+            mark = "+" if pair.similarity >= settings.related_similarity else " "
+            first, second = titles.get(pair.first, pair.first), titles.get(pair.second, pair.second)
+            print(f" {mark} {pair.similarity:.3f}  {_clip(first)}  <->  {_clip(second)}")
+    print("Review suggestions on each article's page, or in the graph view.")
+    return 0
+
+
+def _clip(text: str, width: int = 40) -> str:
+    return text if len(text) <= width else text[: width - 3] + "..."
 
 
 def _search(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:

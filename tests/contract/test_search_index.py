@@ -120,3 +120,16 @@ def test_chunks_of_returns_a_nodes_chunks_in_order(make: Callable[[], SearchInde
     chunks = populated(make).chunks_of(LEAKAGE)
     assert [(c.index, c.heading) for c in chunks] == [(0, ""), (1, "Fix")]
     assert populated(make).chunks_of(NodeId("article:none")) == []
+
+
+@adapters
+def test_vectors_by_node_groups_one_vector_space(make: Callable[[], SearchIndex]) -> None:
+    index = populated(make)
+    index.replace_chunks(
+        NodeId("article:other-space"),
+        [IndexedChunk(chunk(NodeId("article:other-space"), 0, "", "x"), [1, 1, 1], "other@3")],
+    )
+    grouped = index.vectors_by_node(SPACE)
+    assert set(grouped) == {LEAKAGE, CACHING}
+    assert [x for v in grouped[LEAKAGE] for x in v] == pytest.approx([1, 0, 0, 0.6, 0.8, 0])
+    assert index.vectors_by_node("missing@3") == {}

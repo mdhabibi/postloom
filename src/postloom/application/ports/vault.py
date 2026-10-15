@@ -13,10 +13,16 @@ from postloom.domain.people import Person
 
 
 class Vault(Protocol):
-    def write_article(self, article: Article, post: Post, topics: Sequence[Topic]) -> Path:
+    def write_article(
+        self,
+        article: Article,
+        post: Post,
+        topics: Sequence[Topic],
+        related: Sequence[Article] = (),
+    ) -> Path:
         """Write (or overwrite) the note for an article and its announcement post.
 
-        Returns the path of the article note.
+        ``related`` are the articles the author linked it to. Returns the article note path.
         """
         ...
 

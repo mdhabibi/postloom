@@ -14,13 +14,16 @@ from postloom.application.use_cases import (
     CommentView,
     DiscussionPreview,
     DraftMessage,
+    GraphData,
     IndexResult,
     IngestArticleResult,
     PersonDetail,
     PersonSummary,
+    RelatedLink,
     ReplyDraft,
     SaveResult,
     SearchResults,
+    SuggestResult,
 )
 
 Json = dict[str, Any]
@@ -81,6 +84,12 @@ class ReplyDraftRequest(_Request):
     comment_id: str = Field(min_length=1, max_length=300)
     guidance: str = Field(default="", max_length=1000)
     """Optional instruction, e.g. "shorter" or "mention part 4"."""
+
+
+class LinkReviewRequest(_Request):
+    article_id: str = Field(min_length=1, max_length=300)
+    other_id: str = Field(min_length=1, max_length=300)
+    decision: Literal["accept", "reject"]
 
 
 class SaveCommentsRequest(_Request):
@@ -172,6 +181,43 @@ def person_detail(detail: PersonDetail) -> Json:
     }
 
 
+def related_link(link: RelatedLink) -> Json:
+    return {
+        "id": link.article_id,
+        "title": link.title,
+        "grade": link.grade.value,
+        "origin": link.origin.value,
+        "similarity": link.similarity,
+    }
+
+
+def graph_data(graph: GraphData) -> Json:
+    return {
+        "nodes": [
+            {"id": n.id, "kind": n.kind, "label": n.label, "weight": n.weight} for n in graph.nodes
+        ],
+        "links": [
+            {
+                "source": link.source,
+                "target": link.target,
+                "kind": link.kind,
+                "grade": link.grade.value,
+                "weight": link.weight,
+            }
+            for link in graph.links
+        ],
+    }
+
+
+def suggest_result(result: SuggestResult) -> Json:
+    return {
+        "added": result.added,
+        "updated": result.updated,
+        "retired": result.retired,
+        "semantic": result.semantic,
+    }
+
+
 def article_detail(detail: ArticleDetail) -> Json:
     article = detail.article
     discussion = [comment_view(c) for c in detail.discussion]
@@ -190,6 +236,7 @@ def article_detail(detail: ArticleDetail) -> Json:
             for post in detail.posts
         ],
         "discussion": discussion,
+        "related": [related_link(link) for link in detail.related],
     }
 
 
@@ -234,7 +281,10 @@ def reply_draft(draft: ReplyDraft) -> Json:
 
 
 def ingest_result(
-    result: IngestArticleResult, index: IndexResult | None, index_error: str | None
+    result: IngestArticleResult,
+    index: IndexResult | None,
+    index_error: str | None,
+    suggested: int = 0,
 ) -> Json:
     indexed: Json | None = None
     if index is not None:
@@ -256,6 +306,7 @@ def ingest_result(
         "note_path": str(result.note_path),
         "index": indexed,
         "index_error": index_error,
+        "suggested_links": suggested,
     }
 
 

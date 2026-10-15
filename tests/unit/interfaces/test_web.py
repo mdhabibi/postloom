@@ -387,3 +387,45 @@ def test_reply_drafts_need_an_api_key(tmp_path: Path) -> None:
     client = client_for(tmp_path, providers=False)
     reply = client.post("/api/reply-draft", json_body={"comment_id": "comment:x"})
     assert reply.status == 409
+
+
+# -- links and graph --------------------------------------------------------------------
+def test_graph_shows_articles_topics_and_people(tmp_path: Path) -> None:
+    client, article_id = with_discussion(tmp_path)
+    graph = client.get("/api/graph").json
+    kinds = {n["id"]: n["kind"] for n in graph["nodes"]}
+    assert kinds[article_id] == "article"
+    assert sorted(n["label"] for n in graph["nodes"] if n["kind"] == "person") == [
+        "Jane Example",
+        "John Sample",
+    ]
+    assert {link["kind"] for link in graph["links"]} >= {"belongs_to", "discussed"}
+    assert all(link["source"] in kinds and link["target"] in kinds for link in graph["links"])
+
+
+def test_article_detail_lists_related_links(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = client.get(f"/api/article?id={ingest(client)['id']}").json
+    assert article["related"] == []
+
+
+def test_reviewing_a_link_to_an_unknown_article_is_400(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article_id = ingest(client)["id"]
+    body = {"article_id": article_id, "other_id": "article:nope", "decision": "accept"}
+    reply = client.post("/api/links", json_body=body)
+    assert reply.status == 400
+    assert "Unknown article" in reply.json["error"]
+
+
+def test_link_decisions_must_be_accept_or_reject(tmp_path: Path) -> None:
+    body = {"article_id": "article:a", "other_id": "article:b", "decision": "maybe"}
+    assert client_for(tmp_path).post("/api/links", json_body=body).status == 422
+
+
+def test_suggesting_links_reports_counts(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    ingest(client)
+    reply = client.post("/api/links/suggest", json_body={})
+    assert reply.status == 200
+    assert reply.json == {"added": 0, "updated": 0, "retired": 0, "semantic": True}

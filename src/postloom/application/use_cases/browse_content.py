@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from postloom.application.ports.repository import GraphRepository
+from postloom.application.use_cases.links import RelatedLink, related_links
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import Comment, conversation_depth
 from postloom.domain.graph import EdgeKind, NodeId
@@ -54,6 +55,8 @@ class ArticleDetail:
     posts: tuple[Post, ...]
     discussion: tuple[CommentView, ...] = ()
     """Every comment and reply under the article's posts, in conversation order."""
+    related: tuple[RelatedLink, ...] = ()
+    """Linked articles (accepted first), then suggestions; dismissed ones are left out."""
 
 
 class BrowseContent:
@@ -79,7 +82,8 @@ class BrowseContent:
         ]
         comments = [c for post in posts for c in self._repository.comments_on(post.id)]
         discussion = comment_views(self._repository, comments)
-        return ArticleDetail(self._summarize(article), article, tuple(posts), discussion)
+        related = tuple(related_links(self._repository, article.id))
+        return ArticleDetail(self._summarize(article), article, tuple(posts), discussion, related)
 
     def _summarize(self, article: Article) -> ArticleSummary:
         names = {t.id: t.name for t in self._repository.list_topics()}

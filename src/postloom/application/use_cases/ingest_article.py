@@ -25,6 +25,7 @@ from postloom.application.ports.extraction import (
 )
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
+from postloom.application.use_cases.links import accepted_related
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.graph import Edge, EdgeKind
 from postloom.domain.provenance import Grade, Origin, Provenance
@@ -110,7 +111,8 @@ class IngestArticle:
         self._repository.save_post(post)
         edges = self._sync_edges(article, post, topics)
 
-        note_path = self._vault.write_article(article, post, topics)
+        related = accepted_related(self._repository, article.id)
+        note_path = self._vault.write_article(article, post, topics, related)
         return IngestArticleResult(
             article=article,
             post=post,

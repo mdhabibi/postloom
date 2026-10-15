@@ -216,6 +216,7 @@ function renderSidebar() {
   peopleLink.textContent = state.status.people ? `People (${state.status.people})` : "People";
   const onPeople = location.hash.startsWith("#/people") || location.hash.startsWith("#/person/");
   peopleLink.setAttribute("aria-current", onPeople ? "page" : "false");
+  document.getElementById("graph-link").setAttribute("aria-current", location.hash === "#/graph" ? "page" : "false");
   document.getElementById("settings-link").setAttribute("aria-current", location.hash === "#/settings" ? "page" : "false");
 
   const list = document.getElementById("article-list");
@@ -335,6 +336,7 @@ async function articleView(id) {
     htmlBlock("prose", markdown(article.body_markdown)),
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
       h("h2", {}, "Announcement post"), h("p", {}, post.text))),
+    relatedSection(article),
     article.posts.length ? discussionSection(article) : null);
   const suggestions = article.discussion.length
     ? ["What did people ask in the comments?", "Summarize the key takeaways", "Which questions did I not answer yet?"]
@@ -343,6 +345,59 @@ async function articleView(id) {
     chatPanel(article.id, "Ask about this article",
       "Answers come only from this article, its post and its comments.", suggestions)));
   renderSidebar();
+}
+
+// ---------------------------------------------------------------------------- related articles
+function relatedSection(article) {
+  const section = h("section", { class: "related", "aria-label": "Related articles" });
+  fillRelated(section, article);
+  return section;
+}
+
+function fillRelated(section, article) {
+  const others = state.articles.filter((a) => a.id !== article.id);
+  if (!others.length) return section.replaceChildren();
+  const linked = new Set(article.related.map((r) => r.id));
+
+  const decide = async (other, decision, button) => {
+    button.disabled = true;
+    try {
+      await api("/api/links", { method: "POST", body: { article_id: article.id, other_id: other, decision } });
+      article = await api(`/api/article?id=${encodeURIComponent(article.id)}`);
+      fillRelated(section, article);
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message);
+    }
+  };
+  const rows = article.related.map((link) => {
+    const suggested = link.grade === "asserted";
+    const title = h("a", { href: `#/article/${encodeURIComponent(link.id)}` }, link.title);
+    const meta = suggested
+      ? `Suggested${link.similarity ? `, ${Math.round(link.similarity * 100)}% similar` : ""}`
+      : "Linked";
+    const actions = suggested
+      ? [h("button", { class: "button", type: "button", onclick: (e) => decide(link.id, "accept", e.currentTarget) }, "Accept"),
+         h("button", { class: "button", type: "button", onclick: (e) => decide(link.id, "reject", e.currentTarget) }, "Dismiss")]
+      : [h("button", { class: "link-button", type: "button", onclick: (e) => decide(link.id, "reject", e.currentTarget) }, "Remove")];
+    return h("li", { class: `related-item${suggested ? " suggested" : ""}` },
+      h("div", {}, title, h("p", { class: "hint" }, meta)), h("div", { class: "related-actions" }, actions));
+  });
+
+  const choices = others.filter((a) => !linked.has(a.id));
+  const select = h("select", { id: "link-other" },
+    h("option", { value: "" }, "Choose an article..."),
+    choices.map((a) => h("option", { value: a.id }, a.title)));
+  const linkButton = h("button", { class: "button", type: "button", onclick: (e) => {
+    if (select.value) decide(select.value, "accept", e.currentTarget);
+  } }, "Link");
+
+  section.replaceChildren(
+    h("h2", {}, "Related articles"),
+    rows.length ? h("ul", { class: "related-list" }, rows)
+      : h("p", { class: "hint" }, "No related articles yet. postloom suggests links when articles are similar in meaning, or you can link one yourself."),
+    choices.length ? h("div", { class: "link-by-hand" },
+      h("label", { class: "visually-hidden", for: "link-other" }, "Link another article"), select, linkButton) : null);
 }
 
 // ---------------------------------------------------------------------------- discussion
@@ -819,6 +874,227 @@ function revealSection(source) {
 }
 
 // ---------------------------------------------------------------------------- routing
+// ---------------------------------------------------------------------------- graph
+const GRAPH_LENGTHS = { belongs_to: 95, part_of: 60, related_to: 120, discussed: 55 };
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svgEl(tag, attrs = {}, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (key === "css") for (const [k, v] of Object.entries(value)) node.style.setProperty(k, v); // CSSOM, allowed by the CSP
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+async function graphView() {
+  let graph;
+  try {
+    [graph] = await Promise.all([api("/api/graph"), refresh()]);
+  } catch (error) {
+    return setMain(h("section", { class: "page" }, h("h1", {}, "Graph"), notice("error", error.message)));
+  }
+  const options = { people: true, suggested: true };
+  const canvas = h("div", { class: "graph-canvas" });
+  const toggle = (key, label) => h("label", { class: "check" },
+    h("input", { type: "checkbox", checked: true, onchange: (e) => { options[key] = e.target.checked; draw(); } }), label);
+  const draw = () => canvas.replaceChildren(graphSvg(graph, options));
+
+  const articles = graph.nodes.filter((n) => n.kind === "article");
+  setMain(h("section", { class: "graph-page" },
+    h("h1", {}, "Graph"),
+    h("p", { class: "lede" }, articles.length
+      ? "Your articles, their topics and series, and the people who discussed them. Drag to move around, scroll to zoom, select a node to open it."
+      : "Add an article and its topics, links and commenters will appear here."),
+    h("div", { class: "graph-controls" },
+      toggle("people", "People"), toggle("suggested", "Suggested links"),
+      h("ul", { class: "graph-legend", "aria-label": "Legend" },
+        h("li", {}, h("span", { class: "key key-topic" }), "Topic"),
+        h("li", {}, h("span", { class: "key key-article" }), "Article"),
+        h("li", {}, h("span", { class: "key key-person" }), "Person"),
+        h("li", {}, h("span", { class: "key key-linked" }), "Linked"),
+        h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
+    canvas,
+    suggestionList(graph)));
+  draw();
+}
+
+function suggestionList(graph) {
+  const titles = new Map(graph.nodes.map((n) => [n.id, n.label]));
+  const pending = graph.links.filter((l) => l.kind === "related_to" && l.grade === "asserted");
+  if (!pending.length) return null;
+  const decide = async (link, decision, button) => {
+    button.disabled = true;
+    try {
+      await api("/api/links", { method: "POST", body: { article_id: link.source, other_id: link.target, decision } });
+      await graphView();
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message);
+    }
+  };
+  return h("section", { class: "suggestions", "aria-label": "Suggested links" },
+    h("h2", {}, `${pending.length} suggested ${pending.length === 1 ? "link" : "links"} to review`),
+    h("p", { class: "hint" }, "Accepted links are added to both articles' notes in your vault. Dismissed ones are never suggested again."),
+    h("ul", { class: "related-list" }, pending.map((link) => h("li", { class: "related-item suggested" },
+      h("div", {},
+        h("a", { href: `#/article/${encodeURIComponent(link.source)}` }, titles.get(link.source)),
+        h("span", { class: "pair-sep" }, " and "),
+        h("a", { href: `#/article/${encodeURIComponent(link.target)}` }, titles.get(link.target)),
+        h("p", { class: "hint" }, link.weight ? `${Math.round(link.weight * 100)}% similar` : "Suggested")),
+      h("div", { class: "related-actions" },
+        h("button", { class: "button", type: "button", onclick: (e) => decide(link, "accept", e.currentTarget) }, "Accept"),
+        h("button", { class: "button", type: "button", onclick: (e) => decide(link, "reject", e.currentTarget) }, "Dismiss"))))));
+}
+
+function graphSvg(graph, options) {
+  const nodes = graph.nodes
+    .filter((n) => options.people || n.kind !== "person")
+    .map((n) => ({ ...n, r: nodeRadius(n) }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const links = graph.links.filter((l) => byId.has(l.source) && byId.has(l.target)
+    && (options.suggested || l.grade !== "asserted" || l.kind !== "related_to"));
+  if (!nodes.length) return h("p", { class: "hint graph-empty" }, "Nothing to show yet.");
+  layout(nodes, links, byId);
+
+  const neighbours = new Map(nodes.map((n) => [n.id, new Set([n.id])]));
+  for (const l of links) { neighbours.get(l.source).add(l.target); neighbours.get(l.target).add(l.source); }
+
+  const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y);
+  const pad = 70;
+  let view = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad,
+    w: Math.max(...xs) - Math.min(...xs) + 2 * pad, h: Math.max(...ys) - Math.min(...ys) + 2 * pad };
+  view.w = Math.max(view.w, 320); view.h = Math.max(view.h, 240);
+  const svg = svgEl("svg", { class: "graph", role: "img", "aria-label": `Graph of ${nodes.length} nodes and ${links.length} links` });
+  const setView = () => svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+  setView();
+
+  const edgeLayer = svgEl("g", { class: "edges" }, links.map((l) => {
+    const a = byId.get(l.source), b = byId.get(l.target);
+    const topic = l.kind === "belongs_to" ? b : null;
+    return svgEl("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, "data-a": l.source, "data-b": l.target,
+      class: `edge edge-${l.kind}${l.grade === "asserted" && l.kind === "related_to" ? " suggested" : ""}`,
+      css: topic ? { stroke: topicColor(topic.label) } : null });
+  }));
+  const nodeLayer = svgEl("g", { class: "nodes" }, nodes.map((n) => {
+    const href = n.kind === "article" ? `#/article/${encodeURIComponent(n.id)}`
+      : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}` : null;
+    const shape = svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${n.kind}`,
+      css: n.kind === "topic" ? { fill: topicColor(n.label) } : null });
+    const label = svgEl("text", { x: n.x, y: n.y + n.r + 12, class: `label label-${n.kind}` },
+      clip(n.label, n.kind === "person" ? 22 : 30));
+    const group = svgEl(href ? "a" : "g", { class: "graph-node", "data-id": n.id, href,
+      onclick: n.kind === "topic" ? () => { state.topicFilter = n.label; location.hash = "#/"; } : null,
+      onmouseenter: () => focusNode(svg, n.id, neighbours), onmouseleave: () => focusNode(svg, null),
+      onfocus: () => focusNode(svg, n.id, neighbours), onblur: () => focusNode(svg, null) },
+      svgEl("title", {}, nodeTitle(n)), shape, label);
+    return group;
+  }));
+  svg.append(edgeLayer, nodeLayer);
+  panAndZoom(svg, () => view, (v) => { view = v; setView(); });
+  return svg;
+}
+
+function nodeRadius(n) {
+  if (n.kind === "topic") return 10 + Math.min(Math.sqrt(n.weight) * 2.5, 12);
+  if (n.kind === "series") return 8;
+  if (n.kind === "article") return 7 + Math.min(Math.sqrt(n.weight), 5);
+  return 4 + Math.min(Math.sqrt(n.weight) * 1.5, 6);
+}
+
+function nodeTitle(n) {
+  const count = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  if (n.kind === "topic" || n.kind === "series") return `${n.label}: ${count(n.weight, "article", "articles")}`;
+  if (n.kind === "article") return n.weight ? `${n.label}: ${count(n.weight, "comment", "comments")}` : n.label;
+  return `${n.label}: ${count(n.weight, "message", "messages")}`;
+}
+
+function clip(text, width) {
+  return text.length <= width ? text : `${text.slice(0, width - 1).trimEnd()}…`;
+}
+
+function focusNode(svg, id, neighbours) {
+  svg.classList.toggle("focused", id !== null);
+  const near = id === null ? null : neighbours.get(id);
+  for (const g of svg.querySelectorAll(".graph-node")) g.classList.toggle("near", !!near && near.has(g.dataset.id));
+  for (const line of svg.querySelectorAll(".edge")) {
+    line.classList.toggle("near", !!near && (line.dataset.a === id || line.dataset.b === id));
+  }
+}
+
+function layout(nodes, links, byId) {
+  // A small force simulation, run to completion before drawing. Starting positions come
+  // from each id's hash, so the same library always gets the same picture.
+  nodes.forEach((n, i) => {
+    let hash = 0;
+    for (const ch of n.id) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+    const angle = (hash % 3600) / 3600 * 2 * Math.PI;
+    const radius = 40 + (i % 7) * 15 + (n.kind === "topic" ? 0 : 40);
+    n.x = Math.cos(angle) * radius; n.y = Math.sin(angle) * radius; n.vx = 0; n.vy = 0;
+  });
+  const steps = nodes.length > 400 ? 120 : 300;
+  for (let step = 0; step < steps; step++) {
+    const alpha = 1 - step / steps;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+        if (d2 > 90000) continue; // beyond ~300 units, nodes ignore each other
+        const force = (1400 * (0.3 + 0.7 * alpha)) / d2;
+        a.vx += dx * force; a.vy += dy * force; b.vx -= dx * force; b.vy -= dy * force;
+      }
+    }
+    for (const l of links) {
+      const a = byId.get(l.source), b = byId.get(l.target);
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const force = ((d - (GRAPH_LENGTHS[l.kind] || 80)) / d) * 0.06 * alpha;
+      a.vx += dx * force; a.vy += dy * force; b.vx -= dx * force; b.vy -= dy * force;
+    }
+    for (const n of nodes) {
+      n.vx -= n.x * 0.025; n.vy -= n.y * 0.025; // gravity keeps separate clusters close
+      n.vx *= 0.82; n.vy *= 0.82;
+      n.x += Math.max(-30, Math.min(30, n.vx)); n.y += Math.max(-30, Math.min(30, n.vy));
+    }
+  }
+}
+
+function panAndZoom(svg, getView, setView) {
+  let drag = null;
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".graph-node")) return;
+    drag = { x: event.clientX, y: event.clientY, view: getView() };
+    svg.setPointerCapture(event.pointerId);
+    svg.classList.add("dragging");
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const scale = drag.view.w / svg.clientWidth;
+    setView({ ...drag.view, x: drag.view.x - (event.clientX - drag.x) * scale, y: drag.view.y - (event.clientY - drag.y) * scale });
+  });
+  const stop = () => { drag = null; svg.classList.remove("dragging"); };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+  svg.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const view = getView();
+    const factor = Math.min(4, Math.max(0.25, Math.exp(event.deltaY * 0.0015)));
+    const box = svg.getBoundingClientRect();
+    const px = view.x + ((event.clientX - box.left) / box.width) * view.w;
+    const py = view.y + ((event.clientY - box.top) / box.height) * view.h;
+    setView({ x: px - (px - view.x) * factor, y: py - (py - view.y) * factor, w: view.w * factor, h: view.h * factor });
+  }, { passive: false });
+}
+
 async function route() {
   const hash = location.hash || "#/";
   try {
@@ -831,6 +1107,7 @@ async function route() {
     if (hash === "#/add") return addView();
     if (hash === "#/settings") return await settingsView();
     if (hash === "#/people") return await peopleView();
+    if (hash === "#/graph") return await graphView();
     if (hash.startsWith("#/person/")) return await personView(decodeURIComponent(hash.slice(9)));
     renderSidebar();
     return homeView();

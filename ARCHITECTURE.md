@@ -34,7 +34,7 @@ layer imports an outer one, or if the domain imports anything outside the standa
 | `Clock` | current time | system clock, fixed clock |
 | `EmbeddingProvider` | text -> unit vectors | Gemini Embedding 2 (768 dims), fakes |
 | `ChatModel` | grounded answers, reply drafts | Gemini (`gemini-3.8-flash`, with fallbacks), fakes |
-| `SearchIndex` | keyword + vector retrieval over chunks | SQLite (FTS5 + in-memory cosine) |
+| `SearchIndex` | keyword + vector retrieval over chunks, stored vectors per node | SQLite (FTS5 + in-memory cosine) |
 
 Every adapter of a port must pass that port's contract tests (`tests/contract/`). Adding a
 backend means adding its factory to the contract suite; nothing else changes.
@@ -118,6 +118,35 @@ knowledge graphs turn into noise.
    when the provider is unreachable, search degrades to keywords with a warning.
 4. *(Next)* graph expansion: a hit in Part 3 brings in its post, comments and series
    siblings as context for chat.
+
+## Links between articles
+
+`SuggestLinks` runs after every ingest and reindex. Each article is represented by the
+normalized centroid of its stored section vectors (no new embedding calls), every pair is
+scored by cosine similarity, and each article keeps its three closest neighbours above
+`related_similarity` (default 0.75, stricter than the search cutoff because whole articles
+in one field resemble each other more than a query resembles a passage). One `related_to`
+edge is stored per pair, from the smaller id to the larger.
+
+- New suggestions are `semantic` / `asserted`, with the similarity as weight and evidence.
+- A suggestion that no longer passes the cutoff is superseded; verified and rejected links
+  are never touched, so a dismissed pair is never suggested again.
+- `ReviewLink` supersedes the old edge and records the decision as a new one (verified or
+  rejected), or creates a `manual` link. Both article notes are then rewritten with the
+  accepted links in their `related:` frontmatter; suggestions never reach the vault.
+
+`postloom links --explain` prints every pair's similarity, for calibrating the cutoff on
+a real library.
+
+## Graph view
+
+`GraphOverview` returns topics and series that have articles, all articles, and people,
+with comments folded into derived `discussed` links (person -> article, weighted by
+messages) so the picture shows who engages with what without one node per message. The
+frontend lays it out with a small force simulation in plain JavaScript and draws SVG: no
+graph library, and the same library always gets the same picture because starting
+positions come from id hashes. Colours are applied through the CSSOM, never `style`
+attributes, so the strict CSP stays intact.
 
 ## Chat (grounded answers)
 
@@ -205,3 +234,6 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-10-13 | Comments: model parses, rules infer, user reviews, save is deterministic | Parsing pasted LinkedIn text is the one guess in the pipeline; the user confirms it before anything is stored. |
 | 2026-10-13 | Dataclasses in the domain, Pydantic at the boundaries | Keeps the domain dependency-free; validates untrusted LLM output where it enters. |
 | 2026-10-15 | Reply drafts are copied, never posted or stored | LinkedIn has no posting API for comments; the user stays the author, and the real reply enters the graph through the same paste and review flow. |
+| 2026-10-15 | Related articles by centroid similarity of stored section vectors | Free (no new embedding calls) and good enough to rank a personal library; per-chunk matching can come later behind the same use case. |
+| 2026-10-15 | Only accepted links are written to the vault | The vault is the user's record; suggestions live in the index until reviewed. |
+| 2026-10-15 | Hand-written force layout and SVG for the graph view | A few hundred nodes need no library; keeps the frontend build-free and CSP-strict. |

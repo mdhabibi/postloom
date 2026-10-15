@@ -6,7 +6,7 @@ vault. Implementations must pass ``tests/contract/test_search_index.py``.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -47,6 +47,10 @@ class SearchIndex(Protocol):
 
     def chunks_of(self, node: NodeId) -> Sequence[ChunkHit]:
         """Every chunk indexed for ``node``, in document order (score 0)."""
+        ...
+
+    def vectors_by_node(self, space: str) -> Mapping[NodeId, Sequence[Vector]]:
+        """Every stored vector in this vector space, grouped by the node it belongs to."""
         ...
 
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]: ...

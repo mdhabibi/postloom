@@ -43,14 +43,17 @@ from postloom.application.use_cases import (
     AskQuestion,
     BrowseContent,
     DraftReply,
+    GraphOverview,
     IndexArticle,
     IngestArticle,
     PeopleDirectory,
     PreviewComments,
     ReindexAll,
+    ReviewLink,
     SaveComments,
     SearchContent,
     SeedTopics,
+    SuggestLinks,
     UpdatePerson,
 )
 from postloom.config import read_config
@@ -63,6 +66,11 @@ CHAT_MODEL_ENV = "POSTLOOM_CHAT_MODEL"
 REPLY_MODEL_ENV = "POSTLOOM_REPLY_MODEL"
 OWNER_NAME_ENV = "POSTLOOM_OWNER_NAME"
 MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
+RELATED_SIMILARITY_ENV = "POSTLOOM_RELATED_SIMILARITY"
+DEFAULT_RELATED_SIMILARITY = 0.75
+"""Article-to-article similarity (centroids of section embeddings) needed for a suggested
+link. Whole articles in one field score higher than a query against a passage, so this is
+stricter than the search cutoff. Calibrate with `postloom links --explain`."""
 DEFAULT_MIN_SIMILARITY = 0.66
 """Calibrated for gemini-embedding-2 @768 on real articles: on-topic passages scored
 0.72-0.73, a same-field but wrong-topic query 0.62, an unrelated query 0.51."""
@@ -91,6 +99,12 @@ class Settings:
         default_factory=lambda: float(os.environ.get(MIN_SIMILARITY_ENV) or DEFAULT_MIN_SIMILARITY)
     )
     """Semantic matches below this cosine similarity are treated as unrelated."""
+    related_similarity: float = field(
+        default_factory=lambda: float(
+            os.environ.get(RELATED_SIMILARITY_ENV) or DEFAULT_RELATED_SIMILARITY
+        )
+    )
+    """Articles at least this similar get a suggested link."""
     owner_name: str = ""
     """The user's name as shown on LinkedIn, to recognise their own replies."""
     api_key_source: str = "environment"
@@ -111,6 +125,7 @@ class Settings:
             return value if isinstance(value, str) and value else default
 
         cutoff = os.environ.get(MIN_SIMILARITY_ENV) or saved.get("min_similarity")
+        related = os.environ.get(RELATED_SIMILARITY_ENV) or saved.get("related_similarity")
         return cls(
             home=resolved,
             gemini_api_key=key,
@@ -121,6 +136,7 @@ class Settings:
             chat_model=pick(CHAT_MODEL_ENV, "chat_model", DEFAULT_CHAT_MODEL),
             reply_model=pick(REPLY_MODEL_ENV, "reply_model", DEFAULT_CHAT_MODEL),
             min_similarity=float(cutoff) if cutoff else DEFAULT_MIN_SIMILARITY,
+            related_similarity=float(related) if related else DEFAULT_RELATED_SIMILARITY,
             owner_name=pick(OWNER_NAME_ENV, "owner_name", ""),
             api_key_source=source,
         )
@@ -168,6 +184,7 @@ class Container:
     reply_chat: ChatModel | None = None
     """Model for reply drafts; falls back to ``chat``."""
     min_similarity: float = 0.0
+    related_similarity: float = DEFAULT_RELATED_SIMILARITY
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
 
@@ -233,6 +250,17 @@ class Container:
             raise NotConfiguredError("Reply drafts need a Gemini API key. Add one in settings.")
         return DraftReply(chat, self.repository)
 
+    def suggest_links(self) -> SuggestLinks:
+        return SuggestLinks(
+            self.repository, self.search_index, self.embedder, self.clock, self.related_similarity
+        )
+
+    def review_link(self) -> ReviewLink:
+        return ReviewLink(self.repository, self.vault, self.clock)
+
+    def graph(self) -> GraphOverview:
+        return GraphOverview(self.repository)
+
     def search(self) -> SearchContent:
         return SearchContent(self.search_index, self.repository, self.embedder, self.min_similarity)
 
@@ -267,5 +295,6 @@ def build_container(
         thread_parser=thread_parser,
         reply_chat=reply_chat,
         min_similarity=settings.min_similarity,
+        related_similarity=settings.related_similarity,
         closers=(database.close,),
     )
