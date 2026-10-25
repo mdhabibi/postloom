@@ -10,6 +10,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from postloom.adapters.llm.base import (
+    EmbeddingKind,
+    EmbeddingReply,
+    JsonReply,
+    TextReply,
+    Turn,
+    Usage,
+)
+from postloom.adapters.llm.http import JsonObject
 from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
 from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest
@@ -179,3 +188,62 @@ class FakeThreadParser:
     def parse(self, pasted: str, post_text: str, owner_name: str | None) -> ParsedThread:
         self.calls.append((pasted, post_text, owner_name))
         return self.result
+
+
+@dataclass
+class FakeBackend:
+    """An LlmBackend without HTTP: canned JSON per schema, a fixed text reply, fixed usage.
+
+    Drives the real gateway, metering, budget and provider-neutral adapters in tests.
+    """
+
+    json_replies: dict[str, dict[str, object]] = field(default_factory=dict[str, dict[str, object]])
+    text_reply: str = "Use a time-ordered split [1]."
+    usage: tuple[int, int] = (1000, 200)
+    provider: str = "fake"
+    free: bool = False
+    models: list[str] = field(default_factory=lambda: ["fake-chat", "fake-small"])
+    calls: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
+    """(kind, model) for every call: "json", "text" or "embed"."""
+
+    def complete_json(
+        self,
+        model: str,
+        *,
+        system: str,
+        prompt: str,
+        schema: JsonObject,
+        schema_name: str,
+        temperature: float,
+        max_output_tokens: int,
+        effort: str = "low",
+    ) -> JsonReply:
+        self.calls.append(("json", model))
+        return JsonReply(dict(self.json_replies[schema_name]), self._usage())
+
+    def complete_text(
+        self,
+        model: str,
+        *,
+        system: str,
+        turns: Sequence[Turn],
+        temperature: float,
+        max_output_tokens: int,
+        effort: str = "low",
+    ) -> TextReply:
+        self.calls.append(("text", model))
+        return TextReply(self.text_reply, self._usage())
+
+    def embed(
+        self, model: str, texts: Sequence[str], *, kind: EmbeddingKind, dimensions: int | None
+    ) -> EmbeddingReply:
+        self.calls.append(("embed", model))
+        embedder = FakeEmbedder()
+        vectors = [embedder.embed_query(text) for text in texts]
+        return EmbeddingReply(vectors, Usage(input_tokens=10 * len(texts)))
+
+    def list_models(self) -> list[str]:
+        return list(self.models)
+
+    def _usage(self) -> Usage:
+        return Usage(input_tokens=self.usage[0], output_tokens=self.usage[1])

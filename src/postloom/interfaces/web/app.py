@@ -16,11 +16,12 @@ don't block other requests.
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
 from starlette.applications import Starlette
@@ -33,8 +34,11 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from postloom import __version__
+from postloom.adapters.llm.base import LlmBackend
+from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backend, provider_spec
 from postloom.application.errors import (
     ApplicationError,
+    BudgetExceededError,
     NotConfiguredError,
     ProviderAuthError,
     ProviderError,
@@ -42,10 +46,11 @@ from postloom.application.errors import (
 from postloom.application.ports.chat import ChatMessage, Role
 from postloom.application.use_cases import Decision, IngestArticleCommand
 from postloom.bootstrap import Container, Settings
-from postloom.config import update_config
+from postloom.config import read_config
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId
 from postloom.interfaces.web import schemas
+from postloom.settings import MODEL_TASKS, save_settings
 
 STATIC_DIR = Path(__file__).parent / "static"
 CSRF_HEADER = "x-postloom"
@@ -100,25 +105,56 @@ class AppState:
                 self._container = None
 
 
-def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) -> Starlette:
+BackendFactory = Callable[..., LlmBackend]
+
+
+def create_app(
+    load_settings: SettingsLoader,
+    make_container: ContainerFactory,
+    *,
+    connect: BackendFactory = build_backend,
+) -> Starlette:
+    """``connect`` builds a backend for "Test connection"; tests pass a fake one."""
     state = AppState(load_settings, make_container)
 
     def status(request: Request) -> Response:
         container, settings = state.container, state.settings
+        spec = settings.spec
+        index_spaces = container.search_index.vector_spaces()
+        articles = len(container.repository.list_articles())
+        space = container.embedder.name if container.embedder else ""
+        spent = container.usage().execute().cost_usd if container.usage_ledger else 0.0
         return JSONResponse(
             {
                 "version": __version__,
                 "home": str(settings.home),
                 "vault": str(settings.vault_dir),
-                "api_key": settings.api_key_source,
                 "owner_name": settings.owner_name,
-                "models": {
-                    "extraction": settings.extraction_model,
-                    "embedding": settings.embedding_model,
-                    "chat": settings.chat_model,
-                    "reply": settings.reply_model,
+                "provider": None
+                if spec is None
+                else {
+                    "id": spec.id,
+                    "label": spec.label,
+                    "configured": settings.configured,
+                    "key": settings.api_key_source,
+                    "base_url": settings.base_url,
+                    "local": spec.local,
                 },
-                "articles": len(container.repository.list_articles()),
+                "providers": [schemas.provider_spec(p) for p in PROVIDERS.values()],
+                "models": {task: settings.model(task) for task in MODEL_TASKS},
+                "embeddings": {
+                    "mode": settings.embeddings,
+                    "space": space,
+                    "local_model": settings.local_embedding_model,
+                    "available": container.embedder is not None,
+                    "needs_reindex": bool(
+                        container.embedder is not None and articles and not index_spaces.get(space)
+                    ),
+                },
+                "budget": {"monthly_usd": settings.monthly_budget_usd, "spent_usd": spent},
+                "ollama_context": settings.ollama_context,
+                "locked": sorted(settings.locked),
+                "articles": articles,
                 "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
                 "features": {
@@ -132,19 +168,54 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         )
 
     def update_settings(request: Request, body: schemas.SettingsUpdate) -> Response:
-        changes: dict[str, object] = {}
-        if "gemini_api_key" in body.model_fields_set:
-            if state.settings.api_key_source == "environment":
-                raise ApplicationError(
-                    "Your API key comes from the GEMINI_API_KEY environment variable, which "
-                    "overrides saved settings. Change it there, or unset it to use this screen."
-                )
-            changes["gemini_api_key"] = body.gemini_api_key or None
-        if "owner_name" in body.model_fields_set:
-            changes["owner_name"] = body.owner_name or None
-        update_config(state.settings.home, **changes)
+        changes = {name: getattr(body, name) for name in body.model_fields_set}
+        try:
+            save_settings(state.settings.home, **changes)
+        except ValueError as error:
+            raise ApplicationError(str(error)) from error
         state.reload()
         return status(request)
+
+    def test_connection(request: Request, body: schemas.ConnectionTest) -> Response:
+        current = state.settings
+        spec = provider_spec(body.provider)
+        same = current.provider == spec.id
+        key = body.api_key or (current.api_key if same else _other_key(current, spec))
+        url = body.base_url or (current.base_url if same else None) or spec.base_url
+        try:
+            backend = connect(
+                spec.id, api_key=key, base_url=url, ollama_context=current.ollama_context
+            )
+            models = backend.list_models()
+        except (ProviderError, NotConfiguredError) as error:
+            return JSONResponse({"ok": False, "message": str(error), "models": []})
+        label = "model" if len(models) == 1 else "models"
+        message = (
+            f"Connected to {spec.label}: {len(models)} {label} available."
+            if models
+            else f"Connected to {spec.label}."
+        )
+        if spec.local and not models:
+            message = f"{spec.label} is running but has no models yet. Run `ollama pull <model>`."
+        return JSONResponse({"ok": True, "message": message, "models": models})
+
+    def usage(request: Request) -> Response:
+        month = request.query_params.get("month") or None
+        return JSONResponse(schemas.usage_summary(state.container.usage().execute(month)))
+
+    def reindex(request: Request) -> Response:
+        container = state.container
+        result = container.reindex_all().execute()
+        links = container.suggest_links().execute()
+        return JSONResponse(
+            {
+                "articles": result.articles,
+                "chunks": result.chunks,
+                "embedded": result.embedded,
+                "reused": result.reused,
+                "suggested_links": links.added,
+            }
+        )
 
     def list_articles(request: Request) -> Response:
         articles = state.container.browse().list_articles()
@@ -171,7 +242,7 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         try:
             indexed = container.index_article().execute(result.article.id)
             index_error = None
-        except ProviderError as error:
+        except (ProviderError, BudgetExceededError) as error:
             indexed, index_error = None, str(error)
         else:
             suggested = container.suggest_links().execute().added
@@ -247,6 +318,13 @@ def create_app(load_settings: SettingsLoader, make_container: ContainerFactory) 
         Route("/", index_page),
         Route("/api/status", _json(status)),
         Route("/api/settings", _json(update_settings, schemas.SettingsUpdate), methods=["PUT"]),
+        Route(
+            "/api/settings/test",
+            _json(test_connection, schemas.ConnectionTest),
+            methods=["POST"],
+        ),
+        Route("/api/usage", _json(usage)),
+        Route("/api/reindex", _json(reindex), methods=["POST"]),
         Route("/api/articles", _json(list_articles)),
         Route("/api/articles", _json(ingest, schemas.IngestRequest), methods=["POST"]),
         Route("/api/article", _json(get_article)),
@@ -320,6 +398,8 @@ def _json(
             return await run_in_threadpool(handler, *args)
         except NotConfiguredError as error:
             return _error(409, str(error))
+        except BudgetExceededError as error:
+            return _error(402, str(error))
         except ProviderAuthError as error:
             return _error(401, str(error))
         except ProviderError as error:
@@ -328,6 +408,17 @@ def _json(
             return _error(400, str(error))
 
     return endpoint
+
+
+def _other_key(settings: Settings, spec: ProviderSpec) -> str | None:
+    """The key for a provider other than the current one, to test a switch before saving."""
+    for name in spec.key_envs:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    keys: object = read_config(settings.home).get("api_keys")
+    value = cast(dict[str, object], keys).get(spec.id) if isinstance(keys, dict) else None
+    return value if isinstance(value, str) and value else None
 
 
 def _error(status: int, message: str) -> JSONResponse:

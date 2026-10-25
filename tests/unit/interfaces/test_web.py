@@ -1,17 +1,21 @@
 """The web API, exercised in-process through ASGI."""
 
-from dataclasses import replace
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from postloom.application.defaults import DEFAULT_TOPICS
+from postloom.application.errors import ProviderAuthError
 from postloom.bootstrap import Container, Settings, build_container
-from postloom.config import read_config
+from postloom.config import read_config, update_config
 from postloom.interfaces.web.app import create_app
 from tests.asgi import AsgiClient
 from tests.fakes import (
+    FakeBackend,
     FakeChat,
     FakeEmbedder,
     FakeExtractor,
@@ -28,28 +32,24 @@ def client_for(
     tmp_path: Path,
     *,
     providers: bool = True,
-    env_key: bool = False,
     chat: FakeChat | None = None,
+    backend: FakeBackend | None = None,
+    connect: FakeConnect | None = None,
 ) -> AsgiClient:
+    """The app on real settings from ``tmp_path`` (with a real config.json), but never a
+    real provider: either fakes per port, or a fake backend behind the real gateway."""
     chat = chat or FakeChat()
 
     def load() -> Settings:
-        saved = read_config(tmp_path).get("gemini_api_key")
-        if env_key:
-            return Settings(home=tmp_path, gemini_api_key="env", api_key_source="environment")
-        return Settings(
-            home=tmp_path,
-            owner_name=read_config(tmp_path).get("owner_name") or "",
-            gemini_api_key=saved,
-            api_key_source="config" if saved else "missing",
-            min_similarity=0.0,
-        )
+        return replace(Settings.load(tmp_path), min_similarity=0.0)
 
     def make(settings: Settings) -> Container:
-        offline = replace(settings, gemini_api_key=None)  # never call real Gemini in tests
-        if not providers:
-            container = build_container(offline)
-        else:
+        offline = replace(settings, provider=None, api_key=None, embeddings="off")
+        if backend is not None:
+            container = build_container(
+                replace(offline, models=FAKE_MODELS), backend=backend, embedder=FakeEmbedder()
+            )
+        elif providers:
             container = build_container(
                 offline,
                 extractor=FakeExtractor(part3_extraction()),
@@ -57,10 +57,35 @@ def client_for(
                 chat=chat,
                 thread_parser=FakeThreadParser(),
             )
+        else:
+            container = build_container(offline)
         container.seed_topics().execute(DEFAULT_TOPICS)
         return container
 
-    return AsgiClient(create_app(load, make))
+    return AsgiClient(create_app(load, make, connect=connect or FakeConnect()))
+
+
+FAKE_MODELS = {
+    "extraction": "fake-small",
+    "comments": "fake-small",
+    "chat": "fake-chat",
+    "reply": "fake-chat",
+}
+
+
+@dataclass
+class FakeConnect:
+    """Stands in for build_backend in "Test connection"; records what it was asked."""
+
+    models: list[str] = field(default_factory=lambda: ["model-a", "model-b"])
+    error: Exception | None = None
+    calls: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+
+    def __call__(self, provider: str, **options: Any) -> FakeBackend:
+        self.calls.append({"provider": provider, **options})
+        if self.error is not None:
+            raise self.error
+        return FakeBackend(models=self.models)
 
 
 def ingest(client: AsgiClient, **overrides: Any) -> dict[str, Any]:
@@ -77,10 +102,17 @@ def test_index_page_is_served(tmp_path: Path) -> None:
     assert "postloom" in reply.text
 
 
-def test_status_reports_features_without_leaking_the_key(tmp_path: Path) -> None:
-    client = client_for(tmp_path, env_key=True)
-    status = client.get("/api/status").json
-    assert status["api_key"] == "environment"
+def test_status_reports_features_without_leaking_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "env-secret")
+    client = client_for(tmp_path)
+    reply = client.get("/api/status")
+    status = reply.json
+    assert status["provider"]["id"] == "gemini"
+    assert status["provider"]["key"] == "environment"
+    assert status["provider"]["configured"] is True
+    assert "env-secret" not in reply.text
     assert status["features"] == {
         "ingest": True,
         "semantic_search": True,
@@ -90,7 +122,8 @@ def test_status_reports_features_without_leaking_the_key(tmp_path: Path) -> None
     }
     assert status["articles"] == 0
     assert "RAG" in status["topics"]
-    assert "env" not in str(status["models"])
+    assert status["models"]["chat"] == "gemini-3.8-flash"
+    assert {p["id"] for p in status["providers"]} >= {"gemini", "anthropic", "openai", "ollama"}
 
 
 # -- articles -------------------------------------------------------------------------
@@ -123,7 +156,7 @@ def test_ingest_without_api_key_explains_what_to_do(tmp_path: Path) -> None:
     client = client_for(tmp_path, providers=False)
     reply = client.post("/api/articles", json_body={"article_text": "a", "post_text": "b"})
     assert reply.status == 409
-    assert "API key" in reply.json["error"]
+    assert "choose a provider" in reply.json["error"]
 
 
 @pytest.mark.parametrize(
@@ -238,39 +271,200 @@ def test_comments_need_an_api_key(tmp_path: Path) -> None:
 
 
 # -- settings -------------------------------------------------------------------------
-def test_saving_a_key_writes_config_and_reloads(tmp_path: Path) -> None:
+def test_choosing_a_provider_and_saving_its_key(tmp_path: Path) -> None:
     client = client_for(tmp_path)
-    assert client.get("/api/status").json["api_key"] == "missing"
+    assert client.get("/api/status").json["provider"] is None
 
-    reply = client.put("/api/settings", json_body={"gemini_api_key": "  new-key  "})
+    reply = client.put(
+        "/api/settings", json_body={"provider": "anthropic", "api_key": "  sk-secret  "}
+    )
 
-    assert reply.status == 200
-    assert reply.json["api_key"] == "config"
-    assert read_config(tmp_path)["gemini_api_key"] == "new-key"
-    assert "new-key" not in reply.text
+    assert reply.status == 200, reply.text
+    provider = reply.json["provider"]
+    assert (provider["id"], provider["key"], provider["configured"]) == (
+        "anthropic",
+        "config",
+        True,
+    )
+    assert reply.json["models"]["reply"] == "claude-sonnet-5-5"
+    assert read_config(tmp_path)["api_keys"] == {"anthropic": "sk-secret"}
+    assert "sk-secret" not in reply.text
+
+
+def test_keys_and_models_are_kept_per_provider(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    client.put("/api/settings", json_body={"provider": "gemini", "api_key": "g-key"})
+    client.put("/api/settings", json_body={"models": {"chat": "gemini-x"}})
+    client.put("/api/settings", json_body={"provider": "openai", "api_key": "o-key"})
+    assert client.get("/api/status").json["models"]["chat"] == "gpt-5.6-luna"
+
+    back = client.put("/api/settings", json_body={"provider": "gemini"}).json
+    assert back["provider"]["key"] == "config"
+    assert back["models"]["chat"] == "gemini-x"
+    assert read_config(tmp_path)["api_keys"] == {"gemini": "g-key", "openai": "o-key"}
 
 
 def test_clearing_the_key_removes_it(tmp_path: Path) -> None:
     client = client_for(tmp_path)
-    client.put("/api/settings", json_body={"gemini_api_key": "k"})
-    reply = client.put("/api/settings", json_body={"gemini_api_key": ""})
-    assert reply.json["api_key"] == "missing"
-    assert "gemini_api_key" not in read_config(tmp_path)
+    client.put("/api/settings", json_body={"provider": "gemini", "api_key": "k"})
+    reply = client.put("/api/settings", json_body={"api_key": ""})
+    assert reply.json["provider"]["key"] == "missing"
+    assert "api_keys" not in read_config(tmp_path)
 
 
-def test_owner_name_is_saved_without_touching_the_key(tmp_path: Path) -> None:
-    client = client_for(tmp_path, env_key=True)  # key from env must not block this
-    reply = client.put("/api/settings", json_body={"owner_name": "Alex Author"})
+def test_a_key_needs_a_provider(tmp_path: Path) -> None:
+    reply = client_for(tmp_path).put("/api/settings", json_body={"api_key": "k"})
+    assert reply.status == 400
+    assert "Choose a provider" in reply.json["error"]
+
+
+def test_unknown_providers_are_refused(tmp_path: Path) -> None:
+    reply = client_for(tmp_path).put("/api/settings", json_body={"provider": "nope"})
+    assert reply.status == 400
+
+
+def test_owner_name_is_saved_without_touching_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "env")  # a key from the environment must not block this
+    reply = client_for(tmp_path).put("/api/settings", json_body={"owner_name": "Alex Author"})
     assert reply.status == 200, reply.text
     assert read_config(tmp_path) == {"owner_name": "Alex Author"}
 
 
-def test_environment_key_cannot_be_overridden_from_the_browser(tmp_path: Path) -> None:
-    reply = client_for(tmp_path, env_key=True).put(
-        "/api/settings", json_body={"gemini_api_key": "x"}
-    )
+def test_environment_key_cannot_be_overridden_from_the_browser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "env")
+    reply = client_for(tmp_path).put("/api/settings", json_body={"api_key": "x"})
     assert reply.status == 400
-    assert "GEMINI_API_KEY" in reply.json["error"]
+    assert "environment variable" in reply.json["error"]
+
+
+def test_budget_and_embedding_mode_are_saved(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    reply = client.put(
+        "/api/settings", json_body={"monthly_budget_usd": 2.5, "embeddings": "off"}
+    ).json
+    assert reply["budget"] == {"monthly_usd": 2.5, "spent_usd": 0.0}
+    assert reply["embeddings"]["mode"] == "off"
+    assert client.put("/api/settings", json_body={"monthly_budget_usd": -1}).status == 422
+
+
+def test_an_old_gemini_config_keeps_working_and_is_migrated(tmp_path: Path) -> None:
+    update_config(tmp_path, gemini_api_key="old-key", chat_model="gemini-old")
+    client = client_for(tmp_path)
+    status = client.get("/api/status").json
+    assert status["provider"]["id"] == "gemini"
+    assert status["models"]["chat"] == "gemini-old"
+    assert status["embeddings"]["mode"] == "provider"  # keeps the index it built
+
+    client.put("/api/settings", json_body={"owner_name": "Alex"})
+    assert read_config(tmp_path) == {
+        "api_keys": {"gemini": "old-key"},
+        "embeddings": "provider",
+        "models": {"gemini": {"chat": "gemini-old"}},
+        "owner_name": "Alex",
+        "provider": "gemini",
+    }
+    assert client.get("/api/status").json["embeddings"]["mode"] == "provider"
+
+
+def test_connection_test_lists_models_without_saving(tmp_path: Path) -> None:
+    connect = FakeConnect()
+    client = client_for(tmp_path, connect=connect)
+    reply = client.post(
+        "/api/settings/test", json_body={"provider": "openrouter", "api_key": "try-me"}
+    )
+    assert reply.json == {
+        "ok": True,
+        "message": "Connected to OpenRouter: 2 models available.",
+        "models": ["model-a", "model-b"],
+    }
+    assert connect.calls[0]["api_key"] == "try-me"
+    assert connect.calls[0]["base_url"] == "https://openrouter.ai/api/v1"
+    assert read_config(tmp_path) == {}
+
+
+def test_connection_test_uses_the_saved_key(tmp_path: Path) -> None:
+    connect = FakeConnect()
+    client = client_for(tmp_path, connect=connect)
+    client.put("/api/settings", json_body={"provider": "anthropic", "api_key": "saved"})
+    client.post("/api/settings/test", json_body={"provider": "anthropic"})
+    assert connect.calls[-1]["api_key"] == "saved"
+
+
+def test_connection_test_reports_failures_plainly(tmp_path: Path) -> None:
+    connect = FakeConnect(error=ProviderAuthError("Anthropic rejected the API key."))
+    reply = client_for(tmp_path, connect=connect).post(
+        "/api/settings/test", json_body={"provider": "anthropic", "api_key": "bad"}
+    )
+    assert reply.status == 200
+    assert reply.json == {"ok": False, "message": "Anthropic rejected the API key.", "models": []}
+
+
+def test_ollama_without_models_says_how_to_get_one(tmp_path: Path) -> None:
+    reply = client_for(tmp_path, connect=FakeConnect(models=[])).post(
+        "/api/settings/test", json_body={"provider": "ollama"}
+    )
+    assert "ollama pull" in reply.json["message"]
+
+
+# -- usage and budget ---------------------------------------------------------------------
+ANSWER_JSON: dict[str, object] = {
+    "title": "Measuring What Matters - Part 3",
+    "summary": "How to measure a semantic cache.",
+    "topics": ["RAG"],
+    "entities": [],
+    "series_name": None,
+    "series_part": None,
+    "body_markdown": "## Metrics\n\nHit rate and precision.",
+}
+
+
+def test_model_calls_are_metered_per_task(tmp_path: Path) -> None:
+    update_config(tmp_path, prices={"fake-small": [1.0, 2.0], "fake-chat": [10.0, 20.0]})
+    backend = FakeBackend(json_replies={"article": ANSWER_JSON})
+    client = client_for(tmp_path, backend=backend)
+    article_id = ingest(client)["id"]
+    client.post("/api/ask", json_body={"question": "q", "article_id": article_id})
+
+    usage = client.get("/api/usage").json
+    by_task = {t["task"]: t for t in usage["by_task"]}
+    assert by_task["extraction"]["calls"] == 1
+    assert by_task["extraction"]["cost_usd"] == pytest.approx(0.0014)  # 1000 in, 200 out
+    assert by_task["chat"]["cost_usd"] == pytest.approx(0.014)
+    assert usage["cost_usd"] == pytest.approx(0.0154)
+    assert usage["unpriced_calls"] == 0
+
+
+def test_models_without_a_price_are_counted_but_flagged(tmp_path: Path) -> None:
+    backend = FakeBackend(json_replies={"article": ANSWER_JSON})
+    client = client_for(tmp_path, backend=backend)
+    ingest(client)
+    usage = client.get("/api/usage").json
+    assert (usage["calls"], usage["unpriced_calls"], usage["cost_usd"]) == (1, 1, 0.0)
+
+
+def test_the_budget_stops_paid_calls_once_spent(tmp_path: Path) -> None:
+    update_config(tmp_path, prices={"fake-chat": [10.0, 20.0]}, monthly_budget_usd=0.01)
+    client = client_for(tmp_path, backend=FakeBackend(json_replies={"article": ANSWER_JSON}))
+    article_id = ingest(client)["id"]  # the extraction model has no price: costs $0 here
+    ask = {"question": "anything", "article_id": article_id}
+    first = client.post("/api/ask", json_body=ask)
+    second = client.post("/api/ask", json_body=ask)
+    assert first.status == 200, first.text  # $0.014 spent, crossing the $0.01 budget
+    assert second.status == 402
+    assert "monthly budget of $0.01" in second.json["error"]
+
+
+def test_reindex_rebuilds_the_search_index(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    ingest(client)
+    reply = client.post("/api/reindex", json_body={})
+    assert reply.status == 200
+    assert reply.json["articles"] == 1
+    assert reply.json["embedded"] == 0  # unchanged sections reuse their vectors
 
 
 # -- security -------------------------------------------------------------------------
@@ -292,7 +486,7 @@ def test_local_hostnames_are_accepted(tmp_path: Path, host: str) -> None:
 def test_writes_without_the_csrf_header_are_refused(tmp_path: Path) -> None:
     client = client_for(tmp_path)
     client.default_headers = {}
-    reply = client.put("/api/settings", json_body={"gemini_api_key": "stolen"})
+    reply = client.put("/api/settings", json_body={"provider": "gemini", "api_key": "stolen"})
     assert reply.status == 403
     assert read_config(tmp_path) == {}
 

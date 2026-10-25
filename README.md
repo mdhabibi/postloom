@@ -16,8 +16,9 @@ actually wrote.
 
 - **Runs on your machine.** Your writing and the people you talk to stay on your computer.
   No account, no cloud, no telemetry.
-- **Bring your own key.** Uses your own Gemini or Claude API key, or a local model through
-  Ollama. Cheap models do the routine work; costs stay in cents.
+- **Any model, your key.** Gemini, Claude, OpenAI, OpenRouter, any OpenAI-compatible
+  server, or free local models with Ollama. Search runs on your computer for free. A usage
+  page shows what every task costs, and an optional monthly budget caps it.
 - **Your files, not a database you can't read.** Everything lives in a plain Markdown folder
   that is also a valid [Obsidian](https://obsidian.md) vault, so you get Obsidian's graph view
   for free and are never locked in.
@@ -40,14 +41,52 @@ uv run postloom start
 
 `postloom start` opens the app in your browser. On first run:
 
-1. Open **Settings** and paste a free Gemini API key from
-   [aistudio.google.com](https://aistudio.google.com/apikey). It's saved only in your
-   Postloom folder.
+1. Open **Settings**, pick a model provider, paste your API key and click **Test
+   connection**. Keys are saved only in your Postloom folder. No key? Choose Ollama and
+   run models on your own computer.
 2. Click **Add article**, paste a LinkedIn article and the post that announced it.
    postloom restores the formatting, files it under your topics and indexes it.
 3. Open the article to read it and ask questions about it, or use the search box to search
    and ask across everything you've written. Answers cite the sections they come from, and
    when nothing relevant exists postloom says so instead of guessing.
+
+### Choosing a provider
+
+| Provider | Key | Good for |
+|---|---|---|
+| Google Gemini | [aistudio.google.com](https://aistudio.google.com/apikey) | A free tier to start with |
+| Anthropic Claude | [console.anthropic.com](https://console.anthropic.com/settings/keys) | Reply drafts that sound like you |
+| OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | GPT models |
+| OpenRouter | [openrouter.ai](https://openrouter.ai/keys) | One key for hundreds of models, exact cost per call |
+| Ollama | none | Free and fully private; needs a capable computer |
+| Other OpenAI-compatible | depends | LM Studio, Groq, Mistral, DeepSeek, Together, vLLM... |
+
+Each task has its own model, with sensible defaults: a cheap model restores articles,
+reads comments and answers questions, and a stronger one writes reply drafts. Change any
+of them under **Models** in Settings.
+
+**What it costs.** Rough figures at list prices on 2026-10-25 (the usage page shows your
+real numbers):
+
+| | Gemini (default models) | Claude (Haiku, Sonnet for replies) |
+|---|---|---|
+| Adding a 2,000-word article | ~$0.01 | ~$0.002 |
+| A question about an article | ~$0.005 | under $0.001 |
+| A reply draft | ~$0.006 | ~$0.02 |
+| A month of daily articles, 5 questions and 2 replies a day | ~$1.40 | ~$1.40 |
+
+Search, related-article suggestions, the graph and the people pages cost nothing: they
+run on your computer. (On Intel Macs, where the local embedding runtime isn't available,
+postloom uses your provider's embeddings for search instead, or keywords.) Nothing runs in the background; a model is only called when you
+click something.
+
+**Local models with Ollama.** Install [Ollama](https://ollama.com), pull a model
+(`ollama pull <model>`), choose Ollama in Settings and click **Test connection** to pick
+from your installed models. Reading comments and chat work well with mid-size models.
+Restoring long articles needs a capable model (14B parameters or more, so 32 GB of memory
+helps) and can take several minutes. postloom sizes Ollama's context for every request and
+refuses, with a clear message, texts too long for the limit you set, instead of letting
+them be silently cut off.
 
 ### Comments and replies
 
@@ -103,21 +142,31 @@ uv run postloom ingest article.txt post.txt --date 2026-10-12   # add an article
 uv run postloom search "how do I know if my cache serves wrong answers" --explain
 uv run postloom reindex                                         # after upgrading
 uv run postloom links --explain                                 # how similar your articles are
+uv run postloom usage                                           # this month's calls and cost
 ```
 
 ### Settings
 
+Everything is set in the app. Environment variables win over saved settings, which is
+handy for servers and scripts.
+
 | Setting | Environment variable | Default |
 |---|---|---|
 | Data folder | `POSTLOOM_HOME` | `~/Postloom` |
-| Gemini API key | `GEMINI_API_KEY` (wins over the saved key) | set in the app |
-| Model for restoring articles | `POSTLOOM_EXTRACTION_MODEL` | `gemini-3.5-flash-lite` |
-| Model for search | `POSTLOOM_EMBEDDING_MODEL` | `gemini-embedding-2` |
-| Model for chat | `POSTLOOM_CHAT_MODEL` | `gemini-3.8-flash` (falls back to `gemini-3.5-flash-lite` when busy) |
-| Model for reply drafts (worth your strongest model) | `POSTLOOM_REPLY_MODEL` | `gemini-3.8-flash` |
-| Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | `0.66` |
-| Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | `0.75` |
+| Provider | `POSTLOOM_PROVIDER` | chosen in the app |
+| API key | `POSTLOOM_API_KEY`, or the provider's own (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) | saved in the app |
+| Server address (Ollama, custom) | `POSTLOOM_BASE_URL` | the provider's |
+| Models per task | `POSTLOOM_EXTRACTION_MODEL`, `POSTLOOM_COMMENTS_MODEL`, `POSTLOOM_CHAT_MODEL`, `POSTLOOM_REPLY_MODEL` | the provider's defaults |
+| Search embeddings | `POSTLOOM_EMBEDDINGS` (`local`, `provider` or `off`) | `local` |
+| Local embedding model | `POSTLOOM_LOCAL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` (for other languages: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) |
+| Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | calibrated per embedding model |
+| Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | calibrated per embedding model |
+| Monthly budget in US dollars | `POSTLOOM_MONTHLY_BUDGET` | none |
+| Largest context for Ollama models | `POSTLOOM_OLLAMA_CONTEXT` | `32768` tokens |
 | Your name on LinkedIn (recognises your replies) | `POSTLOOM_OWNER_NAME` | set in the app |
+
+Prices for models postloom doesn't know can be added to `config.json` as
+`"prices": {"model-id": [input, output]}` in dollars per million tokens.
 
 ## How it works
 
@@ -148,6 +197,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
   - [x] Related-article suggestions you accept or dismiss, or link by hand
   - [x] Graph view of articles, topics, series and people
   - [ ] Banner images in the graph and search
+- [x] **Providers:** Gemini, Claude, OpenAI, OpenRouter, Ollama and any OpenAI-compatible
+      server; free local embeddings; usage page and monthly budget
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
 
 ## Contributing
@@ -159,9 +210,12 @@ Contributions are welcome once the MVP lands. See [CONTRIBUTING.md](CONTRIBUTING
 postloom runs only on your computer and listens only on `127.0.0.1`, so nothing on your
 network can reach it. It refuses requests that don't come from its own page, so other
 websites you visit can't use it either. It stores the names, headlines and profile URLs of
-people who comment on your posts, locally and only for your own use. Every person can be exported or deleted in one step.
-If you use a hosted model, the text you ingest is sent to that provider under their terms;
-check them (free tiers may use your data for training) or use a local model.
+people who comment on your posts, locally and only for your own use.
+
+When you use a hosted model, the text a feature needs (the article you add, the comments
+you paste, the passages behind an answer) is sent to that provider under its terms. Check
+them: free tiers may use your data for training. Search embeddings run on your computer by
+default, and with Ollama nothing leaves your computer at all.
 
 postloom is not affiliated with or endorsed by LinkedIn.
 

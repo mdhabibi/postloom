@@ -20,20 +20,25 @@ src/postloom/
   application/   use cases + ports (interfaces)        (depends on domain)
   adapters/      implementations of ports              (depends on application, domain)
   interfaces/    CLI, web API, UI                      (calls use cases via bootstrap)
+  settings.py    environment + config.json -> Settings (provider, models, limits)
   bootstrap.py   composition root: wires adapters to ports
 ```
 
 Dependencies only point inward. `tests/architecture/test_layers.py` fails the build if a
 layer imports an outer one, or if the domain imports anything outside the standard library.
+Settings and configuration are outer too: only interfaces and the composition root read
+them, so use cases and adapters receive plain values.
 
 | Port | Purpose | Adapters |
 |---|---|---|
-| `ContentExtractor` | pasted text -> structured content | Gemini (REST, stdlib HTTP), fakes |
+| `ContentExtractor` | pasted text -> structured content | any provider (see below), fakes |
+| `ThreadParser` | pasted comment section -> messages | any provider, fakes |
 | `GraphRepository` | queryable index of nodes and edges | in-memory, SQLite |
 | `Vault` | Markdown source of truth | Obsidian-compatible folder |
 | `Clock` | current time | system clock, fixed clock |
-| `EmbeddingProvider` | text -> unit vectors | Gemini Embedding 2 (768 dims), fakes |
-| `ChatModel` | grounded answers, reply drafts | Gemini (`gemini-3.8-flash`, with fallbacks), fakes |
+| `EmbeddingProvider` | text -> unit vectors | local (fastembed, default), any provider with embeddings, fakes |
+| `ChatModel` | grounded answers, reply drafts | any provider, with fallback models, fakes |
+| `UsageLedger` | tokens and cost per month, model and task | in-memory, SQLite |
 | `SearchIndex` | keyword + vector retrieval over chunks, stored vectors per node | SQLite (FTS5 + in-memory cosine) |
 
 Every adapter of a port must pass that port's contract tests (`tests/contract/`). Adding a
@@ -94,6 +99,58 @@ Its output is validated by a Pydantic schema before it reaches the domain.
 Topics come from a fixed, user-editable taxonomy. Free-form LLM topic creation is how
 knowledge graphs turn into noise.
 
+## Model providers
+
+Model-backed ports are implemented once, provider-neutrally, on top of a small backend
+protocol (`adapters/llm/base.py`):
+
+```
+use case -> port (ContentExtractor, ThreadParser, ChatModel, EmbeddingProvider)
+         -> provider-neutral adapter (content.py, chat.py, embeddings.py)
+         -> LlmGateway: budget check, call, usage record
+         -> LlmBackend: Gemini | OpenAI-compatible | Anthropic | Ollama
+         -> HttpApi: retries, backoff, provider-neutral errors -> HttpTransport (stdlib)
+```
+
+- **Prompts and schemas live in one place** (`prompts.py`) as plain JSON Schema. Each
+  backend translates the schema to its dialect: Gemini's OpenAPI subset, a forced tool for
+  Anthropic, `response_format` for OpenAI-compatible servers, `format` for Ollama.
+- **Structured output is validated at the boundary** with the same Pydantic models for
+  every provider. Malformed or invalid JSON gets exactly one repair attempt that tells the
+  model what was wrong; cut-off answers are not retried.
+- **OpenAI-compatible servers disagree on parameters** (reasoning models reject
+  `temperature` and `max_tokens`, some lack JSON Schema output, some cap output tokens).
+  Instead of a table of quirks, the backend reads the server's 400 message, drops or swaps
+  the named parameter, retries, and remembers the fix per model. Context-window overflows
+  are reported, not retried.
+- **Ollama goes through its native API**, because only that accepts `num_ctx`; Ollama's
+  small default context silently drops text. Each request gets a context sized for it, and
+  texts that can't fit the user's limit are refused before anything is sent.
+- **Providers are data** (`providers.py`): label, key URL, defaults per task, whether they
+  offer embeddings, and a dated price table. Adding an OpenAI-compatible provider is one
+  entry; a new protocol is one backend module plus an entry.
+
+### Embeddings
+
+Search embeddings run locally by default (fastembed on ONNX Runtime, `bge-small-en-v1.5`,
+~70 MB downloaded once), so search, related links and the graph are free, private, work
+offline and don't depend on the chat provider (Anthropic has no embedding API). Users can
+switch to their provider's embeddings or turn them off. Each model's vectors live in their
+own named vector space and are never compared with another's; when the configured space
+has no vectors yet, the app offers to rebuild the index. Similarity cutoffs are calibrated
+per embedding model, with an explicit setting winning. Gemini setups created before local
+embeddings keep Gemini embeddings, so their index stays valid.
+
+### Usage and budget
+
+Every model call is recorded per month, provider, model and task (articles, comments,
+chat, reply drafts, embeddings). Cost is the provider's own figure where it reports one
+(OpenRouter), otherwise tokens times the price table, with the user's prices winning;
+calls to models without a known price are counted and flagged, never guessed. The
+optional monthly budget is checked before every paid call against what's already spent,
+so the call that crosses it completes and the next one is refused with a clear message.
+Models on the user's computer are free and never blocked.
+
 ## Storage
 
 - **Vault (source of truth)**: Markdown with YAML frontmatter and `[[wikilinks]]`,
@@ -103,7 +160,9 @@ knowledge graphs turn into noise.
   by stable id; edges keep their history in the same table, with a partial unique index
   guaranteeing one live edge per (source, target, kind). Schema changes are numbered
   migrations tracked with `PRAGMA user_version`, so an existing `index.db` is upgraded on
-  first open. File databases run in WAL mode.
+  first open. File databases run in WAL mode. The usage ledger is a table in the same
+  file; unlike the rest of the index it isn't rebuildable, which is acceptable for
+  history that only feeds the usage page and the budget.
 
 ## Retrieval
 
@@ -237,3 +296,8 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-10-15 | Related articles by centroid similarity of stored section vectors | Free (no new embedding calls) and good enough to rank a personal library; per-chunk matching can come later behind the same use case. |
 | 2026-10-15 | Only accepted links are written to the vault | The vault is the user's record; suggestions live in the index until reviewed. |
 | 2026-10-15 | Hand-written force layout and SVG for the graph view | A few hundred nodes need no library; keeps the frontend build-free and CSP-strict. |
+| 2026-10-25 | Bring-your-own-key for any provider; no shared key or hosted proxy | An embedded key leaks from open source within days; a proxy would make postloom a hosted service holding everyone's data. |
+| 2026-10-25 | One backend protocol, provider-neutral adapters, prompts and schemas in one place | A prompt fix applies to every provider; a new provider is one backend, not four adapters. |
+| 2026-10-25 | Adapt to OpenAI-compatible servers from their 400 messages | Dozens of servers differ in small ways that change often; reacting to the server's own explanation stays correct where a quirk table goes stale. |
+| 2026-10-25 | Local embeddings (fastembed) by default | Free, private and offline search for every provider, including those without embeddings. |
+| 2026-10-25 | Metering in a gateway that every model call goes through | No call can skip the budget or the usage page, whatever adapter makes it. |

@@ -31,6 +31,10 @@ class HttpTransport(Protocol):
         """POST ``payload`` as JSON. Raises ``OSError`` only when nothing came back."""
         ...
 
+    def get_json(self, url: str, headers: dict[str, str], timeout: float) -> HttpResponse:
+        """GET a JSON document. Raises ``OSError`` only when nothing came back."""
+        ...
+
 
 class CertificateError(OSError):
     """The server's TLS certificate could not be verified. Retrying won't help."""
@@ -67,6 +71,13 @@ class UrllibTransport:
             method="POST",
             headers={"Content-Type": "application/json", **headers},
         )
+        return self._send(request, timeout)
+
+    def get_json(self, url: str, headers: dict[str, str], timeout: float) -> HttpResponse:
+        request = urllib.request.Request(url, method="GET", headers=headers)
+        return self._send(request, timeout)
+
+    def _send(self, request: urllib.request.Request, timeout: float) -> HttpResponse:
         try:
             with urllib.request.urlopen(request, timeout=timeout, context=self._context) as reply:
                 return HttpResponse(reply.status, _parse(reply.read()))

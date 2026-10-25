@@ -10,7 +10,7 @@ from pathlib import Path
 
 from postloom import __version__
 from postloom.application.defaults import DEFAULT_TOPICS
-from postloom.application.errors import ApplicationError, ProviderError
+from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.use_cases import (
     IndexResult,
     IngestArticleCommand,
@@ -41,6 +41,8 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _ingest(args, settings, make_container)
         if args.command == "reindex":
             return _reindex(settings, make_container)
+        if args.command == "usage":
+            return _usage(settings, make_container)
         if args.command == "links":
             return _links(args, settings, make_container)
         if args.command == "search":
@@ -110,6 +112,10 @@ def _parser() -> argparse.ArgumentParser:
         "--explain", action="store_true", help="Show the similarity of every pair of articles."
     )
 
+    commands.add_parser(
+        "usage", parents=[common], help="Show this month's model calls, tokens and cost."
+    )
+
     start = commands.add_parser(
         "start", parents=[common], help="Open postloom in your browser (runs on this computer)."
     )
@@ -141,13 +147,14 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
         post_url=args.post_url,
         published_on=args.date,
     )
-    print("Restoring the article with Gemini; this can take up to a minute...")
     with make_container(settings) as container:
+        provider = settings.spec.label if settings.spec else "the model"
+        print(f"Restoring the article with {provider}; this can take a minute or more...")
         result = container.ingest_article().execute(command)
         _print_result(result)
         try:
             indexed = container.index_article().execute(result.article.id)
-        except ProviderError as error:
+        except (ProviderError, BudgetExceededError) as error:
             print(f"  Warning:  Saved, but not indexed for search ({error}).")
             print("            Run `postloom reindex` to retry.")
         else:
@@ -160,7 +167,7 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
 
 def _index_summary(result: IndexResult) -> str:
     if not result.semantic:
-        return f"{result.chunks} sections indexed for keyword search (no API key for meaning)."
+        return f"{result.chunks} sections indexed for keyword search (embeddings are off)."
     return f"{result.chunks} sections indexed ({result.embedded} embedded, {result.reused} reused)."
 
 
@@ -174,7 +181,7 @@ def _reindex(settings: Settings, make_container: ContainerFactory) -> int:
         f"({result.embedded} embedded, {result.reused} reused)."
     )
     if not semantic:
-        print("No Gemini API key: keyword search only. Set GEMINI_API_KEY and reindex.")
+        print("Embeddings are off, so search uses keywords only. Turn them on in Settings.")
     elif links.added or links.retired:
         print(f"Links: {links.added} new suggestions, {links.retired} retired.")
     return 0
@@ -184,13 +191,14 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
     with make_container(settings) as container:
         result = container.suggest_links().execute()
         titles = {a.id: a.title for a in container.repository.list_articles()}
+        cutoff = container.related_similarity
     if not result.semantic:
-        print("Link suggestions need a Gemini API key (they compare articles by meaning).")
-        print(_KEY_HELP.format(home=settings.home))
+        print("Link suggestions compare articles by meaning, and embeddings are off.")
+        print("Turn them on in Settings (local embeddings are free), then run this again.")
         return 1
     print(
         f"{_count(result.added, 'new suggestion')}, {result.updated} updated, "
-        f"{result.retired} retired (cutoff {settings.related_similarity:.2f})."
+        f"{result.retired} retired (cutoff {cutoff:.2f})."
     )
     if result.compared < 2:
         print(
@@ -201,18 +209,36 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
         )
     if args.explain:
         for pair in result.pairs:
-            mark = "+" if pair.similarity >= settings.related_similarity else " "
+            mark = "+" if pair.similarity >= cutoff else " "
             first, second = titles.get(pair.first, pair.first), titles.get(pair.second, pair.second)
             print(f" {mark} {pair.similarity:.3f}  {_clip(first)}  <->  {_clip(second)}")
     print("Review suggestions on each article's page, or in the graph view.")
     return 0
 
 
-_KEY_HELP = (
-    "Save your key once in the app (uv run postloom start, then Settings); it is kept in "
-    "{home}/config.json and used by every command. Or set it for this terminal only "
-    "with: export GEMINI_API_KEY=..."
-)
+def _usage(settings: Settings, make_container: ContainerFactory) -> int:
+    with make_container(settings) as container:
+        summary = container.usage().execute()
+    calls, cost = _count(summary.calls, "call"), _money(summary.cost_usd)
+    print(f"Model usage in {summary.month}: {calls}, {cost}")
+    for task in summary.by_task:
+        tokens = f"{task.input_tokens:,} in / {task.output_tokens:,} out"
+        print(
+            f"  {task.task.value:<11} {task.calls:>5} calls  {tokens:<26} {_money(task.cost_usd)}"
+        )
+    if summary.unpriced_calls:
+        print(
+            f"  {_count(summary.unpriced_calls, 'call')} used models without a known price "
+            '(not included). Add prices in config.json under "prices".'
+        )
+    if summary.budget_usd is not None:
+        left = _money(summary.remaining_usd or 0)
+        print(f"Budget: {_money(summary.budget_usd)} a month, {left} left.")
+    return 0
+
+
+def _money(amount: float) -> str:
+    return f"${amount:.4f}" if 0 < amount < 0.01 else f"${amount:.2f}"
 
 
 def _clip(text: str, width: int = 40) -> str:

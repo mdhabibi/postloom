@@ -112,6 +112,13 @@ class SqliteSearchIndex:
             grouped.setdefault(NodeId(row["node"]), []).append(_unpack(row["vector"]).tolist())
         return grouped
 
+    def vector_spaces(self) -> dict[str, int]:
+        rows = self._database.query(
+            "SELECT vector_space, count(*) AS n FROM chunks "
+            "WHERE vector IS NOT NULL GROUP BY vector_space"
+        )
+        return {str(row["vector_space"]): int(row["n"]) for row in rows}
+
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]:
         expression = _fts_query(query)
         if not expression:

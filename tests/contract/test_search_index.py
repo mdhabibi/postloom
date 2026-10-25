@@ -133,3 +133,12 @@ def test_vectors_by_node_groups_one_vector_space(make: Callable[[], SearchIndex]
     assert set(grouped) == {LEAKAGE, CACHING}
     assert [x for v in grouped[LEAKAGE] for x in v] == pytest.approx([1, 0, 0, 0.6, 0.8, 0])
     assert index.vectors_by_node("missing@3") == {}
+
+
+@adapters
+def test_vector_spaces_count_chunks_with_vectors(make: Callable[[], SearchIndex]) -> None:
+    index = populated(make)
+    index.replace_chunks(
+        NodeId("article:plain"), [indexed(chunk(NodeId("article:plain"), 0, "", "x"), None)]
+    )
+    assert index.vector_spaces() == {SPACE: 3}

@@ -14,10 +14,12 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "postloom"
 
+OUTER = {"postloom.interfaces", "postloom.bootstrap", "postloom.settings", "postloom.config"}
+"""Composition and configuration: only interfaces and the composition root use them."""
 FORBIDDEN: dict[str, set[str]] = {
-    "domain": {"postloom.application", "postloom.adapters", "postloom.interfaces"},
-    "application": {"postloom.adapters", "postloom.interfaces", "postloom.bootstrap"},
-    "adapters": {"postloom.interfaces", "postloom.bootstrap"},
+    "domain": {"postloom.application", "postloom.adapters", *OUTER},
+    "application": {"postloom.adapters", *OUTER},
+    "adapters": OUTER,
 }
 DOMAIN_ALLOWED_THIRD_PARTY: set[str] = set()  # the domain is pure standard library
 

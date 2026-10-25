@@ -10,6 +10,7 @@ from postloom.application.ports.extraction import (
 )
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import ChunkHit, IndexedChunk, SearchIndex
+from postloom.application.ports.usage import Task, UsageEntry, UsageLedger
 from postloom.application.ports.vault import Vault
 
 __all__ = [
@@ -26,6 +27,9 @@ __all__ = [
     "IndexedChunk",
     "Role",
     "SearchIndex",
+    "Task",
+    "UsageEntry",
+    "UsageLedger",
     "Vault",
     "Vector",
 ]

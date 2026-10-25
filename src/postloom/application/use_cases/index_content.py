@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from postloom.application.errors import ApplicationError
+from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.ports.embeddings import DocumentText, EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import IndexedChunk, SearchIndex
@@ -54,9 +54,17 @@ class IndexArticle:
         cached = self._index.cached_vectors(space, {c.content_hash for c in chunks})
         missing = [c for c in chunks if c.content_hash not in cached]
         if missing:
-            fresh = self._embedder.embed_documents(
-                [DocumentText(c.title, _embedding_text(c)) for c in missing]
-            )
+            try:
+                fresh = self._embedder.embed_documents(
+                    [DocumentText(c.title, _embedding_text(c)) for c in missing]
+                )
+            except (ProviderError, BudgetExceededError):
+                # Keep the article findable by keywords, then report why meaning search
+                # isn't available for it; a later reindex fills the vectors in.
+                self._index.replace_chunks(
+                    article.id, [IndexedChunk(c, None, None) for c in chunks]
+                )
+                raise
             cached.update(zip((c.content_hash for c in missing), fresh, strict=True))
 
         indexed = [IndexedChunk(c, cached[c.content_hash], space) for c in chunks]

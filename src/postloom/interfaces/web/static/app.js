@@ -52,6 +52,12 @@ function h(tag, attrs = {}, ...children) {
   return node;
 }
 
+function fill(node, ...children) {
+  // replaceChildren() would print "null"; skip empty slots the way h() does.
+  node.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  return node;
+}
+
 function setMain(...children) {
   const main = document.getElementById("main");
   main.replaceChildren(...children);
@@ -254,9 +260,19 @@ function homeView() {
 }
 
 function keyNotice() {
-  if (!state.status || state.status.api_key !== "missing") return null;
-  return notice("", "Add your Gemini API key in settings to add articles, search by meaning and chat.",
-    h("a", { href: "#/settings" }, "Open settings"));
+  const s = state.status;
+  if (!s) return null;
+  if (!s.provider || !s.provider.configured) {
+    return notice("", s.provider
+      ? `Finish setting up ${s.provider.label} to add articles, chat and draft replies.`
+      : "Connect a model provider to add articles, chat and draft replies. Gemini, Claude, OpenAI, OpenRouter, or free local models with Ollama.",
+      h("a", { href: "#/settings" }, "Open settings"));
+  }
+  if (s.embeddings.needs_reindex) {
+    return notice("", "Your search model changed. Rebuild the search index so search by meaning works again.",
+      h("a", { href: "#/settings" }, "Open settings"));
+  }
+  return null;
 }
 
 function addView() {
@@ -303,6 +319,7 @@ async function submitArticle(event) {
     if (added.topics.length) lines.push(`Topics: ${added.topics.join(", ")}.`);
     for (const warning of added.warnings) lines.push(warning);
     if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
+    if (added.suggested_links) lines.push(`${added.suggested_links} related ${added.suggested_links === 1 ? "article" : "articles"} suggested. Review them on the article's page.`);
     result.replaceChildren(notice(added.warnings.length || added.index_error ? "" : "", ...lines,
       h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the article")));
     form.reset();
@@ -392,7 +409,7 @@ function fillRelated(section, article) {
     if (select.value) decide(select.value, "accept", e.currentTarget);
   } }, "Link");
 
-  section.replaceChildren(
+  fill(section,
     h("h2", {}, "Related articles"),
     rows.length ? h("ul", { class: "related-list" }, rows)
       : h("p", { class: "hint" }, "No related articles yet. postloom suggests links when articles are similar in meaning, or you can link one yourself."),
@@ -478,7 +495,7 @@ async function draftReply(comment, box, guidance, onClose) {
     copy.textContent = "Copied";
     setTimeout(() => { copy.textContent = "Copy reply"; }, 1600);
   } }, "Copy reply");
-  box.replaceChildren(...[
+  fill(box,
     h("label", { for: id }, `Draft reply to ${first}`),
     draft.already_answered ? h("p", { class: "hint" }, "You've already replied to this message.") : null,
     text,
@@ -489,8 +506,7 @@ async function draftReply(comment, box, guidance, onClose) {
       h("button", { class: "button", type: "button", onclick: () => draftReply(comment, box, steer.value.trim(), onClose) }, "Redraft"),
       h("button", { class: "button", type: "button", onclick: () => { box.replaceChildren(); onClose(); } }, "Close")),
     h("p", { class: "hint" },
-      "postloom never posts anything. Edit, copy and reply on LinkedIn, then paste the comments again to save your reply."),
-  ].filter(Boolean));
+      "postloom never posts anything. Edit, copy and reply on LinkedIn, then paste the comments again to save your reply."));
   text.focus();
 }
 
@@ -624,51 +640,234 @@ async function searchView(query) {
 async function settingsView() {
   await refresh();
   const s = state.status;
-  const fromEnv = s.api_key === "environment";
-  const form = h("form", { class: "page", onsubmit: saveKey },
+  const page = h("div", { class: "page settings" },
     h("h1", {}, "Settings"),
-    h("p", { class: "lede" }, "postloom runs on your computer. Your articles, the people you talk to and your API key never leave it, except for the text sent to Gemini when you add, search or ask."),
+    h("p", { class: "lede" }, "postloom runs on your computer. Your articles, the people you talk to and your API keys stay here. Only the text a feature needs is sent to the model provider you choose, when you use that feature."),
     h("ul", { class: "status-list" },
       h("li", { "data-on": String(s.features.ingest) }, "Adding articles"),
       h("li", { "data-on": String(s.features.semantic_search) }, "Search by meaning"),
       h("li", { "data-on": String(s.features.chat) }, "Chat"),
-      h("li", { "data-on": String(s.features.comments) }, "Reading comments")),
-    fromEnv
-      ? notice("", "Your Gemini API key comes from the GEMINI_API_KEY environment variable. Change it there.")
-      : field("gemini_api_key", "Gemini API key",
-          h("input", { id: "gemini_api_key", name: "gemini_api_key", type: "password", autocomplete: "off",
-            placeholder: s.api_key === "config" ? "A key is saved. Paste a new one to replace it." : "Paste your key" }),
-          h("span", {}, "Create a free key at ",
-            h("a", { href: "https://aistudio.google.com/apikey", target: "_blank", rel: "noopener noreferrer" }, "aistudio.google.com"),
-            ". It's stored only in your Postloom folder.")),
-    fromEnv ? null : h("div", {}, h("button", { class: "button button-primary", type: "submit" }, "Save key"), " ",
-      s.api_key === "config" ? h("button", { class: "button", type: "button", onclick: removeKey }, "Remove saved key") : null),
-    h("h2", { class: "settings-heading" }, "Your name on LinkedIn"),
-    h("div", { class: "inline-field" },
-      h("label", { class: "visually-hidden", for: "owner_name" }, "Your name on LinkedIn"),
-      h("input", { id: "owner_name", value: s.owner_name || "", placeholder: "e.g. Alex Author", autocomplete: "name" }),
-      h("button", { class: "button", type: "button", onclick: saveOwnerName }, "Save name")),
-    h("p", { class: "hint" }, "Used to recognise your own replies when you paste comments."),
-    h("h2", { class: "settings-heading" }, "Where your data lives"),
-    h("p", { class: "path" }, s.vault),
-    h("p", { class: "hint" }, "Open this folder in Obsidian to browse your articles as a graph."),
-    h("h2", { class: "settings-heading" }, "Models"),
-    h("p", {}, `Restoring articles: ${s.models.extraction}. Search: ${s.models.embedding}. Chat: ${s.models.chat}. Reply drafts: ${s.models.reply}.`),
-    h("p", { class: "hint" }, `postloom ${s.version}`));
-  setMain(form);
+      h("li", { "data-on": String(s.features.comments) }, "Reading comments"),
+      h("li", { "data-on": String(s.features.reply_drafts) }, "Reply drafts")),
+    providerSection(s),
+    embeddingsSection(s),
+    usageSection(s),
+    h("section", { class: "settings-section" },
+      h("h2", { class: "settings-heading" }, "Your name on LinkedIn"),
+      h("div", { class: "inline-field" },
+        h("label", { class: "visually-hidden", for: "owner_name" }, "Your name on LinkedIn"),
+        h("input", { id: "owner_name", value: s.owner_name || "", placeholder: "e.g. Alex Author", autocomplete: "name",
+          disabled: s.locked.includes("owner_name") }),
+        h("button", { class: "button", type: "button", onclick: saveOwnerName, disabled: s.locked.includes("owner_name") }, "Save name")),
+      h("p", { class: "hint" }, "Used to recognise your own replies when you paste comments.")),
+    h("section", { class: "settings-section" },
+      h("h2", { class: "settings-heading" }, "Where your data lives"),
+      h("p", { class: "path" }, s.vault),
+      h("p", { class: "hint" }, `Open this folder in Obsidian to browse your articles as a graph. postloom ${s.version}.`)));
+  setMain(page);
 }
 
-async function saveKey(event) {
-  event.preventDefault();
-  const key = new FormData(event.currentTarget).get("gemini_api_key");
-  if (!key) return toast("Paste a key first");
-  try {
-    await api("/api/settings", { method: "PUT", body: { gemini_api_key: key } });
-    toast("Key saved");
-    settingsView();
-  } catch (error) {
-    toast(error.message);
-  }
+const TASK_LABELS = {
+  extraction: "Restoring articles",
+  comments: "Reading comments",
+  chat: "Chat",
+  reply: "Reply drafts",
+};
+
+function providerSection(s) {
+  const section = h("section", { class: "settings-section", "aria-labelledby": "provider-heading" });
+  let selected = s.provider ? s.provider.id : null;
+  let found = [];
+  let tested = null; // the last "Test connection" result, kept across re-renders
+  const render = () => {
+    const spec = s.providers.find((p) => p.id === selected);
+    const locked = s.locked.includes("provider");
+    fill(section,
+      h("h2", { class: "settings-heading", id: "provider-heading" }, "Model provider"),
+      h("p", { class: "hint" }, "Bring your own key. Cheap models do the routine work, so most people spend a few cents a month."),
+      h("div", { class: "provider-grid", role: "radiogroup", "aria-label": "Model provider" },
+        s.providers.map((p) => h("label", { class: `provider-card${p.id === selected ? " selected" : ""}` },
+          h("input", { type: "radio", name: "provider", value: p.id, checked: p.id === selected, disabled: locked,
+            onchange: () => { selected = p.id; found = []; tested = null; render(); } }),
+          h("span", { class: "provider-name" }, p.label, p.local ? h("span", { class: "badge" }, "Free") : null),
+          h("span", { class: "provider-description" }, p.description)))),
+      locked ? notice("", "The provider is set by the POSTLOOM_PROVIDER environment variable.") : null,
+      spec ? providerForm(s, spec, found, tested, (models, outcome) => { found = models; tested = outcome; render(); }) : null);
+  };
+  render();
+  return section;
+}
+
+function providerForm(s, spec, found, tested, onTested) {
+  const current = s.provider && s.provider.id === spec.id ? s.provider : null;
+  const keyFromEnv = current && current.key === "environment";
+  const keySaved = current && current.key === "config";
+  const id = (name) => `${spec.id}-${name}`;
+  const result = h("div", { class: "test-result", role: "status", "aria-live": "polite" },
+    tested ? notice(tested.ok ? "ok" : "error", tested.message) : null);
+  const keyInput = spec.key === "none" || keyFromEnv ? null
+    : h("input", { id: id("key"), type: "password", autocomplete: "off",
+        placeholder: keySaved ? "A key is saved. Paste a new one to replace it." : spec.key === "optional" ? "Optional" : "Paste your key" });
+  const urlInput = spec.base_url_editable
+    ? h("input", { id: id("url"), type: "url", value: (current && current.base_url) || spec.base_url || "", placeholder: spec.base_url || "" })
+    : null;
+  const listId = id("models");
+  const modelInputs = Object.entries(TASK_LABELS).map(([task, label]) => {
+    const saved = current ? s.models[task] : "";
+    const fallback = spec.models[task];
+    return field(id(task), label,
+      h("input", { id: id(task), list: listId, value: saved && saved !== fallback ? saved : "",
+        placeholder: fallback || "Required: choose a model", disabled: s.locked.includes(`model:${task}`), "data-task": task }),
+      task === "reply" ? "What people read. Worth your strongest model." : null);
+  });
+  const values = () => ({
+    provider: spec.id,
+    ...(keyInput && keyInput.value.trim() ? { api_key: keyInput.value.trim() } : {}),
+    ...(urlInput ? { base_url: urlInput.value.trim() || null } : {}),
+  });
+
+  const test = h("button", { class: "button", type: "button", onclick: async () => {
+    test.disabled = true;
+    result.replaceChildren(h("span", { class: "hint" }, "Connecting..."));
+    try {
+      const reply = await api("/api/settings/test", { method: "POST", body: values() });
+      onTested(reply.ok ? reply.models : found, { ok: reply.ok, message: reply.message });
+    } catch (error) {
+      test.disabled = false;
+      result.replaceChildren(notice("error", error.message));
+    }
+  } }, "Test connection");
+
+  const save = h("button", { class: "button button-primary", type: "submit" }, "Save");
+  const form = h("form", { class: "provider-form", onsubmit: async (event) => {
+    event.preventDefault();
+    const models = {};
+    for (const input of form.querySelectorAll("input[data-task]")) {
+      if (!input.disabled) models[input.dataset.task] = input.value.trim() || null;
+    }
+    // Providers without defaults (Ollama, custom servers): one model can do every task.
+    const first = Object.values(models).find(Boolean);
+    if (!spec.models.chat && first) {
+      for (const task of Object.keys(models)) models[task] = models[task] || first;
+    }
+    save.disabled = true;
+    try {
+      await api("/api/settings", { method: "PUT", body: { ...values(), models } });
+      toast(`${spec.label} saved`);
+      settingsView();
+    } catch (error) {
+      save.disabled = false;
+      result.replaceChildren(notice("error", error.message));
+    }
+  } },
+    keyFromEnv ? notice("", `Your key comes from the ${spec.key_envs[0] || "POSTLOOM_API_KEY"} environment variable. Change it there.`) : null,
+    keyInput ? field(id("key"), `${spec.label} API key`, keyInput,
+      spec.key_url ? h("span", {}, "Create one at ",
+        h("a", { href: spec.key_url, target: "_blank", rel: "noopener noreferrer" }, new URL(spec.key_url).host),
+        ". It's stored only in your Postloom folder, readable only by you.") : "Only if your server needs one.") : null,
+    urlInput ? field(id("url"), "Server address", urlInput, spec.local ? "Where Ollama listens. The default is right unless you changed it." : "The server's OpenAI-compatible base URL, usually ending in /v1.") : null,
+    spec.notes.map((note) => h("p", { class: "hint" }, note)),
+    h("details", { class: "models", open: !spec.models.chat || (current && Object.keys(TASK_LABELS).some((t) => s.models[t] !== spec.models[t])) },
+      h("summary", {}, "Models"),
+      h("p", { class: "hint" }, spec.models.chat ? "Leave a field empty to use the default shown." : "Choose a model for each task, or fill in one and it's used for all. Test the connection to see what's available."),
+      h("datalist", { id: listId }, found.map((m) => h("option", { value: m }))),
+      h("div", { class: "field-row" }, modelInputs)),
+    h("div", { class: "actions" }, save, test,
+      keySaved ? h("button", { class: "button", type: "button", onclick: async () => {
+        await api("/api/settings", { method: "PUT", body: { provider: spec.id, api_key: null } });
+        toast("Saved key removed");
+        settingsView();
+      } }, "Remove saved key") : null),
+    result);
+  return form;
+}
+
+function embeddingsSection(s) {
+  const e = s.embeddings;
+  const spec = s.provider ? s.providers.find((p) => p.id === s.provider.id) : null;
+  const choices = [
+    ["local", "On this computer", `Free and private. Uses ${e.local_model}, downloaded once (about 70 MB).`],
+    ...(spec && spec.offers_embeddings ? [["provider", `${spec.label}`, `Uses ${spec.models.embedding}; costs a fraction of a cent per article.`]] : []),
+    ["off", "Off", "Keyword search only. Related-article suggestions need embeddings."],
+  ];
+  const rebuild = h("button", { class: "button button-primary", type: "button", onclick: async () => {
+    rebuild.disabled = true;
+    rebuild.textContent = "Rebuilding...";
+    try {
+      const done = await api("/api/reindex", { method: "POST", body: {} });
+      toast(`Rebuilt ${done.articles} ${done.articles === 1 ? "article" : "articles"}`);
+      settingsView();
+    } catch (error) {
+      rebuild.disabled = false;
+      rebuild.textContent = "Rebuild search index";
+      toast(error.message);
+    }
+  } }, "Rebuild search index");
+  return h("section", { class: "settings-section" },
+    h("h2", { class: "settings-heading" }, "Search by meaning"),
+    h("div", { class: "choice-list", role: "radiogroup", "aria-label": "Embeddings" },
+      choices.map(([value, label, hint]) => h("label", { class: "choice" },
+        h("input", { type: "radio", name: "embeddings", value, checked: e.mode === value || (value === "local" && e.mode === "provider" && !(spec && spec.offers_embeddings)),
+          onchange: async () => {
+            try {
+              await api("/api/settings", { method: "PUT", body: { embeddings: value } });
+              toast("Search setting saved");
+              settingsView();
+            } catch (error) {
+              toast(error.message);
+            }
+          } }),
+        h("span", {}, h("strong", {}, label), h("span", { class: "hint" }, ` ${hint}`))))),
+    e.needs_reindex ? notice("", "Your search index was built with a different model, so search by meaning can't use it yet.", rebuild) : null,
+    !e.available && e.mode !== "off" ? notice("error", "Embeddings aren't available right now, so search uses keywords only.") : null);
+}
+
+function usageSection(s) {
+  const section = h("section", { class: "settings-section", "aria-labelledby": "usage-heading" },
+    h("h2", { class: "settings-heading", id: "usage-heading" }, "Usage this month"),
+    h("p", { class: "hint" }, "Loading..."));
+  api("/api/usage").then((usage) => {
+    const money = (n) => n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+    const tokens = (n) => n.toLocaleString();
+    const labels = { ...TASK_LABELS, embeddings: "Search embeddings", test: "Connection tests" };
+    const budgetInput = h("input", { id: "monthly_budget", type: "number", min: "0", step: "0.5", inputmode: "decimal",
+      value: s.budget.monthly_usd ?? "", placeholder: "No limit" });
+    const saveBudget = async (value) => {
+      try {
+        await api("/api/settings", { method: "PUT", body: { monthly_budget_usd: value } });
+        toast(value === null ? "Budget removed" : "Budget saved");
+        settingsView();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    fill(section,
+      h("h2", { class: "settings-heading", id: "usage-heading" }, `Usage this month: ${money(usage.cost_usd)}`),
+      usage.by_task.length
+        ? h("table", { class: "usage" },
+            h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Task"), h("th", { scope: "col" }, "Calls"),
+              h("th", { scope: "col" }, "Tokens in / out"), h("th", { scope: "col" }, "Cost"))),
+            h("tbody", {}, usage.by_task.map((t) => h("tr", {},
+              h("th", { scope: "row" }, labels[t.task] || t.task), h("td", {}, t.calls),
+              h("td", {}, `${tokens(t.input_tokens)} / ${tokens(t.output_tokens)}`),
+              h("td", {}, t.unpriced_calls === t.calls && t.cost_usd === 0 ? "unknown" : money(t.cost_usd))))))
+        : h("p", { class: "hint" }, "No model calls yet this month."),
+      usage.unpriced_calls ? h("p", { class: "hint" }, `${usage.unpriced_calls} ${usage.unpriced_calls === 1 ? "call" : "calls"} used a model without a known price and ${usage.unpriced_calls === 1 ? "isn't" : "aren't"} counted. Add its price to config.json under "prices".`) : null,
+      h("p", { class: "hint" }, "Costs are estimated from list prices (OpenRouter reports exact ones). Models on your computer are free."),
+      h("h3", { class: "settings-subheading" }, "Monthly budget"),
+      h("div", { class: "inline-field" },
+        h("label", { class: "visually-hidden", for: "monthly_budget" }, "Monthly budget in US dollars"),
+        h("span", { class: "currency", "aria-hidden": "true" }, "$"), budgetInput,
+        h("button", { class: "button", type: "button", onclick: () => {
+          const value = budgetInput.value.trim();
+          saveBudget(value === "" ? null : Number(value));
+        } }, "Save budget"),
+        s.budget.monthly_usd !== null ? h("button", { class: "button", type: "button", onclick: () => saveBudget(null) }, "Remove") : null),
+      h("p", { class: "hint" }, s.budget.monthly_usd !== null
+        ? `${money(Math.max(s.budget.monthly_usd - usage.cost_usd, 0))} left. When it's spent, postloom pauses paid model calls until next month or until you raise it.`
+        : "Optional. postloom pauses paid model calls once this month's spending reaches it."));
+  }).catch((error) => section.replaceChildren(notice("error", error.message)));
+  return section;
 }
 
 async function saveOwnerName() {
@@ -679,12 +878,6 @@ async function saveOwnerName() {
   } catch (error) {
     toast(error.message);
   }
-}
-
-async function removeKey() {
-  await api("/api/settings", { method: "PUT", body: { gemini_api_key: null } });
-  toast("Saved key removed");
-  settingsView();
 }
 
 // ---------------------------------------------------------------------------- people

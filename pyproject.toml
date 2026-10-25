@@ -20,6 +20,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    # Local embeddings. ONNX Runtime ships no Intel macOS builds; there postloom uses the
+    # provider's embeddings, or keyword search.
+    "fastembed>=0.5; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "starlette>=0.40",
@@ -83,7 +86,7 @@ ban-relative-imports = "all"
 
 # ---------------------------------------------------------------- pyright
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false

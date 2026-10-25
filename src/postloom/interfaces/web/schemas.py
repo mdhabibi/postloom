@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from postloom.adapters.llm.providers import ProviderSpec
 from postloom.application.use_cases import (
     Answer,
     ArticleDetail,
@@ -25,6 +26,7 @@ from postloom.application.use_cases import (
     SearchResults,
     SuggestResult,
 )
+from postloom.application.use_cases.usage import UsageSummary
 
 Json = dict[str, Any]
 
@@ -35,12 +37,27 @@ class _Request(BaseModel):
 
 
 class SettingsUpdate(_Request):
-    """Only the fields present in the request are changed."""
+    """Only the fields present in the request are changed; null removes a saved value."""
 
-    gemini_api_key: str | None = Field(default=None, max_length=512)
-    """A new key to save, or null/empty to remove the saved key."""
+    provider: str | None = Field(default=None, max_length=40)
+    api_key: str | None = Field(default=None, max_length=1024)
+    """Saved for the chosen provider (the one in this request, else the current one)."""
+    base_url: str | None = Field(default=None, max_length=500)
+    models: dict[str, str | None] | None = Field(default=None, max_length=10)
+    embeddings: Literal["local", "provider", "off"] | None = None
+    local_embedding_model: str | None = Field(default=None, max_length=200)
+    monthly_budget_usd: float | None = Field(default=None, ge=0, le=100_000)
     owner_name: str | None = Field(default=None, max_length=200)
     """Your name as LinkedIn shows it, to recognise your own replies."""
+    ollama_context: int | None = Field(default=None, ge=8192, le=1_048_576)
+
+
+class ConnectionTest(_Request):
+    """Check a provider before saving: with the given key, or the saved one."""
+
+    provider: str = Field(min_length=1, max_length=40)
+    api_key: str | None = Field(default=None, max_length=1024)
+    base_url: str | None = Field(default=None, max_length=500)
 
 
 class CommentsPreviewRequest(_Request):
@@ -277,6 +294,64 @@ def reply_draft(draft: ReplyDraft) -> Json:
         "text": draft.text,
         "already_answered": draft.already_answered,
         "model": draft.model,
+    }
+
+
+def provider_spec(spec: ProviderSpec) -> Json:
+    return {
+        "id": spec.id,
+        "label": spec.label,
+        "description": spec.description,
+        "key": spec.key,
+        "key_url": spec.key_url,
+        "key_envs": list(spec.key_envs),
+        "base_url": spec.base_url,
+        "base_url_editable": spec.base_url_editable,
+        "local": spec.local,
+        "offers_embeddings": spec.offers_embeddings,
+        "notes": list(spec.notes),
+        "models": {
+            "extraction": spec.models.extraction,
+            "comments": spec.models.comments,
+            "chat": spec.models.chat,
+            "reply": spec.models.reply,
+            "embedding": spec.models.embedding,
+        },
+    }
+
+
+def usage_summary(summary: UsageSummary) -> Json:
+    return {
+        "month": summary.month,
+        "cost_usd": round(summary.cost_usd, 6),
+        "calls": summary.calls,
+        "unpriced_calls": summary.unpriced_calls,
+        "budget_usd": summary.budget_usd,
+        "remaining_usd": summary.remaining_usd,
+        "by_task": [
+            {
+                "task": t.task.value,
+                "calls": t.calls,
+                "input_tokens": t.input_tokens,
+                "output_tokens": t.output_tokens,
+                "cost_usd": round(t.cost_usd, 6),
+                "unpriced_calls": t.unpriced_calls,
+            }
+            for t in summary.by_task
+        ],
+        "by_model": [
+            {
+                "provider": e.provider,
+                "model": e.model,
+                "task": e.task.value,
+                "calls": e.calls,
+                "input_tokens": e.input_tokens,
+                "output_tokens": e.output_tokens,
+                "cost_usd": round(e.cost_usd, 6),
+                "unpriced_calls": e.unpriced_calls,
+            }
+            for e in summary.entries
+        ],
     }
 
 

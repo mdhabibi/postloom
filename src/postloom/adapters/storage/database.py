@@ -73,6 +73,21 @@ MIGRATIONS: tuple[str, ...] = (
     CREATE INDEX nodes_comments_by_post
         ON nodes(json_extract(data, '$.post')) WHERE kind = 'comment';
     """,
+    # 4: model usage per month, provider, model and task (the usage page and the budget)
+    """
+    CREATE TABLE usage (
+        month          TEXT NOT NULL,
+        provider       TEXT NOT NULL,
+        model          TEXT NOT NULL,
+        task           TEXT NOT NULL,
+        calls          INTEGER NOT NULL DEFAULT 0,
+        input_tokens   INTEGER NOT NULL DEFAULT 0,
+        output_tokens  INTEGER NOT NULL DEFAULT 0,
+        cost_usd       REAL NOT NULL DEFAULT 0,
+        unpriced_calls INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (month, provider, model, task)
+    );
+    """,
 )
 
 

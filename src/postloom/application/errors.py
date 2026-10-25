@@ -31,3 +31,7 @@ class ProviderUnavailableError(ProviderError):
 
 class ExtractionError(ProviderError):
     """The model answered, but not with usable structured content."""
+
+
+class BudgetExceededError(ApplicationError):
+    """The user's monthly budget is spent; no paid model calls until they raise it."""

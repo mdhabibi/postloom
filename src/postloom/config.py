@@ -39,6 +39,11 @@ def update_config(home: Path, **values: object) -> None:
             data.pop(key, None)
         else:
             data[key] = value
+    write_config(home, data)
+
+
+def write_config(home: Path, data: dict[str, Any]) -> None:
+    """Replace the config file atomically, readable only by the current user."""
     home.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=home, prefix=".config.", suffix=".tmp")
     try:

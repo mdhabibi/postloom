@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -52,14 +53,19 @@ def fake_container(settings: Settings) -> Container:
     # No real key, even if the developer running the tests has one exported.
     # The fake embedder's similarities aren't calibrated like Gemini's, so no cutoff.
     return build_container(
-        replace(settings, gemini_api_key=None, min_similarity=0.0),
+        offline(settings, min_similarity=0.0),
         extractor=FakeExtractor(part3_extraction()),
         embedder=FakeEmbedder(),
     )
 
 
 def no_key_container(settings: Settings) -> Container:
-    return build_container(replace(settings, gemini_api_key=None))
+    return build_container(offline(settings))
+
+
+def offline(settings: Settings, **changes: Any) -> Settings:
+    """No provider and no local model downloads, whatever the test machine has."""
+    return replace(settings, provider=None, api_key=None, embeddings="off", **changes)
 
 
 def write_inputs(tmp_path: Path) -> tuple[str, str]:
@@ -112,7 +118,7 @@ def test_ingest_without_api_key_explains_how_to_add_one(
     code = main(["--home", home, "ingest", article, post], make_container=no_key_container)
 
     assert code == 1
-    assert "GEMINI_API_KEY" in capsys.readouterr().err
+    assert "choose a provider" in capsys.readouterr().err
 
 
 def test_ingest_with_a_missing_file_fails_cleanly(
@@ -127,7 +133,7 @@ def test_ingest_with_a_missing_file_fails_cleanly(
 
 
 def test_settings_never_print_the_api_key(tmp_path: Path) -> None:
-    settings = Settings(home=tmp_path, gemini_api_key="secret-123")
+    settings = Settings(home=tmp_path, provider="gemini", api_key="secret-123")
     assert "secret-123" not in repr(settings)
 
 
@@ -186,19 +192,21 @@ def test_search_explain_shows_scores(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "scores: meaning similarity 0." in capsys.readouterr().out
 
 
-def test_default_similarity_cutoff_is_calibrated(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("POSTLOOM_MIN_SIMILARITY", raising=False)
-    assert Settings().min_similarity == 0.66
+def test_similarity_cutoffs_follow_the_embedding_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gemini = Settings(home=tmp_path, provider="gemini", api_key="k", embeddings="provider")
+    assert (gemini.embedding_space, gemini.cutoffs.search) == ("gemini-embedding-2@768", 0.66)
+    assert Settings(home=tmp_path).embedding_space == "local:BAAI/bge-small-en-v1.5"
     monkeypatch.setenv("POSTLOOM_MIN_SIMILARITY", "0.7")
-    assert Settings().min_similarity == 0.7
+    assert Settings.load(tmp_path).cutoffs.search == 0.7
 
 
 # -- links ----------------------------------------------------------------------
 def extracting(extraction: ExtractedContent) -> Callable[[Settings], Container]:
     def make(settings: Settings) -> Container:
-        offline = replace(settings, gemini_api_key=None)
         return build_container(
-            offline, extractor=FakeExtractor(extraction), embedder=FakeEmbedder()
+            offline(settings), extractor=FakeExtractor(extraction), embedder=FakeEmbedder()
         )
 
     return make
@@ -217,13 +225,13 @@ def test_links_explain_lists_every_compared_pair(
     assert main([*home, "links", "--explain"], make_container=fake_container) == 0
     out = capsys.readouterr().out
     assert "First article  <->  Second article" in out
-    assert "(cutoff 0.75)" in out
+    assert "(cutoff 0." in out
 
 
-def test_links_need_an_api_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_links_need_embeddings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     main(["--home", str(tmp_path), "init"], make_container=no_key_container)
     assert main(["--home", str(tmp_path), "links"], make_container=no_key_container) == 1
-    assert "need a Gemini API key" in capsys.readouterr().out
+    assert "embeddings are off" in capsys.readouterr().out
 
 
 def test_links_with_one_article_explain_why_nothing_was_compared(
