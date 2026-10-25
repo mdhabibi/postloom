@@ -1,7 +1,6 @@
 # Contributing to postloom
 
-Thanks for your interest! The project is pre-alpha; issues and ideas are very welcome, and
-pull requests will be easier to accept once the MVP (milestone 1) lands.
+Thanks for your interest! postloom is in alpha; issues and ideas are very welcome.
 
 ## Setup
 
@@ -38,3 +37,17 @@ CI runs the same checks on Linux, macOS (Apple Silicon and Intel) and Windows wi
   (`Jane Example`, `linkedin.com/in/jane-example`).
 - **Tests describe behaviour.** Name them as sentences:
   `test_reingest_never_overrides_the_users_decisions`.
+
+## Licensing of contributions
+
+postloom is fair source under the [Functional Source License 1.1](LICENSE.md), and its
+author may also offer it under other terms, including commercial ones. So that this stays
+possible, every pull request needs the contributor's agreement that:
+
+1. you wrote the contribution, or have the right to submit it;
+2. it is licensed under the project's license; and
+3. you grant Mahdi Habibi a perpetual, worldwide, irrevocable, royalty-free license to
+   use, modify and relicense it, including in commercial versions of postloom.
+
+Say so in the pull request description ("I agree to the contribution terms in
+CONTRIBUTING.md"). A pull request without this can't be merged.
