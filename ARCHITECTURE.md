@@ -264,7 +264,17 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 ## Web app
 
 `postloom start` serves a Starlette app on `127.0.0.1` with a static, build-free frontend
-(plain HTML/CSS/JS, system fonts, nothing loaded from the internet).
+(plain HTML/CSS/JS, nothing loaded from the internet).
+
+- **Design system**: colour, type and spacing are CSS custom properties with a dark theme
+  (default) and a light one, switched by `data-theme` on `<html>`; `theme.js` applies the
+  saved choice before first paint. Topic "dyes" are the only saturated colours, used for
+  the threads beside articles and the woven bands. Fonts are bundled under the SIL Open
+  Font License: Geist for the interface, Source Serif 4 for the author's own writing.
+- **Command palette** (Cmd/Ctrl K, or `/`): articles, people, search, ask and navigation in
+  one keyboard-first list, built as an accessible combobox.
+- **Home** is a dashboard fed by `GET /api/overview`: messages nobody answered yet,
+  link suggestions to review, spend against the budget, recent articles and people.
 
 - **Localhost only**: the server binds to the loopback interface and refuses any Host
   header that isn't localhost, which blocks DNS-rebinding attacks.
@@ -296,8 +306,10 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-10-15 | Related articles by centroid similarity of stored section vectors | Free (no new embedding calls) and good enough to rank a personal library; per-chunk matching can come later behind the same use case. |
 | 2026-10-15 | Only accepted links are written to the vault | The vault is the user's record; suggestions live in the index until reviewed. |
 | 2026-10-15 | Hand-written force layout and SVG for the graph view | A few hundred nodes need no library; keeps the frontend build-free and CSP-strict. |
-| 2026-10-25 | Bring-your-own-key for any provider; no shared key or hosted proxy | An embedded key leaks from open source within days; a proxy would make postloom a hosted service holding everyone's data. |
+| 2026-10-25 | Bring-your-own-key for any provider; no shared key or hosted proxy | A key embedded in published code leaks within days; a proxy would make postloom a hosted service holding everyone's data. |
 | 2026-10-25 | One backend protocol, provider-neutral adapters, prompts and schemas in one place | A prompt fix applies to every provider; a new provider is one backend, not four adapters. |
 | 2026-10-25 | Adapt to OpenAI-compatible servers from their 400 messages | Dozens of servers differ in small ways that change often; reacting to the server's own explanation stays correct where a quirk table goes stale. |
 | 2026-10-25 | Local embeddings (fastembed) by default | Free, private and offline search for every provider, including those without embeddings. |
 | 2026-10-25 | Metering in a gateway that every model call goes through | No call can skip the budget or the usage page, whatever adapter makes it. |
+| 2026-10-25 | Fair source (FSL-1.1-ALv2) instead of Apache-2.0 | Readable, auditable code (essential for a tool holding API keys and LinkedIn data) without letting anyone resell it as a competing product; each version becomes Apache-2.0 after two years. |
+| 2026-10-25 | Dark-first product UI with bundled fonts and a command palette | Modern tool conventions experts expect; bundling keeps the app offline and CSP-strict. |

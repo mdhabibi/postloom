@@ -16,6 +16,7 @@ don't block other requests.
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -53,6 +54,7 @@ from postloom.interfaces.web import schemas
 from postloom.settings import MODEL_TASKS, save_settings
 
 STATIC_DIR = Path(__file__).parent / "static"
+mimetypes.add_type("font/woff2", ".woff2")  # missing from some platforms' tables
 CSRF_HEADER = "x-postloom"
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
 # Everything is served by postloom itself; no inline scripts, nothing from the internet.
@@ -281,6 +283,9 @@ def create_app(
         )
         return JSONResponse(schemas.reply_draft(draft))
 
+    def overview(request: Request) -> Response:
+        return JSONResponse(schemas.overview(state.container.overview().execute()))
+
     def graph(request: Request) -> Response:
         return JSONResponse(schemas.graph_data(state.container.graph().execute()))
 
@@ -337,6 +342,7 @@ def create_app(
         ),
         Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
         Route("/api/reply-draft", _json(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
+        Route("/api/overview", _json(overview)),
         Route("/api/graph", _json(graph)),
         Route("/api/links", _json(review_link, schemas.LinkReviewRequest), methods=["POST"]),
         Route("/api/links/suggest", _json(suggest_links), methods=["POST"]),

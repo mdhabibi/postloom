@@ -18,6 +18,7 @@ from postloom.application.use_cases import (
     GraphData,
     IndexResult,
     IngestArticleResult,
+    OverviewData,
     PersonDetail,
     PersonSummary,
     RelatedLink,
@@ -294,6 +295,29 @@ def reply_draft(draft: ReplyDraft) -> Json:
         "text": draft.text,
         "already_answered": draft.already_answered,
         "model": draft.model,
+    }
+
+
+def overview(data: OverviewData) -> Json:
+    return {
+        "articles": data.articles,
+        "messages": data.messages,
+        "people": data.people,
+        "waiting_total": data.waiting_total,
+        "pending_links": data.pending_links,
+        "waiting": [
+            {
+                "comment_id": w.comment_id,
+                "author": w.author,
+                "author_name": w.author_name,
+                "text": w.text,
+                "posted_label": w.posted_label,
+                "article_id": w.article_id,
+                "article_title": w.article_title,
+            }
+            for w in data.waiting
+        ],
+        "top_people": [person_summary(p) for p in data.top_people],
     }
 
 

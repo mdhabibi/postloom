@@ -44,6 +44,7 @@ from postloom.application.use_cases import (
     GraphOverview,
     IndexArticle,
     IngestArticle,
+    Overview,
     PeopleDirectory,
     PreviewComments,
     ReindexAll,
@@ -172,6 +173,9 @@ class Container:
 
     def review_link(self) -> ReviewLink:
         return ReviewLink(self.repository, self.vault, self.clock)
+
+    def overview(self) -> Overview:
+        return Overview(self.repository)
 
     def graph(self) -> GraphOverview:
         return GraphOverview(self.repository)

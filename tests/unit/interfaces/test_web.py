@@ -623,3 +623,17 @@ def test_suggesting_links_reports_counts(tmp_path: Path) -> None:
     reply = client.post("/api/links/suggest", json_body={})
     assert reply.status == 200
     assert reply.json == {"added": 0, "updated": 0, "retired": 0, "semantic": True}
+
+
+# -- overview ---------------------------------------------------------------------------
+def test_overview_lists_messages_waiting_for_a_reply(tmp_path: Path) -> None:
+    client, article_id = with_discussion(tmp_path)
+    data = client.get("/api/overview").json
+    assert (data["articles"], data["messages"], data["people"]) == (1, 5, 2)
+    # Jane's two messages were answered; John's comment wasn't.
+    assert data["waiting_total"] == 1
+    (waiting,) = data["waiting"]
+    assert (waiting["author_name"], waiting["article_id"]) == ("John Sample", article_id)
+    assert waiting["text"].startswith("Great series")
+    assert [p["name"] for p in data["top_people"]] == ["Jane Example", "John Sample"]
+    assert data["pending_links"] == 0

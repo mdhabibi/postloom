@@ -12,6 +12,15 @@ actually wrote.
 > **Status: alpha.** Articles, search, chat, comment threads, people, reply drafts, related
 > article links and the graph view work end to end. See the [roadmap](#roadmap).
 
+![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](docs/images/home.png)
+
+<p align="center">
+  <img src="docs/images/reply-draft.png" width="49%" alt="A reply draft for a comment, written from the article and the whole conversation">
+  <img src="docs/images/graph.png" width="49%" alt="The graph of articles, topics, series and the people who discussed them">
+</p>
+
+*Screenshots use sample data; the people in them are invented.*
+
 ## Why postloom
 
 - **Runs on your machine.** Your writing and the people you talk to stay on your computer.
@@ -39,7 +48,9 @@ uv sync
 uv run postloom start
 ```
 
-`postloom start` opens the app in your browser. On first run:
+`postloom start` opens the app in your browser (dark by default; switch to light at the
+bottom of the sidebar). Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> anywhere to search your
+articles and people, ask a question, or jump to a page. On first run:
 
 1. Open **Settings**, pick a model provider, paste your API key and click **Test
    connection**. Keys are saved only in your Postloom folder. No key? Choose Ollama and
@@ -221,4 +232,8 @@ postloom is not affiliated with or endorsed by LinkedIn.
 
 ## License
 
-[Apache-2.0](LICENSE)
+postloom is **fair source**, under the [Functional Source License 1.1](LICENSE.md)
+(FSL-1.1-ALv2). You can read, run, modify and share the code for anything except offering
+a competing commercial product or service. Using postloom for your own work, including
+your business, is allowed. Each release becomes Apache-2.0 two years after it is
+published. The postloom name and logo aren't covered by the license.

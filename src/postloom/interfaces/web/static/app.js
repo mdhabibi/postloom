@@ -35,6 +35,35 @@ async function refresh() {
   renderSidebar();
 }
 
+// ---------------------------------------------------------------------------- icons
+// Line icons drawn on a 24px grid; constant markup, never user input.
+const ICONS = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6.2l7 .5M7.1 8.3l3.8 7.4M16.8 9.3l-3.6 6.5"/>',
+  people: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.3 6-5.3s5.4 1.9 6 5.3"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.9c1.6.7 2.7 2.4 3 5.1"/>',
+  settings: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  ask: '<path d="M4 5h16v11H9l-5 4z"/><path d="M9 10.5h6"/>',
+  article: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>',
+  person: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  reply: '<path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 6 6v1"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+};
+
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = ICONS[name];
+  return svg;
+}
+
 // ---------------------------------------------------------------------------- dom helpers
 function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -218,22 +247,36 @@ function renderSidebar() {
 
   const visible = state.articles.filter((a) =>
     !state.topicFilter || a.topics.some((t) => t.name === state.topicFilter));
-  const peopleLink = document.getElementById("people-link");
-  peopleLink.textContent = state.status.people ? `People (${state.status.people})` : "People";
-  const onPeople = location.hash.startsWith("#/people") || location.hash.startsWith("#/person/");
-  peopleLink.setAttribute("aria-current", onPeople ? "page" : "false");
-  document.getElementById("graph-link").setAttribute("aria-current", location.hash === "#/graph" ? "page" : "false");
-  document.getElementById("settings-link").setAttribute("aria-current", location.hash === "#/settings" ? "page" : "false");
+  renderNav();
 
   const list = document.getElementById("article-list");
   const current = currentArticleId();
   list.replaceChildren(...(visible.length ? visible.map((a) => h("li", {},
     h("a", { href: `#/article/${encodeURIComponent(a.id)}`, "aria-current": a.id === current ? "page" : null },
       warp(a.topics),
-      h("span", {}, a.title, h("span", { class: "meta" },
+      h("span", {}, h("span", { class: "title" }, a.title), h("span", { class: "meta" },
         [formatDate(a.published_on), a.series && `${a.series}${a.series_part ? `, part ${a.series_part}` : ""}`]
           .filter(Boolean).join(", ") || "Undated")))))
     : [h("li", { class: "empty" }, state.topicFilter ? "No articles in this thread yet." : "No articles yet.")]));
+}
+
+const NAV = {
+  home: { icon: "home", label: "Home", active: (hash) => hash === "#/" || hash === "" },
+  add: { icon: "plus", label: "Add article", active: (hash) => hash === "#/add" },
+  graph: { icon: "graph", label: "Graph", active: (hash) => hash === "#/graph" },
+  people: { icon: "people", label: "People", active: (hash) => hash.startsWith("#/people") || hash.startsWith("#/person/") },
+  settings: { icon: "settings", label: "Settings", active: (hash) => hash === "#/settings" },
+};
+
+function renderNav() {
+  const hash = location.hash || "#/";
+  for (const link of document.querySelectorAll(".main-nav a")) {
+    const item = NAV[link.dataset.route];
+    const count = link.dataset.route === "people" && state.status && state.status.people
+      ? h("span", { class: "nav-count", "aria-label": `${state.status.people} people` }, state.status.people) : null;
+    fill(link, icon(item.icon), h("span", {}, item.label), count);
+    link.setAttribute("aria-current", item.active(hash) ? "page" : "false");
+  }
 }
 
 function currentArticleId() {
@@ -242,21 +285,88 @@ function currentArticleId() {
 }
 
 // ---------------------------------------------------------------------------- views
-function homeView() {
+async function homeView() {
   if (!state.articles.length) {
-    return setMain(h("section", { class: "page" },
-      h("h1", {}, "Your articles, woven together"),
-      h("p", { class: "lede" }, "Paste a LinkedIn article and its announcement post. postloom restores the formatting, files it under your topics and makes it searchable, so you can ask questions about everything you've written."),
+    const configured = state.status.provider && state.status.provider.configured;
+    return setMain(h("section", { class: "dashboard" },
+      h("div", { class: "dash-head" }, weaveAll(),
+        h("h1", {}, "Your writing, woven together"),
+        h("p", {}, "Paste a LinkedIn article and the post that announced it. postloom restores the formatting, files it under your topics, links it to related articles and the people who discuss it, and lets you ask about everything you've written.")),
       keyNotice(),
-      h("a", { class: "button button-primary", href: "#/add" }, "Add your first article")));
+      h("div", { class: "empty-state" },
+        h("h2", {}, configured ? "Add your first article" : "Connect a model, then add an article"),
+        h("p", {}, configured
+          ? "Copy an article from LinkedIn and paste it in. It takes about half a minute."
+          : "postloom works with Gemini, Claude, OpenAI, OpenRouter, or free local models with Ollama. Bring your own key; it stays on this computer."),
+        h("div", { class: "actions" },
+          configured ? null : h("a", { class: "button button-primary", href: "#/settings" }, "Connect a provider"),
+          h("a", { class: configured ? "button button-primary" : "button", href: "#/add" }, icon("plus"), "Add article")))));
   }
-  setMain(h("section", { class: "page" },
-    h("h1", {}, "Your articles"),
-    h("p", { class: "lede" }, `${state.articles.length} ${state.articles.length === 1 ? "article" : "articles"} in your vault. Open one to read it and ask about it, or search across all of them.`),
+
+  setMain(h("section", { class: "dashboard" }, h("p", { class: "hint" }, "Loading...")));
+  let overview;
+  try {
+    overview = await api("/api/overview");
+  } catch (error) {
+    return setMain(h("section", { class: "page" }, h("h1", {}, "Home"), notice("error", error.message)));
+  }
+  const s = state.status;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const spent = s.budget.spent_usd;
+  const cost = spent > 0 && spent < 0.01 ? `$${spent.toFixed(4)}` : `$${spent.toFixed(2)}`;
+  const budget = s.budget.monthly_usd;
+
+  const waiting = overview.waiting.length
+    ? h("ul", { class: "waiting-list" }, overview.waiting.map((w) => h("li", { class: "waiting-item" },
+        h("p", { class: "who" }, h("strong", {}, w.author_name), ` on ${w.article_title}${w.posted_label ? `, ${w.posted_label}` : ""}`),
+        h("q", {}, w.text),
+        h("a", { class: "link-button", href: `#/article/${encodeURIComponent(w.article_id)}?comment=${encodeURIComponent(w.comment_id)}&reply=1` },
+          icon("reply"), "Draft reply"))))
+    : h("p", { class: "hint" }, overview.messages
+      ? "You've answered everyone. Paste new comments from an article's page when there are more."
+      : "No comments saved yet. Open an article and paste its comment section to see who's talking.");
+
+  setMain(h("section", { class: "dashboard" },
+    h("div", { class: "dash-head" }, weaveAll(),
+      h("h1", {}, "Home"),
+      h("p", {}, `${plural(overview.articles, "article", "articles")}, ${plural(overview.messages, "message", "messages")} from ${plural(overview.people, "person", "people")}.`)),
     keyNotice(),
-    h("div", { class: "home-grid" }, state.articles.map((a) =>
-      h("a", { class: "home-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
-        h("div", {}, h("h2", {}, a.title), h("p", {}, a.summary || formatDate(a.published_on) || "")))))));
+    h("div", { class: "attention" },
+      h("a", { href: "#waiting", class: overview.waiting_total ? "needs" : null },
+        h("strong", {}, overview.waiting_total), h("span", {}, overview.waiting_total === 1 ? "message waiting for your reply" : "messages waiting for your reply")),
+      h("a", { href: "#/graph", class: overview.pending_links ? "needs" : null },
+        h("strong", {}, overview.pending_links), h("span", {}, overview.pending_links === 1 ? "suggested link to review" : "suggested links to review")),
+      h("a", { href: "#/settings" },
+        h("strong", {}, cost), h("span", {}, budget === null ? "spent on models this month" : `of your $${budget} monthly budget`))),
+    h("div", { class: "dash-grid" },
+      h("div", {},
+        h("section", { class: "dash-section", id: "waiting", "aria-labelledby": "waiting-heading" },
+          h("h2", { id: "waiting-heading" }, "Waiting for your reply"), waiting),
+        h("section", { class: "dash-section", "aria-labelledby": "articles-heading" },
+          h("h2", { id: "articles-heading" }, "Your articles", h("a", { href: "#/add" }, "Add article")),
+          h("ul", { class: "article-rows" }, state.articles.slice(0, 8).map((a) => h("li", {},
+            h("a", { class: "article-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
+              h("div", {}, h("h3", {}, a.title), h("p", {}, a.summary || formatDate(a.published_on) || "")))))))),
+      h("aside", {},
+        h("section", { class: "dash-section", "aria-labelledby": "people-heading" },
+          h("h2", { id: "people-heading" }, "Most engaged", overview.top_people.length ? h("a", { href: "#/people" }, "Everyone") : null),
+          overview.top_people.length
+            ? h("ul", { class: "people-mini" }, overview.top_people.map((p) => h("li", {},
+                h("a", { href: `#/person/${encodeURIComponent(p.id)}` }, avatar(p.name),
+                  h("span", { class: "name" }, p.name), h("span", { class: "count" }, plural(p.messages, "message", "messages"))))))
+            : h("p", { class: "hint" }, "People appear here once you save comments."))))));
+  const anchor = document.getElementById("waiting");
+  document.querySelector('.attention a[href="#waiting"]').addEventListener("click", (event) => {
+    event.preventDefault();
+    anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function weaveAll() {
+  // Every thread in the vault, side by side: the loom at rest.
+  const colors = state.status.topics.map((name) => topicColor(name));
+  const stops = colors.map((c, i) => `${c} ${(i / colors.length) * 100}% ${((i + 1) / colors.length) * 100}%`);
+  return h("div", { class: "weave", "aria-hidden": "true", vars: { "--weave": `linear-gradient(90deg, ${stops.join(", ")})` } });
 }
 
 function keyNotice() {
@@ -333,7 +443,7 @@ async function submitArticle(event) {
   }
 }
 
-async function articleView(id) {
+async function articleView(id, focus = {}) {
   let article;
   try {
     article = await api(`/api/article?id=${encodeURIComponent(id)}`);
@@ -362,6 +472,18 @@ async function articleView(id) {
     chatPanel(article.id, "Ask about this article",
       "Answers come only from this article, its post and its comments.", suggestions)));
   renderSidebar();
+  if (focus.comment) focusComment(focus.comment, focus.reply);
+}
+
+function focusComment(commentId, openDraft) {
+  const row = [...document.querySelectorAll(".comment")].find((li) => li.dataset.id === commentId);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("flash");
+  if (openDraft) {
+    const button = row.querySelector(".comment-actions .link-button");
+    if (button) button.click();
+  }
 }
 
 // ---------------------------------------------------------------------------- related articles
@@ -451,7 +573,7 @@ function commentRow(comment, all) {
   const depth = Math.min(comment.depth, 4);
   const target = all.find((c) => c.id === comment.reply_to);
   const answering = target ? (target.is_own ? "you" : target.author_name) : null;
-  return h("li", { class: `comment${comment.is_own ? " own" : ""}`, "data-depth": depth },
+  return h("li", { class: `comment${comment.is_own ? " own" : ""}`, "data-depth": depth, "data-id": comment.id },
     h("p", { class: "comment-meta" },
       h("strong", {}, comment.is_own ? "You"
         : h("a", { href: `#/person/${encodeURIComponent(comment.author)}` }, comment.author_name)),
@@ -617,10 +739,9 @@ function openReviewStep(article, container, preview, onClose) {
   render();
 }
 
-async function searchView(query) {
-  document.getElementById("search-input").value = query;
+async function searchView(query, ask = false) {
   const page = h("section", { class: "page library-ask" },
-    h("h1", {}, `Results for "${query}"`), h("div", { id: "search-results" }, h("p", { class: "lede" }, "Searching...")));
+    h("h1", {}, ask ? query : `Results for "${query}"`), h("div", { id: "search-results" }, h("p", { class: "lede" }, "Searching...")));
   setMain(page);
   try {
     const found = await api(`/api/search?q=${encodeURIComponent(query)}`);
@@ -631,7 +752,7 @@ async function searchView(query) {
       : h("p", { class: "lede" }, "No articles match. Try other words, or ask below.");
     document.getElementById("search-results").replaceChildren(
       ...found.warnings.map((w) => notice("", w)), list,
-      chatPanel("library", "Ask across all your articles", "Answers use only passages that clearly match your question.", [], query));
+      chatPanel("library", "Ask across all your articles", "Answers use only passages that clearly match your question.", [], query, ask));
   } catch (error) {
     document.getElementById("search-results").replaceChildren(notice("error", error.message));
   }
@@ -689,7 +810,7 @@ function providerSection(s) {
         s.providers.map((p) => h("label", { class: `provider-card${p.id === selected ? " selected" : ""}` },
           h("input", { type: "radio", name: "provider", value: p.id, checked: p.id === selected, disabled: locked,
             onchange: () => { selected = p.id; found = []; tested = null; render(); } }),
-          h("span", { class: "provider-name" }, p.label, p.local ? h("span", { class: "badge" }, "Free") : null),
+          h("span", { class: "provider-name" }, p.label, p.local ? h("span", { class: "badge free" }, "Free") : null),
           h("span", { class: "provider-description" }, p.description)))),
       locked ? notice("", "The provider is set by the POSTLOOM_PROVIDER environment variable.") : null,
       spec ? providerForm(s, spec, found, tested, (models, outcome) => { found = models; tested = outcome; render(); }) : null);
@@ -969,7 +1090,7 @@ async function personView(id) {
 }
 
 // ---------------------------------------------------------------------------- chat
-function chatPanel(scope, title, subtitle, suggestions, initialQuestion) {
+function chatPanel(scope, title, subtitle, suggestions, initialQuestion, autoAsk = false) {
   const messages = h("div", { class: "messages", "aria-live": "polite" });
   const input = h("textarea", { "aria-label": "Your question", placeholder: "Ask a question", rows: 1 });
   const submit = h("button", { class: "button button-primary", type: "submit" }, "Ask");
@@ -985,7 +1106,7 @@ function chatPanel(scope, title, subtitle, suggestions, initialQuestion) {
     if (!history.length) {
       const empty = [h("p", { class: "empty" }, "No questions yet.")];
       if (suggestions.length) {
-        empty.push(h("div", { class: "suggestions" }, suggestions.map((s) =>
+        empty.push(h("div", { class: "prompts" }, suggestions.map((s) =>
           h("button", { type: "button", onclick: () => { input.value = s; send(); } }, s))));
       }
       messages.replaceChildren(...empty);
@@ -1023,7 +1144,10 @@ function chatPanel(scope, title, subtitle, suggestions, initialQuestion) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
   render();
-  if (initialQuestion && !history.length) input.value = initialQuestion;
+  if (initialQuestion && !history.length) {
+    input.value = initialQuestion;
+    if (autoAsk) queueMicrotask(send);
+  }
   return panel;
 }
 
@@ -1132,7 +1256,7 @@ function suggestionList(graph) {
       toast(error.message);
     }
   };
-  return h("section", { class: "suggestions", "aria-label": "Suggested links" },
+  return h("section", { class: "link-review", "aria-label": "Suggested links" },
     h("h2", {}, `${pending.length} suggested ${pending.length === 1 ? "link" : "links"} to review`),
     h("p", { class: "hint" }, "Accepted links are added to both articles' notes in your vault. Dismissed ones are never suggested again."),
     h("ul", { class: "related-list" }, pending.map((link) => h("li", { class: "related-item suggested" },
@@ -1290,39 +1414,190 @@ function panAndZoom(svg, getView, setView) {
 
 async function route() {
   const hash = location.hash || "#/";
+  const [path, queryString] = hash.split("?");
+  const params = new URLSearchParams(queryString || "");
   try {
     if (!state.status) await refresh();
-    if (hash.startsWith("#/article/")) return await articleView(decodeURIComponent(hash.slice(10)));
-    if (hash.startsWith("#/search")) {
-      const query = new URLSearchParams(hash.split("?")[1] || "").get("q") || "";
-      return await searchView(query);
+    renderNav();
+    if (path.startsWith("#/article/")) {
+      return await articleView(decodeURIComponent(path.slice(10)),
+        { comment: params.get("comment"), reply: params.get("reply") === "1" });
     }
-    if (hash === "#/add") return addView();
-    if (hash === "#/settings") return await settingsView();
-    if (hash === "#/people") return await peopleView();
-    if (hash === "#/graph") return await graphView();
-    if (hash.startsWith("#/person/")) return await personView(decodeURIComponent(hash.slice(9)));
+    if (path === "#/search") return await searchView(params.get("q") || "", params.get("ask") === "1");
+    if (path === "#/add") return addView();
+    if (path === "#/settings") return await settingsView();
+    if (path === "#/people") return await peopleView();
+    if (path === "#/graph") return await graphView();
+    if (path.startsWith("#/person/")) return await personView(decodeURIComponent(path.slice(9)));
     renderSidebar();
-    return homeView();
+    return await homeView();
   } catch (error) {
     setMain(h("section", { class: "page" }, h("h1", {}, "Something went wrong"), notice("error", error.message)));
   }
 }
 
-document.getElementById("browse-toggle").addEventListener("click", (event) => {
-  const sidebar = document.querySelector(".sidebar");
-  const open = sidebar.classList.toggle("browsing");
-  event.currentTarget.setAttribute("aria-expanded", String(open));
+// ---------------------------------------------------------------------------- command palette
+const palette = {
+  root: document.getElementById("palette"),
+  input: document.getElementById("palette-input"),
+  list: document.getElementById("palette-list"),
+  options: [],
+  active: 0,
+  returnFocus: null,
+  people: null,
+};
+
+function openPalette() {
+  if (!palette.root.hidden) return;
+  palette.returnFocus = document.activeElement;
+  palette.root.hidden = false;
+  palette.input.value = "";
+  palette.active = 0;
+  renderPalette();
+  palette.input.focus();
+  if (palette.people === null) {
+    palette.people = [];
+    api("/api/people").then(({ people }) => { palette.people = people; renderPalette(); }).catch(() => {});
+  }
+}
+
+function closePalette() {
+  if (palette.root.hidden) return;
+  palette.root.hidden = true;
+  if (palette.returnFocus && document.contains(palette.returnFocus)) palette.returnFocus.focus();
+}
+
+function paletteOptions(query) {
+  const q = query.trim().toLowerCase();
+  const matches = (text) => !q || text.toLowerCase().includes(q);
+  const go = (hash) => () => { location.hash = hash; };
+  const groups = [];
+  if (q) {
+    groups.push(["Search and ask", [
+      { icon: "search", label: `Search for "${query.trim()}"`, run: go(`#/search?q=${encodeURIComponent(query.trim())}`) },
+      { icon: "ask", label: `Ask your articles: "${query.trim()}"`, run: go(`#/search?q=${encodeURIComponent(query.trim())}&ask=1`) },
+    ]]);
+  }
+  const articles = state.articles.filter((a) => matches(a.title)).slice(0, q ? 6 : 4).map((a) => ({
+    icon: "article", label: a.title, sub: a.topics.map((t) => t.name).join(", "),
+    run: go(`#/article/${encodeURIComponent(a.id)}`),
+  }));
+  if (articles.length) groups.push(["Articles", articles]);
+  const people = (palette.people || []).filter((p) => matches(p.name)).slice(0, q ? 5 : 3).map((p) => ({
+    icon: "person", label: p.name, sub: p.headline || "", run: go(`#/person/${encodeURIComponent(p.id)}`),
+  }));
+  if (people.length) groups.push(["People", people]);
+  const dark = document.documentElement.dataset.theme !== "light";
+  const pages = [
+    ...Object.entries(NAV).map(([route, item]) => ({
+      icon: item.icon, label: item.label, run: go(route === "home" ? "#/" : `#/${route}`),
+    })),
+    { icon: dark ? "sun" : "moon", label: dark ? "Switch to light theme" : "Switch to dark theme", run: toggleTheme },
+  ].filter((o) => matches(o.label));
+  if (pages.length) groups.push(["Go to", pages]);
+  return groups;
+}
+
+function renderPalette() {
+  const groups = paletteOptions(palette.input.value);
+  palette.options = groups.flatMap(([, options]) => options);
+  palette.active = Math.min(palette.active, Math.max(palette.options.length - 1, 0));
+  let index = 0;
+  const items = groups.flatMap(([name, options]) => [
+    h("li", { class: "palette-group", role: "presentation" }, name),
+    ...options.map((option) => {
+      const i = index++;
+      return h("li", { class: "palette-option", role: "option", id: `palette-option-${i}`,
+        "aria-selected": String(i === palette.active),
+        onmousemove: () => { if (palette.active !== i) { palette.active = i; markActive(); } },
+        onclick: () => runOption(i) },
+        icon(option.icon), h("span", { class: "label-text" }, option.label),
+        option.sub ? h("span", { class: "sub" }, option.sub) : null);
+    }),
+  ]);
+  fill(palette.list, items.length ? items : h("li", { class: "palette-empty" }, "Nothing matches. Press Enter to search instead."));
+  markActive();
+}
+
+function markActive() {
+  for (const el of palette.list.querySelectorAll(".palette-option")) {
+    const on = el.id === `palette-option-${palette.active}`;
+    el.setAttribute("aria-selected", String(on));
+    if (on) el.scrollIntoView({ block: "nearest" });
+  }
+  palette.input.setAttribute("aria-activedescendant", palette.options.length ? `palette-option-${palette.active}` : "");
+}
+
+function runOption(i) {
+  const option = palette.options[i];
+  closePalette();
+  if (option) option.run();
+}
+
+palette.input.addEventListener("input", () => { palette.active = 0; renderPalette(); });
+palette.input.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const n = palette.options.length;
+    if (n) palette.active = (palette.active + (event.key === "ArrowDown" ? 1 : n - 1)) % n;
+    markActive();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    const query = palette.input.value.trim();
+    if (palette.options.length) runOption(palette.active);
+    else if (query) { closePalette(); location.hash = `#/search?q=${encodeURIComponent(query)}`; }
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closePalette();
+  } else if (event.key === "Tab") {
+    event.preventDefault(); // focus stays in the dialog
+  }
 });
-window.addEventListener("hashchange", () => {
-  document.querySelector(".sidebar").classList.remove("browsing");
-  document.getElementById("browse-toggle").setAttribute("aria-expanded", "false");
+palette.root.addEventListener("mousedown", (event) => { if (event.target === palette.root) closePalette(); });
+
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+document.getElementById("shortcut-hint").textContent = isMac ? "⌘K" : "Ctrl K";
+document.getElementById("search-trigger").prepend(icon("search"));
+document.getElementById("search-trigger").addEventListener("click", openPalette);
+document.addEventListener("keydown", (event) => {
+  const typing = event.target.closest && event.target.closest("input, textarea, select, [contenteditable]");
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (palette.root.hidden) openPalette(); else closePalette();
+  } else if (event.key === "/" && !typing && palette.root.hidden) {
+    event.preventDefault();
+    openPalette();
+  }
 });
 
-document.getElementById("search-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const query = document.getElementById("search-input").value.trim();
-  if (query) location.hash = `#/search?q=${encodeURIComponent(query)}`;
-});
-window.addEventListener("hashchange", route);
+// ---------------------------------------------------------------------------- theme and menu
+function renderThemeToggle() {
+  const dark = document.documentElement.dataset.theme !== "light";
+  fill(document.getElementById("theme-toggle"), icon(dark ? "sun" : "moon"), h("span", {}, dark ? "Light theme" : "Dark theme"));
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("postloom-theme", next);
+  } catch {
+    // Not saved (private window); the choice still applies until the page closes.
+  }
+  renderThemeToggle();
+}
+
+document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+renderThemeToggle();
+
+const menuToggle = document.getElementById("menu-toggle");
+function setMenu(open) {
+  document.getElementById("sidebar").classList.toggle("open", open);
+  menuToggle.setAttribute("aria-expanded", String(open));
+  fill(menuToggle, icon(open ? "close" : "menu"));
+}
+menuToggle.addEventListener("click", () => setMenu(menuToggle.getAttribute("aria-expanded") !== "true"));
+setMenu(false);
+
+window.addEventListener("hashchange", () => { setMenu(false); route(); });
 route();
