@@ -1234,7 +1234,7 @@ async function graphView() {
       h("ul", { class: "graph-legend", "aria-label": "Legend" },
         h("li", {}, h("span", { class: "key key-topic" }), "Topic"),
         h("li", {}, h("span", { class: "key key-article" }), "Article"),
-        h("li", {}, h("span", { class: "key key-person" }), "Person"),
+        h("li", {}, svgEl("svg", { class: "key-person", viewBox: "-11 -11 22 22", "aria-hidden": "true" }, personGlyph(10)), "Person"),
         h("li", {}, h("span", { class: "key key-linked" }), "Linked"),
         h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
     canvas,
@@ -1302,8 +1302,10 @@ function graphSvg(graph, options) {
   const nodeLayer = svgEl("g", { class: "nodes" }, nodes.map((n) => {
     const href = n.kind === "article" ? `#/article/${encodeURIComponent(n.id)}`
       : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}` : null;
-    const shape = svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${n.kind}`,
-      css: n.kind === "topic" ? { fill: topicColor(n.label) } : null });
+    const shape = n.kind === "person"
+      ? personGlyph(n.r, { transform: `translate(${n.x} ${n.y})` })
+      : svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${n.kind}`,
+          css: n.kind === "topic" ? { fill: topicColor(n.label) } : null });
     const label = svgEl("text", { x: n.x, y: n.y + n.r + 12, class: `label label-${n.kind}` },
       clip(n.label, n.kind === "person" ? 22 : 30));
     const group = svgEl(href ? "a" : "g", { class: "graph-node", "data-id": n.id, href,
@@ -1318,11 +1320,22 @@ function graphSvg(graph, options) {
   return svg;
 }
 
+function personGlyph(r, attrs = {}) {
+  // A head and shoulders drawn in a 20-unit box, scaled to the node's radius. The faint
+  // circle behind it keeps the whole node easy to hover and click.
+  const k = r / 10;
+  return svgEl("g", { class: "node node-person", ...attrs },
+    svgEl("circle", { class: "person-hit", r: r + 2 }),
+    svgEl("g", { transform: `scale(${k})` },
+      svgEl("circle", { cx: 0, cy: -4.2, r: 4 }),
+      svgEl("path", { d: "M-8.5 9.5c0-5.2 3.8-8.2 8.5-8.2s8.5 3 8.5 8.2z" })));
+}
+
 function nodeRadius(n) {
   if (n.kind === "topic") return 10 + Math.min(Math.sqrt(n.weight) * 2.5, 12);
   if (n.kind === "series") return 8;
   if (n.kind === "article") return 7 + Math.min(Math.sqrt(n.weight), 5);
-  return 4 + Math.min(Math.sqrt(n.weight) * 1.5, 6);
+  return 7 + Math.min(Math.sqrt(n.weight) * 1.5, 5);
 }
 
 function nodeTitle(n) {

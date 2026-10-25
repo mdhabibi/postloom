@@ -636,7 +636,8 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .key { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; }
 .key-topic { background: var(--dye-3); }
 .key-article { background: var(--bg); border: 2px solid var(--text); }
-.key-person { background: var(--muted); width: 0.55rem; height: 0.55rem; }
+.key-person { width: 0.95rem; height: 0.95rem; fill: var(--muted); }
+.key-person .person-hit { fill: none; }
 .key-linked, .key-suggested { width: 1.4rem; height: 0; border-radius: 0; border-top: 2px solid var(--accent); }
 .key-suggested { border-top: 2px dashed var(--muted); }
 .graph-canvas {
@@ -657,9 +658,14 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .node { stroke: var(--surface); stroke-width: 2; transition: opacity 150ms var(--ease); }
 .node-article { fill: var(--bg); stroke: var(--text); stroke-width: 2; }
 .node-series { fill: var(--text-soft); }
-.node-person { fill: var(--muted); }
+.node-person { fill: var(--text-soft); stroke: none; }
+.node-person .person-hit { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+.graph-node:hover .node-person, .graph-node:focus-visible .node-person { fill: var(--accent); }
+.graph-node:hover .person-hit, .graph-node:focus-visible .person-hit { stroke: var(--accent); }
 .graph-node { cursor: pointer; outline: none; }
 .graph-node:hover .node-article, .graph-node:focus-visible .node { stroke: var(--accent); stroke-width: 3; }
+.graph-node:focus-visible .node-person { stroke: none; }
+.graph-node:focus-visible .person-hit { stroke: var(--accent); stroke-width: 2.5; }
 .label {
   font: 500 11px/1 var(--sans); fill: var(--text-soft); text-anchor: middle; pointer-events: none;
   paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
