@@ -52,6 +52,8 @@ const ICONS = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   reply: '<path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 6 6v1"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };
 
@@ -89,7 +91,7 @@ function fill(node, ...children) {
 
 function setMain(...children) {
   const main = document.getElementById("main");
-  main.replaceChildren(...children);
+  fill(main, vaultBanner(), ...children);
   main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
 }
@@ -100,6 +102,63 @@ function toast(message) {
   el.classList.add("visible");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove("visible"), 3500);
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many || `${one}s`}`;
+}
+
+// A destructive action asks once more, in place: no browser dialogs.
+function confirmBox(label, question, confirmLabel, action) {
+  const box = h("div", { class: "confirm" });
+  const reset = () => fill(box, h("button", { class: "button button-danger-quiet", type: "button", onclick: ask }, icon("trash"), label));
+  function ask() {
+    const yes = h("button", { class: "button button-danger", type: "button", onclick: run }, confirmLabel);
+    fill(box, h("p", { class: "confirm-text", role: "alert" }, question),
+      h("div", { class: "confirm-actions" }, yes, h("button", { class: "button", type: "button", onclick: reset }, "Cancel")));
+    box.querySelector(".confirm-actions .button:last-child").focus();
+  }
+  async function run(event) {
+    event.currentTarget.disabled = true;
+    try {
+      await action();
+    } catch (error) {
+      toast(error.message);
+      reset();
+    }
+  }
+  reset();
+  return box;
+}
+
+// ---------------------------------------------------------------------------- vault banner
+function vaultBanner() {
+  const s = state.status;
+  if (!s) return null;
+  const sync = s.vault_sync;
+  const read = async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      await api("/api/vault/sync", { method: "POST" });
+    } catch (error) {
+      toast(error.message);
+    }
+    await refresh();
+    route();
+  };
+  if (sync && !sync.applied && sync.problems.length) {
+    return h("div", { class: "notice error banner", role: "alert" },
+      h("p", {}, h("strong", {}, `postloom can't read ${plural(sync.problems.length, "note")} in your vault, `),
+        "so your recent edits there are not applied yet. Fix the note (or undo the edit), then try again."),
+      h("ul", { class: "problem-list" }, sync.problems.map((x) => h("li", {}, h("code", {}, x.path), `: ${x.reason}`))),
+      h("button", { class: "button", type: "button", onclick: read }, "Try again"));
+  }
+  if (s.vault_changes > 0) {
+    return h("div", { class: "notice banner" },
+      h("p", {}, `${plural(s.vault_changes, "note was", "notes were")} edited outside postloom.`),
+      h("button", { class: "button", type: "button", onclick: read }, "Read them now"));
+  }
+  return null;
 }
 
 function notice(kind, ...lines) {
@@ -459,6 +518,7 @@ async function articleView(id, focus = {}) {
     h("p", { class: "byline" }, byline || "Undated",
       article.url ? [" ", h("a", { href: article.url, target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn")] : null),
     tagList(article.topics),
+    articleActions(article),
     article.summary ? h("p", { class: "summary" }, article.summary) : null,
     htmlBlock("prose", markdown(article.body_markdown)),
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
@@ -473,6 +533,95 @@ async function articleView(id, focus = {}) {
       "Answers come only from this article, its post and its comments.", suggestions)));
   renderSidebar();
   if (focus.comment) focusComment(focus.comment, focus.reply);
+}
+
+// ---------------------------------------------------------------------------- edit / delete an article
+function articleActions(article) {
+  const panel = h("div", { class: "article-edit" });
+  const comments = article.discussion.length;
+  const remove = confirmBox("Delete",
+    `Delete "${article.title}", its post${comments ? ` and ${plural(comments, "comment")}` : ""}? People you talked to are kept. This can't be undone.`,
+    "Delete article", async () => {
+      await api(`/api/article?id=${encodeURIComponent(article.id)}`, { method: "DELETE" });
+      state.chats.delete(article.id);
+      await refresh();
+      toast("Article deleted");
+      location.hash = "#/";
+    });
+  const edit = h("button", { class: "button", type: "button", "aria-expanded": "false",
+    onclick: () => {
+      const open = panel.childElementCount > 0;
+      edit.setAttribute("aria-expanded", String(!open));
+      if (open) panel.replaceChildren();
+      else articleEditor(article, panel, () => { panel.replaceChildren(); edit.setAttribute("aria-expanded", "false"); });
+    } }, icon("edit"), "Edit details");
+  return h("div", { class: "article-tools" }, h("div", { class: "article-actions" }, edit, remove), panel);
+}
+
+async function articleEditor(article, panel, close) {
+  fill(panel, h("p", { class: "hint" }, "Loading your topics…"));
+  let topics;
+  try {
+    ({ topics } = await api("/api/topics"));
+  } catch (error) {
+    return fill(panel, notice("error", error.message));
+  }
+  const chosen = new Set(article.topics.map((t) => t.name));
+  const input = (id, attrs) => h("input", { id, ...attrs });
+  const title = input("edit_title", { value: article.title, required: true, maxlength: 300 });
+  const summary = h("textarea", { id: "edit_summary", rows: 3, maxlength: 2000 }, article.summary || "");
+  const series = input("edit_series", { value: article.series || "", maxlength: 200, placeholder: "None" });
+  const part = input("edit_part", { type: "number", min: 1, max: 999, value: article.series_part || "", placeholder: "None" });
+  const date = input("edit_date", { type: "date", value: article.published_on || "" });
+  const url = input("edit_url", { type: "url", value: article.url || "", maxlength: 2000, placeholder: "https://www.linkedin.com/pulse/..." });
+  const picker = h("fieldset", { class: "topic-picker" },
+    h("legend", {}, "Topics"),
+    topics.map((t) => h("label", { class: "chip" },
+      h("input", { type: "checkbox", value: t.name, checked: chosen.has(t.name) }),
+      h("span", { class: "swatch", vars: { "--thread": topicColor(t.name) } }), t.name)),
+    h("p", { class: "hint" }, "Add, rename or remove topics in ", h("a", { href: "#/settings" }, "Settings"), "."));
+  const status = h("p", { class: "hint", role: "status" });
+  const save = h("button", { class: "button button-primary", type: "submit" }, "Save changes");
+
+  const form = h("form", { class: "editor", "aria-label": "Edit article details",
+    onsubmit: async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      status.textContent = "Saving…";
+      const body = {
+        id: article.id,
+        title: title.value.trim(),
+        summary: summary.value.trim(),
+        topics: [...picker.querySelectorAll("input:checked")].map((box) => box.value),
+        series: series.value.trim() || null,
+        series_part: part.value ? Number(part.value) : null,
+        published_on: date.value || null,
+        url: url.value.trim() || null,
+      };
+      try {
+        await api("/api/article", { method: "PUT", body });
+        await refresh();
+        toast("Article updated");
+        articleView(article.id);
+      } catch (error) {
+        save.disabled = false;
+        fill(status, notice("error", error.message));
+      }
+    } },
+    field("edit_title", "Title", title),
+    field("edit_summary", "Summary", summary, "One or two sentences. Shown in search results and used by chat."),
+    picker,
+    h("div", { class: "field-row" },
+      field("edit_series", "Series", series, "Leave empty if it isn't part of one."),
+      field("edit_part", "Part", part),
+      field("edit_date", "Published", date)),
+    field("edit_url", "LinkedIn link", url, "postloom uses the link to recognise this article if you add it again."),
+    h("div", { class: "editor-actions" }, save,
+      h("button", { class: "button", type: "button", onclick: close }, "Cancel")),
+    status,
+    h("p", { class: "hint" }, "To change the article's text, edit its note in your vault; postloom reads the change."));
+  fill(panel, form);
+  title.focus();
 }
 
 function focusComment(commentId, openDraft) {
@@ -781,11 +930,119 @@ async function settingsView() {
           disabled: s.locked.includes("owner_name") }),
         h("button", { class: "button", type: "button", onclick: saveOwnerName, disabled: s.locked.includes("owner_name") }, "Save name")),
       h("p", { class: "hint" }, "Used to recognise your own replies when you paste comments.")),
-    h("section", { class: "settings-section" },
-      h("h2", { class: "settings-heading" }, "Where your data lives"),
-      h("p", { class: "path" }, s.vault),
-      h("p", { class: "hint" }, `Open this folder in Obsidian to browse your articles as a graph. postloom ${s.version}.`)));
+    topicsSection(),
+    vaultSection(s));
   setMain(page);
+}
+
+// ---------------------------------------------------------------------------- settings: topics
+function topicsSection() {
+  const section = h("section", { class: "settings-section", "aria-labelledby": "topics-heading" });
+  const list = h("ul", { class: "topic-rows" });
+  const status = h("div", { role: "status" });
+
+  async function change(request, message) {
+    try {
+      const { topics } = await request;
+      await refresh();
+      render(topics);
+      fill(status);
+      toast(message);
+    } catch (error) {
+      fill(status, notice("error", error.message));
+    }
+  }
+
+  function row(topic) {
+    const item = h("li", {});
+    const show = () => fill(item,
+      h("span", { class: "swatch", vars: { "--thread": topicColor(topic.name) } }),
+      h("div", { class: "topic-text" }, h("strong", {}, topic.name),
+        topic.description ? h("p", {}, topic.description) : null),
+      h("span", { class: "count" }, plural(topic.articles, "article")),
+      h("div", { class: "topic-actions" },
+        h("button", { class: "button", type: "button", onclick: edit }, "Edit"),
+        confirmBox("Remove",
+          `Remove "${topic.name}"? ${topic.articles ? `${plural(topic.articles, "article")} will no longer belong to it. ` : ""}Articles are never deleted.`,
+          "Remove topic",
+          () => change(api(`/api/topics?id=${encodeURIComponent(topic.id)}`, { method: "DELETE" }), "Topic removed"))));
+    function edit() {
+      const name = h("input", { value: topic.name, maxlength: 60, required: true, "aria-label": "Topic name" });
+      const description = h("input", { value: topic.description, maxlength: 500, "aria-label": "Description", placeholder: "What belongs in this topic" });
+      fill(item, h("form", { class: "topic-form",
+        onsubmit: (event) => {
+          event.preventDefault();
+          change(api("/api/topics", { method: "PUT", body: { id: topic.id, name: name.value.trim(), description: description.value.trim() } }), "Topic saved");
+        } }, name, description,
+        h("button", { class: "button button-primary", type: "submit" }, "Save"),
+        h("button", { class: "button", type: "button", onclick: show }, "Cancel")),
+        h("p", { class: "hint" }, "Renaming it to the name of another topic merges the two."));
+      name.focus();
+    }
+    show();
+    return item;
+  }
+
+  function render(topics) {
+    fill(list, topics.map(row));
+  }
+
+  const newName = h("input", { id: "new_topic", maxlength: 60, required: true, placeholder: "e.g. Vector databases" });
+  const newDescription = h("input", { id: "new_topic_description", maxlength: 500, placeholder: "What belongs in this topic (helps the model choose)" });
+  section.append(
+    h("h2", { class: "settings-heading", id: "topics-heading" }, "Topics"),
+    h("p", { class: "hint" }, "The threads your writing is sorted into. When you add an article, the model picks from this list and nothing else."),
+    list, status,
+    h("form", { class: "topic-form topic-add",
+      onsubmit: async (event) => {
+        event.preventDefault();
+        await change(api("/api/topics", { method: "POST", body: { name: newName.value.trim(), description: newDescription.value.trim() } }), "Topic added");
+        newName.value = "";
+        newDescription.value = "";
+      } },
+      h("label", { class: "visually-hidden", for: "new_topic" }, "New topic name"), newName,
+      h("label", { class: "visually-hidden", for: "new_topic_description" }, "New topic description"), newDescription,
+      h("button", { class: "button", type: "submit" }, "Add topic")));
+  api("/api/topics").then(({ topics }) => render(topics))
+    .catch((error) => fill(status, notice("error", error.message)));
+  return section;
+}
+
+// ---------------------------------------------------------------------------- settings: vault
+function syncSummary(sync) {
+  if (!sync.applied) {
+    return notice("error", `${plural(sync.problems.length, "note")} can't be read, so nothing was changed:`,
+      ...sync.problems.map((x) => `${x.path}: ${x.reason}`));
+  }
+  const lines = [`Your vault holds ${plural(sync.articles, "article")}, ${plural(sync.comments, "comment")} and ${plural(sync.people, "person", "people")}. postloom matches it.`];
+  if (sync.changed) lines.push(`${plural(sync.changed, "edited note was", "edited notes were")} read.`);
+  for (const x of sync.problems) lines.push(`Skipped ${x.path}: ${x.reason}`);
+  if (sync.trashed.length) lines.push(`${plural(sync.trashed.length, "note")} that matched nothing moved to .postloom/trash in your vault.`);
+  if (sync.index_error) lines.push(`Search by meaning is incomplete: ${sync.index_error}`);
+  return notice("ok", ...lines);
+}
+
+function vaultSection(s) {
+  const result = h("div", { role: "status" });
+  const button = h("button", { class: "button", type: "button",
+    onclick: async () => {
+      button.disabled = true;
+      fill(result, h("p", { class: "hint" }, "Reading your vault…"));
+      try {
+        const sync = await api("/api/vault/sync", { method: "POST" });
+        await refresh();
+        fill(result, syncSummary(sync));
+      } catch (error) {
+        fill(result, notice("error", error.message));
+      }
+      button.disabled = false;
+    } }, "Read the vault again");
+  return h("section", { class: "settings-section" },
+    h("h2", { class: "settings-heading" }, "Your vault"),
+    h("p", { class: "path" }, s.vault),
+    h("p", { class: "hint" }, "Every article, post, comment and person is a Markdown note in this folder. Open it in Obsidian to browse it as a graph, and edit the notes there if you like: postloom reads your changes. If postloom's index is ever lost, it rebuilds itself from this folder, so backing up this folder backs up everything."),
+    button, result,
+    h("p", { class: "hint" }, `postloom ${s.version}`));
 }
 
 const TASK_LABELS = {
@@ -1085,7 +1342,19 @@ async function personView(id) {
       person.conversations.map((c) => h("div", {},
         h("h3", {}, h("a", { href: `#/article/${encodeURIComponent(c.article_id)}` }, c.article_title)),
         threadsOf(c.messages).map((thread) => h("ol", { class: "thread" },
-          thread.map((m) => commentRow(m, c.messages)))))))));
+          thread.map((m) => commentRow(m, c.messages))))))),
+
+    h("div", { class: "person-section danger-zone" },
+      h("h2", {}, "Delete this person"),
+      h("p", { class: "hint" }, "Erases their profile, your notes about them and every message they wrote, from postloom and from your vault. Use this when someone asks you to remove their data. Your own replies stay as you wrote them."),
+      confirmBox("Delete person",
+        `Delete ${person.name} and ${plural(person.messages, "message")} they wrote? This can't be undone.`,
+        "Delete person", async () => {
+          const gone = await api(`/api/person?id=${encodeURIComponent(person.id)}`, { method: "DELETE" });
+          await refresh();
+          toast(`${gone.name} deleted`);
+          location.hash = "#/people";
+        }))));
   renderSidebar();
 }
 
@@ -1431,6 +1700,7 @@ async function route() {
   const params = new URLSearchParams(queryString || "");
   try {
     if (!state.status) await refresh();
+    else state.status = await api("/api/status");  // notes may have been edited meanwhile
     renderNav();
     if (path.startsWith("#/article/")) {
       return await articleView(decodeURIComponent(path.slice(10)),
