@@ -329,3 +329,35 @@ def test_doctor_reports_what_fails(tmp_path: Path, capsys: pytest.CaptureFixture
     out = capsys.readouterr().out
     assert "FAIL  Models:" in out and "1 of 3 checks failed" in out
     assert "off; search uses keywords only" in out
+
+
+def test_doctor_explains_retries_and_slow_calls(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import logging
+
+    from postloom.interfaces.cli import doctor
+
+    def slow_and_retried() -> object:
+        logging.getLogger("postloom.llm").warning("Gemini answered HTTP 503 (busy); retrying in 2s")
+        return None
+
+    clock = iter([0.0, 40.0, 100.0, 101.0])
+    monkeypatch.setattr(doctor.time, "perf_counter", lambda: next(clock))
+    retried = doctor._timed("model-a (text)", slow_and_retried)  # pyright: ignore[reportPrivateUsage]
+    assert retried.ok and retried.detail == "model-a (text), 40.0s"
+    assert retried.notes[0] == "Retry: Gemini answered HTTP 503 (busy); retrying in 2s"
+    assert "busy and postloom waited and retried" in retried.notes[1]
+    quick = doctor._timed("model-b (text)", lambda: None)  # pyright: ignore[reportPrivateUsage]
+    assert quick.notes == ()
+    assert "retrying" not in capsys.readouterr().err  # collected, not printed twice
+
+
+def test_doctor_says_when_a_slow_call_was_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    from postloom.interfaces.cli import doctor
+
+    clock = iter([0.0, 171.6])
+    monkeypatch.setattr(doctor.time, "perf_counter", lambda: next(clock))
+    check = doctor._timed("model (text)", lambda: None)  # pyright: ignore[reportPrivateUsage]
+    (note,) = check.notes
+    assert note.startswith("Slow (172s) without any retry: the model itself took that long.")

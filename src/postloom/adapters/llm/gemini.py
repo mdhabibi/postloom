@@ -10,6 +10,7 @@ from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
     HttpApi,
+    InvalidRequestError,
     JsonReply,
     OutputTruncatedError,
     ProviderText,
@@ -23,6 +24,9 @@ from postloom.adapters.llm.http import HttpTransport, JsonObject, UrllibTranspor
 from postloom.application.errors import ExtractionError, ProviderAuthError, ProviderError
 
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+THINKING_LEVELS = {"low": "low", "high": "medium"}
+"""postloom's effort -> Gemini's ``thinkingLevel``. "minimal" is never sent: some models
+(3.8 Flash) refuse it."""
 TEXT = ProviderText(
     label="Gemini",
     key_help="Check it in Settings, or create a new one at aistudio.google.com/apikey.",
@@ -55,6 +59,8 @@ class GeminiBackend:
             max_retries=max_retries,
             sleep=sleep or time.sleep,
         )
+        self._no_thinking_level: set[str] = set()
+        """Models that refused a thinking level (learned from their 400)."""
 
     def complete_json(
         self,
@@ -78,7 +84,7 @@ class GeminiBackend:
                 "maxOutputTokens": max_output_tokens,
             },
         }
-        body = self._api.post(f"models/{model}:generateContent", payload)
+        body = self._generate(model, payload, effort)
         text = _candidate_text(body, allow_truncation=False)
         return JsonReply(parse_json_object(text, "Gemini"), _usage(body))
 
@@ -100,8 +106,43 @@ class GeminiBackend:
             ],
             "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
         }
-        body = self._api.post(f"models/{model}:generateContent", payload)
-        return TextReply(_candidate_text(body, allow_truncation=True), _usage(body))
+        body = self._generate(model, payload, effort)
+        text = _candidate_text(body, allow_truncation=True).strip()
+        if not text:
+            raise OutputTruncatedError(
+                "Gemini used its whole output limit thinking and wrote no answer. Try again, "
+                "or choose a model that thinks less in Settings."
+            )
+        return TextReply(text, _usage(body))
+
+    def _generate(self, model: str, payload: JsonObject, effort: str) -> JsonObject:
+        """Send a generateContent request with a thinking level that matches ``effort``.
+
+        Gemini 3 models think before answering, and how much is set by ``thinkingLevel``.
+        Left unset, each model uses its own default, which differs per model (3.8 Flash
+        thinks at "medium") and changes between releases, so postloom always says what
+        it wants: "low" for routine work, "medium" for reply drafts. Thinking also counts
+        against ``maxOutputTokens``, so less of it leaves more room for the answer.
+        Models that don't accept a thinking level (older ones) refuse with a 400 that
+        names it; that is learned once per model and the request is sent without it.
+        """
+        url = f"models/{model}:generateContent"
+        if model in self._no_thinking_level:
+            return self._api.post(url, payload)
+        config = cast(JsonObject, payload["generationConfig"])
+        level = THINKING_LEVELS.get(effort, "low")
+        thinking: JsonObject = {"thinkingLevel": level}
+        with_level: JsonObject = {
+            **payload,
+            "generationConfig": {**config, "thinkingConfig": thinking},
+        }
+        try:
+            return self._api.post(url, with_level)
+        except InvalidRequestError as error:
+            if "thinking" not in error.detail.lower():
+                raise
+            self._no_thinking_level.add(model)
+            return self._api.post(url, payload)
 
     def embed(
         self, model: str, texts: Sequence[str], *, kind: EmbeddingKind, dimensions: int | None

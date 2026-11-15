@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from postloom.adapters.llm.base import Turn
 from postloom.adapters.llm.chat import LlmChat
 from postloom.adapters.llm.content import LlmContentExtractor, LlmThreadParser
 from postloom.adapters.llm.embeddings import RemoteEmbeddings
@@ -375,3 +376,87 @@ def test_thread_parser_rejects_malformed_answers() -> None:
     gateway, _ = metered(GeminiBackend("k", transport=transport, sleep=Sleeps()))
     with pytest.raises(ExtractionError, match="couldn't split"):
         LlmThreadParser(gateway, "lite").parse("x", "post", None)
+
+
+# -- thinking -------------------------------------------------------------------------
+def thinking_of(call_payload: JsonObject) -> object:
+    config: dict[str, object] = call_payload["generationConfig"]
+    return config.get("thinkingConfig")
+
+
+def test_the_thinking_level_follows_the_requested_effort() -> None:
+    subject, transport, _ = backend(answer("Fine."), answer("Fine."), answer(GOOD_ANSWER))
+    turns: list[Turn] = [("user", "Hi")]
+    subject.complete_text("m", system="s", turns=turns, temperature=0, max_output_tokens=64)
+    assert thinking_of(transport.last.payload) == {"thinkingLevel": "low"}
+    subject.complete_text(
+        "m", system="s", turns=turns, temperature=0, max_output_tokens=64, effort="high"
+    )
+    assert thinking_of(transport.last.payload) == {"thinkingLevel": "medium"}
+    subject.complete_json(
+        "m",
+        system="s",
+        prompt="p",
+        schema=extraction_schema(TOPICS),
+        schema_name="article",
+        temperature=0,
+        max_output_tokens=64,
+    )
+    assert thinking_of(transport.last.payload) == {"thinkingLevel": "low"}
+
+
+def test_a_model_that_refuses_a_thinking_level_is_asked_without_one_from_then_on() -> None:
+    refusal = HttpResponse(
+        400, {"error": {"message": "Thinking level is not supported for this model."}}
+    )
+    subject, transport, _ = backend(refusal, answer("Fine."), answer("Again."))
+    turns: list[Turn] = [("user", "Hi")]
+    first = subject.complete_text(
+        "old", system="s", turns=turns, temperature=0, max_output_tokens=64
+    )
+    assert first.text == "Fine."
+    assert thinking_of(transport.calls[0].payload) == {"thinkingLevel": "low"}
+    assert thinking_of(transport.calls[1].payload) is None
+    subject.complete_text("old", system="s", turns=turns, temperature=0, max_output_tokens=64)
+    assert len(transport.calls) == 3 and thinking_of(transport.last.payload) is None
+
+
+def test_other_bad_requests_are_not_mistaken_for_a_thinking_refusal() -> None:
+    subject, transport, _ = backend(HttpResponse(400, {"error": {"message": "Bad schema."}}))
+    with pytest.raises(ProviderError, match="Bad schema"):
+        subject.complete_text(
+            "m", system="s", turns=[("user", "Hi")], temperature=0, max_output_tokens=64
+        )
+    assert len(transport.calls) == 1
+
+
+def test_an_answer_lost_to_thinking_is_reported_not_returned_empty() -> None:
+    empty = ok(
+        {
+            "candidates": [
+                {"content": {"role": "model", "parts": []}, "finishReason": "MAX_TOKENS"}
+            ],
+            "usageMetadata": {"promptTokenCount": 10, "thoughtsTokenCount": 64},
+        }
+    )
+    subject, _, _ = backend(empty)
+    with pytest.raises(ExtractionError, match="thinking and wrote no answer"):
+        subject.complete_text(
+            "m", system="s", turns=[("user", "Hi")], temperature=0, max_output_tokens=64
+        )
+
+
+def test_retries_are_logged_so_a_slow_answer_can_be_explained(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    busy = HttpResponse(503, {"error": {"message": "This model is experiencing high demand."}})
+    subject, _, sleeps = backend(busy, answer("Fine."))
+    with caplog.at_level("WARNING", logger="postloom.llm"):
+        subject.complete_text(
+            "m", system="s", turns=[("user", "Hi")], temperature=0, max_output_tokens=64
+        )
+    (record,) = caplog.records
+    assert record.getMessage() == (
+        "Gemini answered HTTP 503 (This model is experiencing high demand.); retrying in 2s"
+    )
+    assert sleeps.seconds == [2.0]

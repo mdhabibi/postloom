@@ -143,6 +143,15 @@ use case -> port (ContentExtractor, ThreadParser, ChatModel, EmbeddingProvider)
   Instead of a table of quirks, the backend reads the server's 400 message, drops or swaps
   the named parameter, retries, and remembers the fix per model. Context-window overflows
   are reported, not retried.
+- **Thinking is asked for, not left to defaults.** Each task has an effort: "low" for
+  routine work, "high" for reply drafts. Gemini maps it to `thinkingLevel` ("low" /
+  "medium"; never "minimal", which some models refuse); OpenAI-compatible reasoning models
+  to `reasoning_effort`. Model defaults differ (Gemini 3.8 Flash thinks at "medium" when
+  nothing is set) and change between releases, and thinking counts against the output
+  limit, so leaving it unset made answers slower and could cut them short. A model that
+  refuses the setting is learned from its 400 and asked without it.
+- **Retries are logged** (logger `postloom.llm`): `postloom doctor` shows them next to each
+  check and says whether a slow call was the provider being busy or the model itself.
 - **Ollama goes through its native API**, because only that accepts `num_ctx`; Ollama's
   small default context silently drops text. Each request gets a context sized for it, and
   texts that can't fit the user's limit are refused before anything is sent.
@@ -411,4 +420,5 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-11-15 | Deleting an article or a person erases history too | The one exception to "supersede, never delete": erasure requests must leave no trace, including in the journal. |
 | 2026-11-15 | Chat looks named people, topics and series up in the graph | Similarity search can't answer "what did Jane ask" or "what's in this series" reliably; a lookup can, and it costs nothing. |
 | 2026-11-15 | Keyword matches count as chat evidence only above a coverage threshold | Every question shares common words with some passage; without the threshold the "not found without a model call" guarantee would be lost. |
+| 2026-11-15 | postloom sets each model's thinking level instead of using the default | A real `doctor` run showed Gemini 3.8 Flash taking 43-172s for a one-word answer at its default level; defaults vary per model and release, and thinking eats into the output limit. |
 | 2026-11-15 | Requests borrow the wired container | Saving settings rewires the app; closing the old database under a running request made that request fail. |

@@ -10,6 +10,7 @@ provider therefore means writing one backend and registering it in ``providers.p
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Sequence
@@ -31,6 +32,8 @@ Turn = tuple[Literal["user", "assistant"], str]
 Effort = Literal["low", "high"]
 """How hard a reasoning model should think: routine work, or the reply drafts."""
 
+log = logging.getLogger("postloom.llm")
+"""Retries are logged here, so a slow answer can be explained (``postloom doctor``)."""
 RETRYABLE = frozenset({408, 429, 500, 502, 503, 504, 529})
 """Timeouts, rate limits and overload (529 is Anthropic's "overloaded")."""
 
@@ -197,12 +200,22 @@ class HttpApi:
                         f"Could not reach {label} at {self.base_url} ({error}). "
                         f"{self._text.unreachable_help}"
                     ) from error
-                self._sleep(backoff(attempt, None))
+                wait = backoff(attempt, None)
+                log.warning("%s could not be reached (%s); retrying in %.0fs", label, error, wait)
+                self._sleep(wait)
                 continue
             if 200 <= response.status < 300:
                 return response.body
             if response.status in RETRYABLE and attempt < self._max_retries:
-                self._sleep(backoff(attempt, response.retry_after))
+                wait = backoff(attempt, response.retry_after)
+                log.warning(
+                    "%s answered HTTP %s (%s); retrying in %.0fs",
+                    label,
+                    response.status,
+                    error_detail(response.body) or "busy",
+                    wait,
+                )
+                self._sleep(wait)
                 continue
             raise self._error(response.status, error_detail(response.body))
         raise AssertionError("unreachable")  # pragma: no cover
