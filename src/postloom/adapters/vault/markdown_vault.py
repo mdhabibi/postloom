@@ -30,6 +30,7 @@ from typing import Any, cast
 
 from postloom.adapters.vault.notes import (
     DATA_DIR,
+    FOLDERS,
     TYPES,
     Meta,
     NoteError,
@@ -53,6 +54,12 @@ from postloom.domain.graph import NodeId
 from postloom.domain.people import Person
 
 FORMAT_FILE = "vault.json"
+
+
+class VaultPathError(ValueError):
+    """A note path that would leave the vault."""
+
+
 TRASH_DIR = "trash"
 
 
@@ -334,7 +341,17 @@ class MarkdownVault:
     def _relative(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
 
+    def _inside(self, path: Path) -> Path:
+        """Refuse any note path outside postloom's folders in the vault. Keys and names
+        are checked where they are made; this is the last line of defence."""
+        root = self.root.resolve()
+        resolved = path.resolve()
+        if resolved.parent.parent != root or resolved.parent.name not in FOLDERS:
+            raise VaultPathError(f"Refusing to write a note outside the vault: {path}")
+        return path
+
     def _write(self, path: Path, meta: Meta, body: str) -> None:
+        self._inside(path)
         text = render_note(meta, body)
         # Writing a note and recording its stamp happen under one lock, which ``changes``
         # also takes: another request never mistakes postloom's own write, caught between
@@ -349,6 +366,7 @@ class MarkdownVault:
             self._stamps.put(self._relative(path), _stamp(path))
 
     def _remove(self, path: Path) -> None:
+        self._inside(path)
         with self._lock:
             path.unlink(missing_ok=True)
             self._stamps.remove(self._relative(path))
