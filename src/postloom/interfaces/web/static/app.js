@@ -249,7 +249,7 @@ function markdown(source) {
     if (heading) {
       const level = Math.min(Math.max(heading[1].length, 2), 4);
       const text = heading[2].trim();
-      out.push(`<h${level} id="${slug(text)}">${inline(text)}</h${level}>`);
+      out.push(`<h${level} id="${slug(text)}" dir="auto">${inline(text)}</h${level}>`);
       i += 1;
       continue;
     }
@@ -265,13 +265,13 @@ function markdown(source) {
         }
       }
       const tag = numbered ? "ol" : "ul";
-      out.push(`<${tag}>${items.map((it) => `<li>${inline(it)}</li>`).join("")}</${tag}>`);
+      out.push(`<${tag} dir="auto">${items.map((it) => `<li dir="auto">${inline(it)}</li>`).join("")}</${tag}>`);
       continue;
     }
     if (line.startsWith(">")) {
       const quote = [];
       while (i < lines.length && lines[i].startsWith(">")) quote.push(lines[i++].replace(/^>\s?/, ""));
-      out.push(`<blockquote>${inline(quote.join(" "))}</blockquote>`);
+      out.push(`<blockquote dir="auto">${inline(quote.join(" "))}</blockquote>`);
       continue;
     }
     if (!line.trim()) { i += 1; continue; }
@@ -280,7 +280,7 @@ function markdown(source) {
       && !isBullet(lines[i]) && !isNumbered(lines[i])) {
       para.push(lines[i++].trim());
     }
-    out.push(`<p>${inline(para.join(" "))}</p>`);
+    out.push(`<p dir="auto">${inline(para.join(" "))}</p>`);
   }
   return out.join("\n");
 }
@@ -404,7 +404,7 @@ async function homeView() {
   const waiting = overview.waiting.length
     ? h("ul", { class: "waiting-list" }, overview.waiting.map((w) => h("li", { class: "waiting-item" },
         h("p", { class: "who" }, h("strong", {}, w.author_name), ` on ${w.article_title}${w.posted_label ? `, ${w.posted_label}` : ""}`),
-        h("q", {}, w.text),
+        h("q", { dir: "auto" }, w.text),
         h("a", { class: "link-button", href: `#/article/${encodeURIComponent(w.article_id)}?comment=${encodeURIComponent(w.comment_id)}&reply=1` },
           icon("reply"), "Draft reply"))))
     : h("p", { class: "hint" }, overview.messages
@@ -431,7 +431,7 @@ async function homeView() {
           h("h2", { id: "articles-heading" }, "Your articles", h("a", { href: "#/add" }, "Add article")),
           h("ul", { class: "article-rows" }, state.articles.slice(0, 8).map((a) => h("li", {},
             h("a", { class: "article-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
-              h("div", {}, h("h3", {}, a.title), h("p", {}, a.summary || formatDate(a.published_on) || "")))))))),
+              h("div", {}, h("h3", { dir: "auto" }, a.title), h("p", { dir: "auto" }, a.summary || formatDate(a.published_on) || "")))))))),
       h("aside", {},
         h("section", { class: "dash-section", "aria-labelledby": "people-heading" },
           h("h2", { id: "people-heading" }, "Most engaged", overview.top_people.length ? h("a", { href: "#/people" }, "Everyone") : null),
@@ -540,15 +540,15 @@ async function articleView(id, focus = {}) {
   const byline = [formatDate(article.published_on), series].filter(Boolean).join(". ");
   const reader = h("article", { class: "reader" },
     weave(article.topics),
-    h("h1", {}, article.title),
+    h("h1", { dir: "auto" }, article.title),
     h("p", { class: "byline" }, byline || "Undated",
       webLink(article.url) ? [" ", h("a", { href: webLink(article.url), target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn")] : null),
     tagList(article.topics),
     articleActions(article),
-    article.summary ? h("p", { class: "summary" }, article.summary) : null,
+    article.summary ? h("p", { class: "summary", dir: "auto" }, article.summary) : null,
     htmlBlock("prose", markdown(article.body_markdown)),
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
-      h("h2", {}, "Announcement post"), h("p", {}, post.text))),
+      h("h2", {}, "Announcement post"), h("p", { dir: "auto", class: "post-text" }, post.text))),
     relatedSection(article),
     article.posts.length ? discussionSection(article) : null);
   const suggestions = article.discussion.length
@@ -755,7 +755,7 @@ function commentRow(comment, all) {
       answering ? h("span", { class: "replying" }, ` replying to ${answering}`) : null,
       comment.posted_label ? h("span", { class: "age" }, `, ${comment.posted_label}`) : null),
     comment.author_headline && !comment.is_own ? h("p", { class: "comment-headline" }, comment.author_headline) : null,
-    h("p", { class: "comment-text" }, comment.text),
+    h("p", { class: "comment-text", dir: "auto" }, comment.text),
     !comment.is_own && state.status?.features?.reply_drafts ? replyDrafter(comment) : null);
 }
 
@@ -783,7 +783,7 @@ async function draftReply(comment, box, guidance, onClose) {
     return;
   }
   const id = `draft-${comment.id.replace(/[^a-z0-9]/gi, "-")}`;
-  const text = h("textarea", { id, rows: Math.min(12, Math.max(4, Math.ceil(draft.text.length / 70))) });
+  const text = h("textarea", { id, dir: "auto", rows: Math.min(12, Math.max(4, Math.ceil(draft.text.length / 70))) });
   text.value = draft.text;
   const steer = h("input", { type: "text", id: `${id}-steer`, value: guidance,
     placeholder: "Optional: shorter, more technical, mention part 4..." });
@@ -875,7 +875,7 @@ function openReviewStep(article, container, preview, onClose) {
             h("input", { type: "url", value: d.profile_url || "", placeholder: "https://www.linkedin.com/in/...",
               oninput: (e) => { d.profile_url = e.target.value; } }))),
         h("label", { class: "review-text" }, "Message",
-          h("textarea", { rows: 3, oninput: (e) => { d.text = e.target.value; } }, d.text)),
+          h("textarea", { rows: 3, dir: "auto", oninput: (e) => { d.text = e.target.value; } }, d.text)),
         h("div", { class: "review-row" }, replySelect,
           d.already_saved ? h("span", { class: "saved-badge" }, "Already saved, will be skipped") : null));
     }));
@@ -1394,7 +1394,7 @@ async function personView(id) {
 // ---------------------------------------------------------------------------- chat
 function chatPanel(scope, title, subtitle, suggestions, initialQuestion, autoAsk = false) {
   const messages = h("div", { class: "messages", "aria-live": "polite" });
-  const input = h("textarea", { "aria-label": "Your question", placeholder: "Ask a question", rows: 1 });
+  const input = h("textarea", { "aria-label": "Your question", placeholder: "Ask a question", rows: 1, dir: "auto" });
   const submit = h("button", { class: "button button-primary", type: "submit" }, "Ask");
   const panel = h("section", { class: "chat", "aria-label": title },
     h("div", { class: "chat-head" }, h("h2", {}, title), h("p", {}, subtitle)),
@@ -1457,7 +1457,7 @@ function chatPanel(scope, title, subtitle, suggestions, initialQuestion, autoAsk
 }
 
 function renderMessage(message) {
-  if (message.role === "user") return h("div", { class: "message user" }, message.text);
+  if (message.role === "user") return h("div", { class: "message user", dir: "auto" }, message.text);
   if (message.role === "error") return h("div", { class: "message error", role: "alert" }, message.text);
   if (message.pending) return h("div", { class: "message assistant pending" }, message.text);
   const body = addCitations(htmlBlock("message assistant", markdown(message.text)));
@@ -1468,7 +1468,7 @@ function renderMessage(message) {
       h("details", { "data-n": s.number },
         h("summary", {}, h("strong", {}, `[${s.number}] `),
           s.article_id && s.article_id === here ? s.section : `${s.title}: ${s.section}`),
-        h("p", { class: "source-text" }, s.text)))));
+        h("p", { class: "source-text", dir: "auto" }, s.text)))));
   }
   if (message.uncited) {
     body.append(h("p", { class: "uncited" }, "This answer points to none of your sources, so it can't be checked. Treat it with care."));
