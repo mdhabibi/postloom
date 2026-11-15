@@ -29,13 +29,17 @@ actually wrote.
   server, or free local models with Ollama. Search runs on your computer for free. A usage
   page shows what every task costs, and an optional monthly budget caps it.
 - **Your files, not a database you can't read.** Everything lives in a plain Markdown folder
-  that is also a valid [Obsidian](https://obsidian.md) vault, so you get Obsidian's graph view
-  for free and are never locked in.
+  that is also a valid [Obsidian](https://obsidian.md) vault. It is the source of truth:
+  edit a note and postloom reads the change; lose the index and postloom rebuilds itself
+  from the folder. Backing up that one folder backs up everything.
 - **A graph you can trust.** Links parsed from your content are marked *verified*; links an AI
   suggests stay *asserted* until you accept them. Nothing you decided is ever overwritten,
   and history is kept instead of deleted.
+- **Answers you can check.** Chat answers only from your own articles, posts and comments,
+  cites the passage behind every claim, and says "not found" instead of guessing.
 - **Knows your audience.** Every commenter becomes a person in the graph, identified by their
-  LinkedIn profile URL, with every article they've interacted with.
+  LinkedIn profile URL, with every article they've interacted with. Anyone can be removed
+  completely when they ask.
 
 ## Quick start
 
@@ -127,6 +131,39 @@ you've had with them, grouped by article. Add someone's LinkedIn profile link on
 postloom merges their comments into one identity and recognises them on every future
 post. Each person also gets a note in `vault/people/`, so they appear in Obsidian's graph.
 
+A person's page has its own chat, limited to your notes about them and the conversations
+you had: "What does Jane care about?", "Is there anything I haven't answered?".
+
+**Delete this person**, at the bottom of their page, erases their profile, your notes and
+every message they wrote, from postloom and from your vault. Use it when someone asks you
+to remove their data. Conversations they took part in stay readable, and your own replies
+stay as you wrote them.
+
+### Asking questions
+
+Press `Ctrl K` (or `/`) and ask. postloom answers only from your library and cites its
+sources, so you can open the passage behind each claim:
+
+- *"How do I know if my cache serves wrong answers?"* finds the passages by meaning.
+- *"What did Jane ask me?"* looks Jane up and reads your conversations with her.
+- *"Which articles are in the caching series?"* and *"How many articles have I written
+  about RAG?"* are answered from the graph, not guessed from similar text.
+- Follow-up questions keep their subject.
+
+If nothing in your library matches, postloom says so without calling the model, so a
+wrong question costs nothing. An answer that cites no source is marked as unverified.
+
+### Fixing and organising
+
+- **Edit details** on an article fixes its title, summary, topics, series, date and link.
+  The article keeps its identity, comments and links when you retitle it.
+- **Delete** removes an article with its post and comments.
+- **Settings → Topics** adds, renames and removes topics. Renaming a topic to the name of
+  another one merges them.
+- Adding an article you already have updates it, even if its title changed. A different
+  article that happens to have the same title is kept separately; nothing is replaced on
+  the strength of a title.
+
 ### Related articles and the graph
 
 When you add an article, postloom compares it by meaning with everything you've written
@@ -140,9 +177,29 @@ discussed them. Suggested links are dashed until you review them; the list under
 graph lets you go through them all at once. Hover a node to see its neighbours, click to
 open it, drag to pan and scroll to zoom.
 
+### Your vault
+
 Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
 folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
 articles as a graph.
+
+The vault is the source of truth, and `index.db` next to it is only a fast copy:
+
+- **Edit notes freely.** Change an article's text or title, its `topics` or `related`
+  links, a person's notes or tags, or a comment. postloom notices the edit, shows a banner
+  and reads it; topics and links you change in a note count as your decisions.
+- **Lose the index, lose nothing.** Delete `index.db` (or move the vault to another
+  computer) and postloom rebuilds everything on the next start, including which links
+  you accepted or dismissed and when.
+- **Nothing is guessed or destroyed.** A note postloom can't read (say, broken YAML) is
+  named and your edits wait until it's fixed. Notes that no longer match anything are
+  moved to `vault/.postloom/trash`, never deleted. Notes you create yourself are left
+  alone.
+- The hidden `vault/.postloom` folder holds `edges.jsonl`, a plain-text record of where
+  each link came from. It travels with the vault.
+
+To delete an article or a person, use the app: it removes every trace, which deleting a
+single note can't.
 
 ### Command line
 
@@ -154,7 +211,12 @@ uv run postloom search "how do I know if my cache serves wrong answers" --explai
 uv run postloom reindex                                         # after upgrading
 uv run postloom links --explain                                 # how similar your articles are
 uv run postloom usage                                           # this month's calls and cost
+uv run postloom sync                                            # read your vault again
+uv run postloom doctor                                          # check provider, models, search, vault
 ```
+
+`doctor` makes one tiny real call with each model you configured (a fraction of a cent), so
+a wrong model name or a key without credits shows up there and not while you add an article.
 
 ### Settings
 
@@ -187,9 +249,13 @@ paste article + post (+ banner)
   -> rules: hashtags, links, ids, post->article edge, "Part N"
   -> vault/*.md (source of truth)  +  graph index (nodes, edges, provenance)
 
-ask a question (optionally about one article or thread)
-  -> hybrid search (keywords + embeddings) -> expand one hop through the graph
-  -> answer with citations, or a reply draft you approve
+edit a note in Obsidian, or lose index.db
+  -> postloom reads the vault back -> the index matches the notes again
+
+ask a question (about everything, one article or one person)
+  -> people, topics and series named in it are looked up in the graph
+  -> hybrid search (keywords + embeddings) over articles, posts and comments
+  -> answer with citations, "not found" without a model call, or a reply draft you approve
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind it.
@@ -210,6 +276,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
   - [ ] Banner images in the graph and search
 - [x] **Providers:** Gemini, Claude, OpenAI, OpenRouter, Ollama and any OpenAI-compatible
       server; free local embeddings; usage page and monthly budget
+- [x] **Own your data:** the vault is read back (rebuild, Obsidian edits), stable article
+      identity, edit and delete articles, erase a person, manage topics
+- [x] **Grounded chat:** posts and comments searched, graph lookups for people, topics and
+      series, follow-ups, per-person chat, unverified answers flagged
 - [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
 
 ## Contributing
@@ -221,7 +291,9 @@ Contributions are welcome once the MVP lands. See [CONTRIBUTING.md](CONTRIBUTING
 postloom runs only on your computer and listens only on `127.0.0.1`, so nothing on your
 network can reach it. It refuses requests that don't come from its own page, so other
 websites you visit can't use it either. It stores the names, headlines and profile URLs of
-people who comment on your posts, locally and only for your own use.
+people who comment on your posts, locally and only for your own use. If one of them asks
+to be removed, **Delete this person** erases them from the app, its history, the search
+index and your vault.
 
 When you use a hosted model, the text a feature needs (the article you add, the comments
 you paste, the passages behind an answer) is sent to that provider under its terms. Check

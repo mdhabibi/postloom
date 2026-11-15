@@ -33,6 +33,10 @@ CI runs the same checks on Linux, macOS (Apple Silicon and Intel) and Windows wi
   the entry. Prompts and schemas stay in `prompts.py`; don't fork them per provider.
 - **Rules before models.** If something can be parsed deterministically, don't ask an LLM.
 - **Provenance on every fact.** New edges need an origin, a grade and a producer.
+- **The vault must stay rebuildable.** Anything new that postloom stores has to be written
+  to a note (or the journal) and read back by `adapters/vault/reader.py`. Add it to the
+  round-trip test in `tests/unit/adapters/test_vault_reading.py`; if deleting `index.db`
+  would lose it, it isn't done.
 - **Never commit real people's data.** Use invented names in fixtures
   (`Jane Example`, `linkedin.com/in/jane-example`).
 - **Tests describe behaviour.** Name them as sentences:

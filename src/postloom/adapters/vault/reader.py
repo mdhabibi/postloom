@@ -157,7 +157,10 @@ class _Reader:
     def _person(self, path: Path, meta: Meta, body: str) -> None:
         name = _text(meta, "name") or path.stem
         linkedin = _text(meta, "linkedin")
-        profile = ProfileUrl.parse(linkedin) if linkedin else None
+        try:
+            profile = ProfileUrl.parse(linkedin) if linkedin else None
+        except DomainError as error:
+            raise NoteError("`linkedin` isn't a LinkedIn profile link") from error
         person = Person(
             name=name,
             profile=profile,

@@ -322,3 +322,97 @@ def test_journal_skips_torn_and_foreign_lines(tmp_path: Path) -> None:
         handle.write('\n{"source":"topic:a","target":"topic:b","kind":"belongs_to"}\n[1, 2]\n')
     assert list(journal.read()) == [edge]
     assert NodeId("article:x") not in {e.source for e in journal.read()}
+
+
+# -- what people plausibly do to a note --------------------------------------------------
+def write(tmp_path: Path, relative: str, text: str) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_a_note_written_by_hand_in_postlooms_format_is_read(tmp_path: Path) -> None:
+    write(
+        tmp_path,
+        "articles/by-hand.md",
+        "---\r\nid: article:by-hand\r\ntype: article\r\ntitle: 2026\r\n"
+        "published_on: '2026-03-04'\r\ntopics: '[[RAG]]'\r\nseries: Notes\r\n---\r\n\r\n"
+        "# 2026\r\n\r\nWritten in another editor, with Windows line endings.\r\n",
+    )
+    write(
+        tmp_path,
+        "people/Pat Example.md",
+        "---\nid: person:~pat-example\ntype: person\nname: Pat Example\n"
+        "headline: Engineer\ntags: friend\n---\n\n# Pat Example\n",
+    )
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    (note,) = snapshot.articles
+    assert note.article.title == "2026"  # YAML read it as a number; it is still a title
+    assert note.article.published_on == date(2026, 3, 4)
+    assert note.article.body_markdown == "Written in another editor, with Windows line endings."
+    assert note.topics == (Topic("RAG").id,)  # Obsidian stores a one-item list as text
+    (pat,) = snapshot.people
+    assert (pat.headline, pat.tags) == ("Engineer", ("friend",))
+
+
+def test_each_kind_of_damage_is_reported_with_its_reason(tmp_path: Path) -> None:
+    written(tmp_path)
+    cases = {
+        "articles/no-id.md": ("---\ntype: article\ntitle: T\n---\n\nBody\n", "`id` is missing"),
+        "articles/bad-date.md": (
+            "---\nid: article:bad-date\ntype: article\ntitle: T\npublished_on: soon\n---\n\nB\n",
+            "isn't a date",
+        ),
+        "articles/empty.md": ("---\nid: article:empty\ntype: article\ntitle: T\n---\n\n", "empty"),
+        "articles/open.md": ("---\nid: article:open\ntype: article\n\nBody\n", "never closes"),
+        "articles/bad-topic.md": (
+            "---\nid: article:bad-topic\ntype: article\ntitle: T\ntopics: 3\n---\n\nB\n",
+            "must be a list",
+        ),
+        "people/bad-link.md": (
+            "---\nid: person:x\ntype: person\nname: X\nlinkedin: not a link\n---\n",
+            "`linkedin` isn't a LinkedIn profile link",
+        ),
+        "people/bad-history.md": (
+            "---\nid: person:~y\ntype: person\nname: Y\nheadlines: [oops]\n---\n",
+            "`headlines` must be a list",
+        ),
+        "discussions/no-post.md": ("---\ntype: discussion\ncomments: 0\n---\n", "which post"),
+        "discussions/no-name.md": (
+            "---\nid: discussion:x\ntype: discussion\n---\n\n"
+            '> **Someone** %%{"n":0,"by":"person:~s"}%%\n> Hi\n',
+            "no `name`",
+        ),
+        "discussions/no-text.md": (
+            "---\nid: discussion:y\ntype: discussion\n---\n\n"
+            '> **Sam** %%{"n":0,"by":"person:~sam","name":"Sam"}%%\n\n',
+            "no text",
+        ),
+    }
+    for relative, (text, _) in cases.items():
+        write(tmp_path, relative, text)
+    problems = {p.path: p.reason for p in MarkdownVault(tmp_path).read().problems}
+    assert set(problems) == set(cases)
+    for relative, (_, expected) in cases.items():
+        assert expected in problems[relative], (relative, problems[relative])
+
+
+def test_replies_survive_reordering_and_a_reply_to_nothing_becomes_a_comment(
+    tmp_path: Path,
+) -> None:
+    write(
+        tmp_path,
+        "discussions/x.md",
+        "---\nid: discussion:x\ntype: discussion\n---\n\n"
+        '>> **You** %%{"n":1,"by":"person:me","name":"Alex","re":0}%%\n>> Answer\n\n'
+        '> **Sam** %%{"n":0,"by":"person:~sam","name":"Sam","label":"2d"}%%\n> Question\n\n'
+        '> **Sam** %%{"n":2,"by":"person:~sam","name":"Sam","re":9}%%\n> Orphan\n',
+    )
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    question, answer, orphan = sorted(snapshot.comments, key=lambda c: c.position)
+    assert (question.text, question.posted_label, question.thread) == ("Question", "2d", None)
+    assert (answer.reply_to, answer.thread, answer.is_own) == (question.id, question.id, True)
+    assert (orphan.reply_to, orphan.thread) == (None, None)
+    assert [p.name for p in snapshot.people] == ["Sam"]  # recreated from the comments

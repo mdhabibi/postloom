@@ -67,9 +67,21 @@ be constructed.
 
 ### Ids
 
-Ids are stable and readable (`article:<slug>`, `person:<linkedin-slug>`), so re-ingesting the
-same content updates it instead of duplicating it. Long slugs get a hash suffix so titles
-that differ only at the end ("Part 1" / "Part 3") never collide.
+Ids are stable and readable (`article:<key>`, `person:<linkedin-slug>`). Long slugs get a
+hash suffix so titles that differ only at the end ("Part 1" / "Part 3") never collide.
+
+An article's key is the slug of the title it had when it was first saved, and never changes
+after that: retitling an article keeps its id, its file name, its post and its comments.
+A title is not an identity, so ingest decides which article it is looking at in this order:
+
+1. the same LinkedIn link (compared without scheme, `www.`, query or fragment);
+2. the same text: at least half of the shorter text's 4-word sequences appear in the other
+   (`domain/text.containment`; versions of one article score above 0.9, different articles
+   below 0.2);
+3. otherwise it is new, and if its title is taken it gets a numbered key and a warning.
+
+A link that belongs to an article with different text is refused before the model is
+called, so a wrong link costs nothing.
 
 People are identified by their normalized LinkedIn profile URL. A person pasted without a URL
 gets a provisional id (`person:~jane-example`) that the UI asks the user to resolve.
@@ -85,6 +97,14 @@ Every edge carries `Provenance(origin, grade, producer, recorded_at, evidence)`:
 Nothing is deleted when the world changes. Edges and profile headlines are **superseded**:
 retrieval uses current facts, while history stays queryable. A re-ingest only replaces the
 model's own unreviewed claims; verified and rejected edges are never touched.
+
+There is one exception, and it is deliberate: **deleting an article or a person erases
+them**, history included (`GraphRepository.erase_nodes`). A commenter can ask to be
+removed, and "removed" must mean no trace in the index, its history, the search index, the
+journal or the notes. A person's messages are taken out of their conversations with
+`domain/discussion.without_authors`, which re-attaches replies to the nearest remaining
+message so the conversation stays valid. Removing a topic is not an erasure: its links are
+superseded and the node is removed, so the history remains.
 
 ## Who does what: rules vs models
 
@@ -154,7 +174,7 @@ Models on the user's computer are free and never blocked.
 ## Storage
 
 - **Vault (source of truth)**: Markdown with YAML frontmatter and `[[wikilinks]]`,
-  written atomically. It is a valid Obsidian vault.
+  written atomically. It is a valid Obsidian vault, and everything postloom knows is in it.
 - **Index (derived, rebuildable)**: one SQLite file (`<home>/index.db`), standard
   library only, shared by the graph repository and the search index. Nodes are JSON keyed
   by stable id; edges keep their history in the same table, with a partial unique index
@@ -163,6 +183,54 @@ Models on the user's computer are free and never blocked.
   first open. File databases run in WAL mode. The usage ledger is a table in the same
   file; unlike the rest of the index it isn't rebuildable, which is acceptable for
   history that only feeds the usage page and the budget.
+
+### The vault is read back
+
+`adapters/vault/reader.py` is the inverse of the writer: writing a graph and reading it
+back gives the same entities (`tests/unit/adapters/test_vault_reading.py`). What makes that
+possible:
+
+- **Notes are complete.** Frontmatter carries each entity's id and every field; an
+  article's body is everything under its `# Title`; a person's notes are the text under
+  `## Notes`, and their headline history is a property. In a discussion note each message
+  is a quote block whose first line ends in an Obsidian comment, `%%{"n":2,"by":
+  "person:jane-example","name":"Jane Example","re":1}%%`: who wrote it and which message it
+  answers, the two things prose can't state reliably. Obsidian hides it when reading.
+- **The edge journal** (`vault/.postloom/edges.jsonl`, port `EdgeJournal`). Notes say what
+  is linked to what; they can't say that a link was suggested by a model, accepted by the
+  author on a certain day, or dismissed. Every edge write is appended to the journal by
+  `JournaledRepository`, a decorator around the repository, so no use case can forget it.
+  It is plain JSON Lines: it travels with the vault and diffs cleanly.
+- **Notes postloom didn't write are not its business.** A file without postloom's `type`
+  and `id` properties is never read, overwritten or moved.
+
+`SyncVault` (vault -> index) replaces the graph with what the notes say, in one
+transaction, and takes each link's provenance from the journal. Then it applies what the
+notes *declare*, using the same functions the app uses (`relations.set_topics`,
+`set_series`, `links.decide_link`), so an edit in Obsidian and a click in the app follow
+the same rules: a topic added to a note is a verified link by the author; a topic removed
+is a rejection, so a re-ingest doesn't bring it back; a `related` entry added in either
+note links the pair. Finally `ExportVault` writes every note in canonical form (a no-op
+for notes that already are), so a hand-edited note and the index agree to the letter.
+
+Sync never guesses:
+
+- A note that looks like postloom's but can't be read **blocks** the sync while there is
+  an index to protect; the index is left untouched and the note is named in the UI. With
+  no index (a rebuild), readable notes are restored and unreadable ones are reported and
+  left alone.
+- Notes that no longer match anything (the post of an article whose note was deleted)
+  are **moved to `.postloom/trash`**, never deleted.
+- If every article note is gone while the index still has the articles, the vault was
+  emptied by accident: the notes are written again from the index, not mirrored.
+- A link that one note of a pair lists and the other doesn't is removed only if the note
+  lacking it was just edited; otherwise the two notes merely disagree and the link stays.
+
+Edits are noticed through `NoteStamps` (each note's mtime and size at the last sync, kept
+in the index so that a new or restored index sees every note as changed). `OpenVault` runs
+when the container is built: it upgrades a vault written by an older version from its
+intact index, or syncs when notes changed. The web app also syncs before any request that
+writes, so it never overwrites an edit it hasn't read.
 
 ## Retrieval
 
@@ -175,8 +243,10 @@ Models on the user's computer are free and never blocked.
    break FTS syntax) plus cosine similarity over embeddings, fused with reciprocal rank
    fusion (k = 60) and grouped by article with its best passages. Without an API key, or
    when the provider is unreachable, search degrades to keywords with a warning.
-4. *(Next)* graph expansion: a hit in Part 3 brings in its post, comments and series
-   siblings as context for chat.
+4. **Posts and comments** are indexed too, under the post's node: the announcement text,
+   then one chunk per comment thread, written as "Name (replying to Name): text". A match
+   there is shown under the article it belongs to. Keeping the discussion out of the
+   article's node means link suggestions still compare articles by what they are about.
 
 ## Links between articles
 
@@ -209,11 +279,32 @@ attributes, so the strict CSP stays intact.
 
 ## Chat (grounded answers)
 
-`AskQuestion` only ever shows the model numbered sources from the user's own content:
-the whole article and its post when asked about one article, or passages above the
-similarity cutoff when asked across the library. If nothing passes the cutoff, it answers
-"not found" without calling the model. Citations like `[2]` are parsed back
-deterministically, so the UI only shows sources the answer actually used.
+`AskQuestion` only ever shows the model numbered sources from the user's own library, and
+each kind of question gets the sources that can answer it:
+
+- **One article**: the whole article, its post and every comment.
+- **One person** (asked on their page): what postloom knows about them and every
+  conversation they took part in.
+- **The whole library**, most specific evidence first:
+  1. *Named things.* People (by full name, or a first name only one person has), topics
+     and series named in the question are looked up in the graph. "What did Jane ask?"
+     gets Jane's facts and conversations; "which articles are in this series?" gets the
+     list, in order. This is the graph doing what similarity search can't.
+  2. *Passages* from articles, posts and comment threads: by meaning above the calibrated
+     cutoff, and by keyword when the passage contains at least half of the question's
+     distinctive words (`domain/text.significant_terms`). The second rule matters because
+     any common word matches something, and "what" is not evidence. A follow-up is also
+     searched together with the question before it.
+  3. *An overview* of the library (articles with dates, topics, series and comment counts;
+     the most active people), added when there is other evidence or when the question is
+     about the library itself.
+
+Guard rails are deterministic. If nothing qualifies, the answer is "not found" without
+calling the model: no cost, and no confident answer built on unrelated text. Citations like
+`[2]` are parsed back; numbers that match no source are removed from the text, the UI shows
+only the sources that were used, and an answer that cites nothing is flagged as unverified.
+The prompt forbids outside knowledge and tells the model to keep voices apart: what a
+commenter wrote is their view, not the author's.
 
 ## Discussions
 
@@ -313,3 +404,11 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-10-25 | Metering in a gateway that every model call goes through | No call can skip the budget or the usage page, whatever adapter makes it. |
 | 2026-10-25 | Fair source (FSL-1.1-ALv2) instead of Apache-2.0 | Readable, auditable code (essential for a tool holding API keys and LinkedIn data) without letting anyone resell it as a competing product; each version becomes Apache-2.0 after two years. |
 | 2026-10-25 | Dark-first product UI with bundled fonts and a command palette | Modern tool conventions experts expect; bundling keeps the app offline and CSP-strict. |
+| 2026-11-15 | The vault is read back; the index is rebuilt from it | "Source of truth" was a promise the code didn't keep: the vault was write-only. Now losing the index loses nothing, and notes can be edited in Obsidian. |
+| 2026-11-15 | Edge provenance in a journal inside the vault, not in note frontmatter | Notes stay readable; decisions and history still survive a rebuild and travel with the vault. A repository decorator writes it, so no use case can forget. |
+| 2026-11-15 | Sync blocks on unreadable notes and trashes instead of deleting | A sync that guesses can silently destroy an author's decisions or files. Stopping and naming the note is recoverable; guessing is not. |
+| 2026-11-15 | Articles have a stable key; identity is link, then text, never title | Titles get reworded and reused. Matching on text (4-word shingles) is deterministic, free and runs before the model is called. |
+| 2026-11-15 | Deleting an article or a person erases history too | The one exception to "supersede, never delete": erasure requests must leave no trace, including in the journal. |
+| 2026-11-15 | Chat looks named people, topics and series up in the graph | Similarity search can't answer "what did Jane ask" or "what's in this series" reliably; a lookup can, and it costs nothing. |
+| 2026-11-15 | Keyword matches count as chat evidence only above a coverage threshold | Every question shares common words with some passage; without the threshold the "not found without a model call" guarantee would be lost. |
+| 2026-11-15 | Requests borrow the wired container | Saving settings rewires the app; closing the old database under a running request made that request fail. |

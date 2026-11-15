@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -240,7 +241,10 @@ def test_an_emptied_vault_is_restored_from_the_index_not_mirrored(tmp_path: Path
 def test_a_vault_from_an_older_postloom_is_upgraded_from_its_index(tmp_path: Path) -> None:
     library(tmp_path)
     with open_home(tmp_path) as c:
-        before = state(c)
+        for article in c.repository.list_articles():
+            c.repository.save_article(replace(article, key=""))  # as saved before keys existed
+        ids = {a.id for a in c.repository.list_articles()}
+        edges = sorted(c.repository.all_edges(), key=repr)
     for file in (tmp_path / "vault" / ".postloom").iterdir():
         file.unlink()  # no format marker and no journal: how format 1 looked
     old = note(tmp_path, "discussions", "caching-basics")
@@ -251,12 +255,16 @@ def test_a_vault_from_an_older_postloom_is_upgraded_from_its_index(tmp_path: Pat
     with open_home(tmp_path) as c:
         report = c.vault_report
         assert report is not None and report.reason == "upgraded"
-        assert state(c) == before
+        assert {a.id for a in c.repository.list_articles()} == ids  # identities are kept
+        assert all(a.key for a in c.repository.list_articles())  # and pinned from now on
+        assert sorted(c.repository.all_edges(), key=repr) == edges
         assert "%%{" in old.read_text(encoding="utf-8")  # rewritten in the readable format
         assert c.vault.format == 2
+        assert c.search().execute("love a part on invalidation").results  # comments indexed
+        upgraded = state(c)
     lose_index(tmp_path)
-    with open_home(tmp_path) as c:  # and from now on it can be rebuilt
-        assert state(c) == before
+    with open_home(tmp_path) as c:  # and from now on it can be rebuilt, exactly
+        assert state(c) == upgraded
 
 
 def test_the_users_own_notes_survive_everything(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ notes that disappear from the graph are moved to the vault's trash, never delete
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from postloom.application.errors import BudgetExceededError, ProviderError
@@ -306,6 +306,9 @@ class OpenVault:
         if vault.format < VAULT_FORMAT and has_index:
             # Written by an older postloom (or brand new): its notes can't be read back,
             # but the index is intact, so write every note again from it.
+            for article in repo.list_articles():
+                if not article.key:  # saved before articles had a stable key: pin it now
+                    repo.save_article(replace(article, key=article.slug))
             self._journal.rewrite(repo.all_edges())
             trashed = ExportVault(repo, vault).execute()
             vault.mark_format()
