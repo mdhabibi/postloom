@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from types import TracebackType
 
+from postloom import how_to_run
 from postloom.adapters.clock import SystemClock
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.chat import LlmChat
@@ -80,7 +81,7 @@ def setup_hint(settings: Settings) -> str:
     spec = settings.spec
     if spec is None:
         return (
-            "postloom isn't connected to a model yet. Start the app (uv run postloom start), "
+            f"postloom isn't connected to a model yet. Start the app ({how_to_run('start')}), "
             "open Settings and choose a provider."
         )
     if spec.needs_key and not settings.api_key:

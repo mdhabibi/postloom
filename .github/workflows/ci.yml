@@ -81,3 +81,22 @@ jobs:
         run: RUN_LOCAL_MODEL_TESTS=1 uv run pytest tests/integration -q
       - name: Calibrate similarity cutoffs
         run: uv run python scripts/calibrate_embeddings.py
+
+  browser:
+    # The app in a real browser: every screen, and the flows that change data.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - run: uv run playwright install --with-deps chromium
+      - name: Browser tests
+        shell: bash
+        run: |
+          set -o pipefail
+          RUN_BROWSER_TESTS=1 uv run pytest tests/e2e -p no:cacheprovider 2>&1 | tee e2e.txt || {
+            echo "::error title=browser tests::$(tail -n 60 e2e.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            exit 1
+          }

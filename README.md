@@ -43,14 +43,23 @@ actually wrote.
 
 ## Quick start
 
-> Not on PyPI yet. Until the first release, install from source with [uv](https://docs.astral.sh/uv/).
+With [uv](https://docs.astral.sh/uv/) installed, one command downloads and starts postloom:
 
 ```bash
-git clone https://github.com/mdhabibi/postloom.git
-cd postloom
-uv sync
-uv run postloom start
+uvx postloom start
 ```
+
+To keep it installed (`postloom` then works in any terminal):
+
+```bash
+uv tool install postloom      # or: pipx install postloom
+postloom start
+uv tool upgrade postloom      # later, to update
+```
+
+Your data stays in `~/Postloom` whichever way you run it, and upgrading never touches it.
+To work on postloom itself, clone the repository and run `uv sync` then
+`uv run postloom start`.
 
 `postloom start` opens the app in your browser (dark by default; switch to light at the
 bottom of the sidebar). Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> anywhere to search your
@@ -203,16 +212,17 @@ single note can't.
 
 ### Command line
 
-Everything the app does is also available from the terminal:
+Everything the app does is also available from the terminal (in a clone of the repository,
+put `uv run` in front):
 
 ```bash
-uv run postloom ingest article.txt post.txt --date 2026-10-12   # add an article
-uv run postloom search "how do I know if my cache serves wrong answers" --explain
-uv run postloom reindex                                         # after upgrading
-uv run postloom links --explain                                 # how similar your articles are
-uv run postloom usage                                           # this month's calls and cost
-uv run postloom sync                                            # read your vault again
-uv run postloom doctor                                          # check provider, models, search, vault
+postloom ingest article.txt post.txt --date 2026-10-12   # add an article
+postloom search "how do I know if my cache serves wrong answers" --explain
+postloom reindex                                         # after upgrading
+postloom links --explain                                 # how similar your articles are
+postloom usage                                           # this month's calls and cost
+postloom sync                                            # read your vault again
+postloom doctor                                          # check provider, models, search, vault
 ```
 
 `doctor` makes one tiny real call with each model you configured (a fraction of a cent), so
@@ -280,11 +290,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
       identity, edit and delete articles, erase a person, manage topics
 - [x] **Grounded chat:** posts and comments searched, graph lookups for people, topics and
       series, follow-ups, per-person chat, unverified answers flagged
-- [ ] **Milestone 4:** one-command install (`pipx`/`uvx`), Docker image, first release
+- [x] **Milestone 4:** one-command install (`uvx`/`pipx`), browser tests in CI, first release
+- [ ] Docker image
 
 ## Contributing
 
-Contributions are welcome once the MVP lands. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Privacy
 
