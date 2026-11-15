@@ -39,8 +39,8 @@ def test_article_note_is_obsidian_friendly(tmp_path: Path) -> None:
     assert meta["post"] == "[[posts/measuring-what-matters-part-3|Announcement post]]"
     assert meta["published_on"] == date(2026, 10, 12)
     assert meta["series_part"] == 3
-    assert body.startswith("\n# Measuring What Matters - Part 3\n\n> How to measure")
-    assert "## Metrics" in body
+    assert meta["summary"] == "How to measure a semantic cache."
+    assert body.startswith("\n# Measuring What Matters - Part 3\n\n## Metrics")
 
 
 def test_post_note_links_back_and_embeds_the_banner(tmp_path: Path) -> None:

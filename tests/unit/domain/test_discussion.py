@@ -102,3 +102,49 @@ def test_depth_follows_the_reply_chain() -> None:
     )
     by_id = {c.id: c for c in (top, reply, follow)}
     assert [conversation_depth(c, by_id) for c in (top, reply, follow)] == [0, 1, 2]
+
+
+# -- removing a person's messages ------------------------------------------------------
+JANE = NodeId("person:~jane-example")
+SAM = NodeId("person:~sam-sample")
+
+
+def conversation() -> list[Comment]:
+    """Jane starts a thread; you answer; Sam answers you; Jane answers Sam. Sam also
+    starts a thread of his own."""
+    a = Comment(POST, JANE, "Jane Example", "Question?", position=0)
+    b = Comment(POST, OWNER, "Alex", "Answer.", position=1, thread=a.id, reply_to=a.id)
+    c = Comment(POST, SAM, "Sam Sample", "I disagree.", position=2, thread=a.id, reply_to=b.id)
+    d = Comment(POST, JANE, "Jane Example", "Why?", position=3, thread=a.id, reply_to=c.id)
+    e = Comment(POST, SAM, "Sam Sample", "Separate point.", position=4)
+    return [a, b, c, d, e]
+
+
+def test_removing_a_thread_starter_promotes_the_first_reply() -> None:
+    from postloom.domain.discussion import without_authors
+
+    a, b, c, _, e = conversation()
+    kept = without_authors(conversation(), {JANE})
+    assert [k.text for k in kept] == ["Answer.", "I disagree.", "Separate point."]
+    assert [k.position for k in kept] == [0, 1, 2]
+    answer, disagree, separate = kept
+    assert (answer.thread, answer.reply_to) == (None, None)
+    assert (disagree.thread, disagree.reply_to) == (b.id, b.id)
+    assert (separate.thread, separate.reply_to) == (None, None)
+    assert {k.id for k in kept} == {b.id, c.id, e.id}  # identities don't change
+    assert a.id not in {k.id for k in kept}
+
+
+def test_removing_a_middle_message_reattaches_its_replies() -> None:
+    from postloom.domain.discussion import without_authors
+
+    a, b, _, d, _ = conversation()
+    kept = {k.id: k for k in without_authors(conversation(), {SAM})}
+    assert len(kept) == 3
+    assert (kept[d.id].thread, kept[d.id].reply_to) == (a.id, b.id)
+
+
+def test_removing_nobody_changes_nothing() -> None:
+    from postloom.domain.discussion import without_authors
+
+    assert without_authors(conversation(), set()) == conversation()

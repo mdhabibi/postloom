@@ -88,6 +88,14 @@ MIGRATIONS: tuple[str, ...] = (
         PRIMARY KEY (month, provider, model, task)
     );
     """,
+    # 5: how each vault note looked when it was last written or read, to notice edits
+    """
+    CREATE TABLE notes (
+        path     TEXT PRIMARY KEY,
+        mtime_ns INTEGER NOT NULL,
+        size     INTEGER NOT NULL
+    );
+    """,
 )
 
 

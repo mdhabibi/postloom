@@ -7,13 +7,28 @@ SQLite (default). Every implementation must pass ``tests/contract/test_repositor
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, NodeId
 from postloom.domain.people import Person
+
+
+@dataclass(frozen=True, slots=True)
+class GraphContents:
+    """A whole graph: what a rebuild from the vault puts in place of the current one."""
+
+    topics: tuple[Topic, ...] = ()
+    series: tuple[Series, ...] = ()
+    articles: tuple[Article, ...] = ()
+    posts: tuple[Post, ...] = ()
+    comments: tuple[Comment, ...] = ()
+    people: tuple[Person, ...] = ()
+    edges: tuple[Edge, ...] = ()
+    """Live edges and history, in the order they were recorded."""
 
 
 class GraphRepository(Protocol):
@@ -35,6 +50,8 @@ class GraphRepository(Protocol):
 
     def save_post(self, post: Post) -> None: ...
 
+    def list_posts(self) -> Sequence[Post]: ...
+
     def save_series(self, series: Series) -> None: ...
 
     # -- discussions ----------------------------------------------------------
@@ -51,10 +68,6 @@ class GraphRepository(Protocol):
     def save_person(self, person: Person) -> None: ...
 
     def list_people(self) -> Sequence[Person]: ...
-
-    def delete_person(self, person_id: NodeId) -> None:
-        """Remove a person node (after merging it into another identity)."""
-        ...
 
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
@@ -80,3 +93,33 @@ class GraphRepository(Protocol):
         ...
 
     def edges_to(self, node: NodeId, *, include_history: bool = False) -> Sequence[Edge]: ...
+
+    def all_edges(self) -> Sequence[Edge]:
+        """Every edge ever recorded, history included, in the order they were recorded."""
+        ...
+
+    # -- whole-graph operations -----------------------------------------------
+    def remove_node(self, node: NodeId) -> None:
+        """Remove a node and leave its edges alone (callers supersede the live ones first).
+
+        For a provisional person merged into a permanent identity, or a topic the author
+        renamed: the node is gone, the history of what was linked to it stays.
+        """
+        ...
+
+    def erase_nodes(self, nodes: Collection[NodeId]) -> None:
+        """Erase nodes and every edge that touches them, history included.
+
+        The one exception to "history is never deleted": when the author deletes an
+        article or a person, nothing about them may remain, in the index or its history.
+        """
+        ...
+
+    def replace_graph(self, contents: GraphContents) -> None:
+        """Atomically replace every node and edge with ``contents``.
+
+        Edges are applied in order with the same rules as :meth:`save_edge` and
+        :meth:`supersede_edge`, so ``replace_graph`` of a graph's own contents changes
+        nothing.
+        """
+        ...

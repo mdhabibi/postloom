@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
+from urllib.parse import urlsplit
 
 _HASH_LENGTH = 8
 # A hashtag may follow a word character because pasted LinkedIn text often loses the
@@ -38,6 +39,20 @@ def slugify(text: str, max_length: int = 80) -> str:
         keep = max(max_length - _HASH_LENGTH - 1, 1)
         slug = f"{slug[:keep].rstrip('-')}-{digest}"
     return slug or "untitled"
+
+
+def canonical_url(url: str) -> str:
+    """A URL reduced to what identifies the page: no scheme, ``www.``, query or fragment.
+
+    >>> canonical_url("https://www.linkedin.com/pulse/my-article-abc/?trackingId=x#top")
+    'linkedin.com/pulse/my-article-abc'
+    """
+    text = url.strip()
+    if "://" not in text:
+        text = "https://" + text
+    parts = urlsplit(text)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}"
 
 
 def extract_hashtags(text: str) -> list[str]:
@@ -94,6 +109,31 @@ def plain_text(markdown: str) -> str:
     text = _MD_LINE_PREFIX.sub("", text)
     text = _MD_LINK.sub(r"\1", text)
     return _MD_EMPHASIS.sub("", text)
+
+
+_WORD = re.compile(r"[^\W_]+")
+SHINGLE_WORDS = 4
+
+
+def shingles(text: str, size: int = SHINGLE_WORDS) -> frozenset[str]:
+    """Every run of ``size`` consecutive words, ignoring case, punctuation and Markdown."""
+    words = _WORD.findall(plain_text(text).casefold())
+    if len(words) <= size:
+        return frozenset({" ".join(words)}) if words else frozenset()
+    return frozenset(" ".join(words[i : i + size]) for i in range(len(words) - size + 1))
+
+
+def containment(first: str, second: str) -> float:
+    """How much of the shorter text also appears in the other, from 0 to 1.
+
+    Two versions of one article score high even when one gained a section or was pasted
+    with LinkedIn's page chrome around it; two different articles score near 0. Word
+    sequences rather than single words, so shared vocabulary alone doesn't count.
+    """
+    a, b = shingles(first), shingles(second)
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
 
 
 def excerpt(text: str, query: str, width: int = 280) -> str:

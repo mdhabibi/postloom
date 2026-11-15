@@ -7,16 +7,21 @@ Division of labour:
   and the "Part N" number when the title states it.
 - The use case guards the graph: topics outside the user's taxonomy are dropped, and edges
   the user already verified or rejected are never overwritten by a re-ingest.
+
+Which article is this? Titles are not identities: the same article can come back with a
+reworded title, and two articles can share one. So an added article is matched to an
+existing one by its LinkedIn link when there is one, otherwise by its text, and only then
+is it treated as new. Nothing is ever replaced on the strength of a title alone.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
-from postloom.application.errors import NoTopicsConfiguredError
+from postloom.application.errors import ApplicationError, NoTopicsConfiguredError
 from postloom.application.ports.clock import Clock
 from postloom.application.ports.extraction import (
     ContentExtractor,
@@ -26,19 +31,29 @@ from postloom.application.ports.extraction import (
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.links import accepted_related
+from postloom.application.use_cases.relations import current_topics, write_mentions
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.graph import Edge, EdgeKind
 from postloom.domain.provenance import Grade, Origin, Provenance
 from postloom.domain.text import (
+    canonical_url,
+    containment,
     content_size,
     detect_series_part,
     extract_hashtags,
     extract_urls,
+    slugify,
 )
 
 PARSER = "parser"
 MIN_COVERAGE = 0.85
 """Below this share of the pasted text's content, the restored article is flagged."""
+SAME_TEXT = 0.5
+"""At least this much shared text (see ``containment``) means a new version of the same
+article. Versions of one article score above 0.9 and different articles, even parts of
+one series, below 0.2, so the exact value matters little."""
+DIFFERENT_TEXT = 0.2
+"""Below this, two texts are different articles, whatever their link or title says."""
 _OWNED_KINDS = frozenset({EdgeKind.ANNOUNCES, EdgeKind.BELONGS_TO, EdgeKind.PART_OF})
 
 
@@ -82,6 +97,18 @@ class IngestArticle:
         if not taxonomy:
             raise NoTopicsConfiguredError("No topics configured. Run setup first.")
 
+        existing = list(self._repository.list_articles())
+        same_link = _with_link(existing, command.article_url)
+        if (
+            same_link is not None
+            and containment(command.article_text, same_link.body_markdown) < DIFFERENT_TEXT
+        ):
+            # Checked before the model is called, so a wrong link costs nothing.
+            raise ApplicationError(
+                f'That link already belongs to "{same_link.title}", and its text is '
+                "different. Check the link, or delete that article first."
+            )
+
         extracted = self._extractor.extract(
             ExtractionRequest(
                 article_text=command.article_text,
@@ -93,15 +120,37 @@ class IngestArticle:
         topics = _match_topics(extracted.topics, taxonomy, warnings)
         _check_coverage(command.article_text, extracted, warnings)
 
+        previous = same_link or _same_text(existing, command.article_text)
         article = _build_article(command, extracted)
+        if previous is not None:
+            article = replace(
+                article,
+                key=previous.slug,
+                url=article.url or previous.url,
+                published_on=article.published_on or previous.published_on,
+            )
+            if slugify(previous.title) != slugify(article.title):
+                warnings.append(
+                    f'Recognised as a new version of "{previous.title}" and updated it.'
+                )
+        else:
+            key = _free_key(slugify(article.title), {a.slug for a in existing})
+            if key != slugify(article.title):
+                warnings.append(
+                    "Another article has the same title, so this one was saved separately. "
+                    "If it was meant to replace the other one, delete that article."
+                )
+            article = replace(article, key=key)
+
+        old_post = self._repository.get_post(Post(Post.key_for_article(article), "-").id)
         post = Post(
             key=Post.key_for_article(article),
             text=command.post_text.strip(),
-            url=command.post_url,
-            published_on=command.published_on,
+            url=command.post_url or (old_post.url if old_post else None),
+            published_on=command.published_on or (old_post.published_on if old_post else None),
             hashtags=tuple(extract_hashtags(command.post_text)),
             links=tuple(extract_urls(command.post_text)),
-            banner_path=command.banner_path,
+            banner_path=command.banner_path or (old_post.banner_path if old_post else None),
         )
         is_update = self._repository.get_article(article.id) is not None
 
@@ -111,8 +160,13 @@ class IngestArticle:
         self._repository.save_post(post)
         edges = self._sync_edges(article, post, topics)
 
+        # The note lists the topics that are live now, not the model's latest opinion:
+        # a topic the author rejected stays out even if the model proposes it again.
+        topics = current_topics(self._repository, article.id)
         related = accepted_related(self._repository, article.id)
         note_path = self._vault.write_article(article, post, topics, related)
+        if previous is not None and previous.title != article.title:
+            write_mentions(self._repository, self._vault, article)
         return IngestArticleResult(
             article=article,
             post=post,
@@ -164,6 +218,26 @@ class IngestArticle:
             self._repository.save_edge(edge)
             live.append(edge)
         return live
+
+
+def _with_link(articles: Sequence[Article], url: str | None) -> Article | None:
+    if not url or not url.strip():
+        return None
+    wanted = canonical_url(url)
+    return next((a for a in articles if a.url and canonical_url(a.url) == wanted), None)
+
+
+def _same_text(articles: Sequence[Article], pasted: str) -> Article | None:
+    """The stored article that shares the most text with ``pasted``, if it shares enough."""
+    scored = [(containment(pasted, a.body_markdown), a) for a in articles]
+    best = max(scored, key=lambda item: item[0], default=None)
+    return best[1] if best is not None and best[0] >= SAME_TEXT else None
+
+
+def _free_key(wanted: str, taken: set[str]) -> str:
+    if wanted not in taken:
+        return wanted
+    return next(f"{wanted}-{n}" for n in range(2, len(taken) + 3) if f"{wanted}-{n}" not in taken)
 
 
 def _match_topics(

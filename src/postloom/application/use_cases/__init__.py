@@ -6,6 +6,14 @@ from postloom.application.use_cases.browse_content import (
     CommentView,
     TopicLink,
 )
+from postloom.application.use_cases.curation import (
+    UNSET,
+    DeleteArticle,
+    DeletePerson,
+    ManageTopics,
+    PersonDeleted,
+    UpdateArticle,
+)
 from postloom.application.use_cases.discussions import (
     DiscussionPreview,
     DraftMessage,
@@ -50,8 +58,10 @@ from postloom.application.use_cases.search_content import (
     SearchResults,
 )
 from postloom.application.use_cases.seed_topics import SeedTopics
+from postloom.application.use_cases.vault_sync import ExportVault, OpenVault, SyncReport, SyncVault
 
 __all__ = [
+    "UNSET",
     "Answer",
     "ArticleDetail",
     "ArticleSummary",
@@ -60,9 +70,12 @@ __all__ = [
     "CommentView",
     "Conversation",
     "Decision",
+    "DeleteArticle",
+    "DeletePerson",
     "DiscussionPreview",
     "DraftMessage",
     "DraftReply",
+    "ExportVault",
     "GraphData",
     "GraphLink",
     "GraphNode",
@@ -72,12 +85,15 @@ __all__ = [
     "IngestArticle",
     "IngestArticleCommand",
     "IngestArticleResult",
+    "ManageTopics",
     "Method",
+    "OpenVault",
     "Overview",
     "OverviewData",
     "PairScore",
     "Passage",
     "PeopleDirectory",
+    "PersonDeleted",
     "PersonDetail",
     "PersonSummary",
     "PreviewComments",
@@ -95,7 +111,10 @@ __all__ = [
     "Source",
     "SuggestLinks",
     "SuggestResult",
+    "SyncReport",
+    "SyncVault",
     "TopicLink",
+    "UpdateArticle",
     "UpdatePerson",
     "WaitingMessage",
 ]

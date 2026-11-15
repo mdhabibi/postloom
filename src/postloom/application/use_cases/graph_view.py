@@ -12,7 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from postloom.application.ports.repository import GraphRepository
-from postloom.application.use_cases.people import article_of_post, comments_by
+from postloom.application.use_cases.relations import article_of_post, comments_by
 from postloom.domain.discussion import OWNER
 from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.provenance import Grade

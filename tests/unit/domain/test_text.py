@@ -80,3 +80,35 @@ def test_content_size_ignores_markup_links_and_hashtags() -> None:
     plain = "Hit rate matters"
     marked = "## **Hit rate** matters\n\n- https://lnkd.in/abcdefgh #RAG"
     assert content_size(marked) == content_size(plain) == 14
+
+
+def test_canonical_url_ignores_scheme_www_tracking_and_trailing_slash() -> None:
+    from postloom.domain.text import canonical_url
+
+    plain = canonical_url("linkedin.com/pulse/my-article-abc")
+    assert plain == "linkedin.com/pulse/my-article-abc"
+    assert canonical_url("https://www.LinkedIn.com/pulse/my-article-abc/?trk=x#top") == plain
+    assert canonical_url("http://linkedin.com/pulse/other") != plain
+
+
+def test_containment_tells_versions_of_one_text_from_different_texts() -> None:
+    from postloom.domain.text import containment
+
+    article = fixture_text("semantic_caching_part3", "article.txt")
+    longer = article + "\n\n## A new section\n\nSomething added in a later edit of the article."
+    wrapped = "Jane Example\nPublished Oct 12\n\n" + article + "\n\nLike Comment Share"
+    other = "A completely different article about training convolutional networks. " * 30
+    assert containment(article, longer) > 0.95
+    assert containment(article, wrapped) > 0.95
+    assert containment(article, other) < 0.05
+    assert containment("", article) == 0.0
+
+
+def test_containment_ignores_markdown_case_and_punctuation() -> None:
+    from postloom.domain.text import containment
+
+    pasted = "Hit rate matters. Measure precision and recall before you ship the cache."
+    restored = (
+        "## Hit rate matters\n\nMeasure **precision** and *recall* before you ship the cache!"
+    )
+    assert containment(pasted, restored) == 1.0

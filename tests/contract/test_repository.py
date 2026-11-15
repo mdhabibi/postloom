@@ -10,7 +10,7 @@ import pytest
 
 from postloom.adapters.storage.memory import InMemoryGraphRepository
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
-from postloom.application.ports.repository import GraphRepository
+from postloom.application.ports.repository import GraphContents, GraphRepository
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import OWNER, Comment
 from postloom.domain.graph import Edge, EdgeKind, NodeId
@@ -161,3 +161,111 @@ def test_people_round_trip_with_headline_history(make: Callable[[], GraphReposit
     assert repo.get_person(jane.id) == jane
     assert repo.get_person(provisional.id) == provisional
     assert {p.name for p in repo.list_people()} == {"Jane Example", "John Sample"}
+
+
+# -- whole-graph operations ---------------------------------------------------------
+def filled(repo: GraphRepository) -> GraphRepository:
+    """A small graph with a live edge, a rejected edge and history."""
+    jane = Person("Jane Example", ProfileUrl.parse("linkedin.com/in/jane-example"))
+    comment = Comment(POST.id, jane.id, "Jane Example", "Question?", 0)
+    structural = Provenance(Origin.STRUCTURAL, Grade.VERIFIED, "parser", T0)
+    repo.save_topic(RAG)
+    repo.save_series(Series("Caching"))
+    repo.save_article(ARTICLE)
+    repo.save_article(Article(title="Part 2", body_markdown="Body", key="part-2"))
+    repo.save_post(POST)
+    repo.save_person(jane)
+    repo.save_comment(comment)
+    repo.save_edge(belongs())
+    repo.supersede_edge(belongs().supersede(T1))
+    repo.save_edge(belongs(Grade.VERIFIED))
+    repo.save_edge(Edge(POST.id, ARTICLE.id, EdgeKind.ANNOUNCES, structural))
+    repo.save_edge(Edge(jane.id, comment.id, EdgeKind.AUTHORED, structural))
+    repo.save_edge(Edge(comment.id, POST.id, EdgeKind.COMMENTED_ON, structural))
+    return repo
+
+
+def snapshot(repo: GraphRepository) -> GraphContents:
+    posts = tuple(repo.list_posts())
+    return GraphContents(
+        topics=tuple(repo.list_topics()),
+        series=(Series("Caching"),),
+        articles=tuple(repo.list_articles()),
+        posts=posts,
+        comments=tuple(c for p in posts for c in repo.comments_on(p.id)),
+        people=tuple(repo.list_people()),
+        edges=tuple(repo.all_edges()),
+    )
+
+
+@adapters
+def test_posts_are_listed(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    repo.save_post(POST)
+    assert list(repo.list_posts()) == [POST]
+
+
+@adapters
+def test_all_edges_includes_history_and_rejections(make: Callable[[], GraphRepository]) -> None:
+    repo = filled(make())
+    edges = list(repo.all_edges())
+    assert len(edges) == 5
+    assert sum(1 for e in edges if e.superseded_at is not None) == 1
+    assert [e.superseded_at for e in edges if e.kind is EdgeKind.BELONGS_TO] == [T1, None]
+
+
+@adapters
+def test_deleting_a_node_erases_its_edges_and_their_history(
+    make: Callable[[], GraphRepository],
+) -> None:
+    repo = filled(make())
+    repo.erase_nodes([ARTICLE.id])
+    assert repo.get_article(ARTICLE.id) is None
+    assert list(repo.edges_from(ARTICLE.id, include_history=True)) == []
+    assert all(ARTICLE.id not in (e.source, e.target) for e in repo.all_edges())
+    assert len(repo.list_articles()) == 1  # other nodes are untouched
+    assert len(repo.all_edges()) == 2
+
+
+@adapters
+def test_replacing_a_graph_with_its_own_contents_changes_nothing(
+    make: Callable[[], GraphRepository],
+) -> None:
+    repo = filled(make())
+    before = snapshot(repo)
+    repo.replace_graph(before)
+    assert snapshot(repo) == before
+    (live,) = repo.edges_from(ARTICLE.id)
+    assert live.provenance.grade is Grade.VERIFIED
+
+
+@adapters
+def test_replacing_a_graph_removes_what_is_not_in_it(make: Callable[[], GraphRepository]) -> None:
+    source = filled(make())
+    target = filled(make())
+    target.save_article(Article(title="Stale", body_markdown="x"))
+    target.save_topic(Topic("Stale topic"))
+    target.replace_graph(snapshot(source))
+    assert {a.title for a in target.list_articles()} == {"Part 3", "Part 2"}
+    assert list(target.list_topics()) == [RAG]
+    assert list(target.all_edges()) == list(source.all_edges())
+
+
+@adapters
+def test_articles_keep_their_key_when_retitled(make: Callable[[], GraphRepository]) -> None:
+    repo = make()
+    first = Article(title="Old title", body_markdown="Body", key="old-title")
+    repo.save_article(first)
+    repo.save_article(Article(title="A better title", body_markdown="Body", key="old-title"))
+    (stored,) = repo.list_articles()
+    assert (stored.id, stored.title) == (first.id, "A better title")
+
+
+@adapters
+def test_removing_a_node_keeps_the_history_of_its_edges(
+    make: Callable[[], GraphRepository],
+) -> None:
+    repo = filled(make())
+    repo.remove_node(RAG.id)
+    assert list(repo.list_topics()) == []
+    assert len(repo.edges_to(RAG.id, include_history=True)) == 2

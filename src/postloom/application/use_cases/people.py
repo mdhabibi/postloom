@@ -19,8 +19,12 @@ from postloom.application.ports.clock import Clock
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.browse_content import CommentView, comment_views
-from postloom.domain.content import Article
-from postloom.domain.discussion import Comment
+from postloom.application.use_cases.relations import (
+    article_of_post,
+    articles_discussed_by,
+    comments_by,
+    write_discussion_note,
+)
 from postloom.domain.errors import InvalidProfileUrlError
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.people import Person, ProfileObservation, ProfileUrl
@@ -53,32 +57,6 @@ class PersonDetail:
     notes: str
     tags: tuple[str, ...]
     conversations: tuple[Conversation, ...]
-
-
-def comments_by(repository: GraphRepository, person_id: NodeId) -> list[Comment]:
-    found: list[Comment] = []
-    for edge in repository.edges_from(person_id):
-        if edge.kind is EdgeKind.AUTHORED and edge.is_current:
-            comment = repository.get_comment(edge.target)
-            if comment is not None:
-                found.append(comment)
-    return found
-
-
-def article_of_post(repository: GraphRepository, post: NodeId) -> Article | None:
-    for edge in repository.edges_from(post):
-        if edge.kind is EdgeKind.ANNOUNCES and edge.is_current:
-            return repository.get_article(edge.target)
-    return None
-
-
-def articles_discussed_by(repository: GraphRepository, person_id: NodeId) -> list[Article]:
-    articles: dict[NodeId, Article] = {}
-    for post in dict.fromkeys(c.post for c in comments_by(repository, person_id)):
-        article = article_of_post(repository, post)
-        if article is not None:
-            articles.setdefault(article.id, article)
-    return list(articles.values())
 
 
 class PeopleDirectory:
@@ -165,7 +143,19 @@ class UpdatePerson:
         else:
             person = self._merge(person_id, person, self._clock.now())
         self._vault.write_person(person, articles_discussed_by(self._repository, person.id))
+        if person.id != person_id:
+            self._rewrite_discussions(person.id)
         return person.id
+
+    def _rewrite_discussions(self, person_id: NodeId) -> None:
+        """Discussion notes name each message's author; after a merge they name the new
+        identity, so a rebuild from the vault doesn't bring the old one back."""
+        posts = dict.fromkeys(c.post for c in comments_by(self._repository, person_id))
+        for post_id in posts:
+            post = self._repository.get_post(post_id)
+            article = article_of_post(self._repository, post_id)
+            if post is not None and article is not None:
+                write_discussion_note(self._repository, self._vault, article, post)
 
     def _merge(self, old_id: NodeId, person: Person, now: datetime) -> Person:
         existing = self._repository.get_person(person.id)
@@ -186,7 +176,7 @@ class UpdatePerson:
         old = self._repository.get_person(old_id)
         if old is not None:
             self._vault.remove_person(old)
-        self._repository.delete_person(old_id)
+        self._repository.remove_node(old_id)
         return person
 
 

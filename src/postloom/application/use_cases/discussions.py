@@ -20,7 +20,7 @@ from postloom.application.ports.clock import Clock
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.thread_parser import ParsedMessage, ThreadParser
 from postloom.application.ports.vault import Vault
-from postloom.application.use_cases.people import articles_discussed_by
+from postloom.application.use_cases.relations import articles_discussed_by
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, Comment, Message, comment_key, infer_reply_targets
 from postloom.domain.errors import InvalidProfileUrlError

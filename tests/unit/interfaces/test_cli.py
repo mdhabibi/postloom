@@ -68,10 +68,11 @@ def offline(settings: Settings, **changes: Any) -> Settings:
     return replace(settings, provider=None, api_key=None, embeddings="off", **changes)
 
 
-def write_inputs(tmp_path: Path) -> tuple[str, str]:
+def write_inputs(tmp_path: Path, article_text: str | None = None) -> tuple[str, str]:
     article = tmp_path / "article.txt"
     post = tmp_path / "post.txt"
-    article.write_text(fixture_text("semantic_caching_part3", "article.txt"), encoding="utf-8")
+    text = article_text or fixture_text("semantic_caching_part3", "article.txt")
+    article.write_text(text, encoding="utf-8")
     post.write_text(fixture_text("semantic_caching_part3", "post.txt"), encoding="utf-8")
     return str(article), str(post)
 
@@ -217,9 +218,10 @@ def test_links_explain_lists_every_compared_pair(
 ) -> None:
     home = ["--home", str(tmp_path)]
     for title in ("First article", "Second article"):
-        make = extracting(part3_extraction(title=title))
+        body = f"{title}: " + " ".join(f"{title} word{i}" for i in range(60))
+        make = extracting(part3_extraction(title=title, body_markdown=body))
         main([*home, "init"], make_container=make)
-        main([*home, "ingest", *write_inputs(tmp_path)], make_container=make)
+        main([*home, "ingest", *write_inputs(tmp_path, body)], make_container=make)
     capsys.readouterr()
 
     assert main([*home, "links", "--explain"], make_container=fake_container) == 0

@@ -6,8 +6,10 @@ SQLite adapter and this one disagree, ``tests/contract`` tells you which is wron
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
+from typing import Any
 
+from postloom.application.ports.repository import GraphContents
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, EdgeKind, NodeId
@@ -48,6 +50,9 @@ class InMemoryGraphRepository:
     def save_post(self, post: Post) -> None:
         self._posts[post.id] = post
 
+    def list_posts(self) -> Sequence[Post]:
+        return list(self._posts.values())
+
     def save_series(self, series: Series) -> None:
         self._series[series.id] = series
 
@@ -71,9 +76,6 @@ class InMemoryGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return list(self._people.values())
 
-    def delete_person(self, person_id: NodeId) -> None:
-        self._people.pop(person_id, None)
-
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:
@@ -92,6 +94,48 @@ class InMemoryGraphRepository:
     def edges_to(self, node: NodeId, *, include_history: bool = False) -> Sequence[Edge]:
         return [e for e in self._all(include_history) if e.target == node]
 
+    def all_edges(self) -> Sequence[Edge]:
+        return [*self._history, *self._live.values()]
+
     def _all(self, include_history: bool) -> list[Edge]:
         live = list(self._live.values())
         return [*live, *self._history] if include_history else live
+
+    # -- whole-graph operations -------------------------------------------------
+    def remove_node(self, node: NodeId) -> None:
+        for store in self._stores():
+            store.pop(node, None)
+
+    def erase_nodes(self, nodes: Collection[NodeId]) -> None:
+        gone = set(nodes)
+        for node in gone:
+            self.remove_node(node)
+        self._live = {
+            k: e for k, e in self._live.items() if e.source not in gone and e.target not in gone
+        }
+        self._history = [e for e in self._history if e.source not in gone and e.target not in gone]
+
+    def _stores(self) -> tuple[dict[NodeId, Any], ...]:
+        return (
+            self._topics,
+            self._series,
+            self._articles,
+            self._posts,
+            self._comments,
+            self._people,
+        )
+
+    def replace_graph(self, contents: GraphContents) -> None:
+        self._topics = {t.id: t for t in contents.topics}
+        self._series = {s.id: s for s in contents.series}
+        self._articles = {a.id: a for a in contents.articles}
+        self._posts = {p.id: p for p in contents.posts}
+        self._comments = {c.id: c for c in contents.comments}
+        self._people = {p.id: p for p in contents.people}
+        self._live, self._history = {}, []
+        for edge in contents.edges:
+            if edge.superseded_at is None:
+                self._live[edge.key] = edge
+            else:
+                self._live.pop(edge.key, None)
+                self._history.append(edge)

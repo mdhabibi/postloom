@@ -10,12 +10,13 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from pathlib import Path
 
 from postloom.adapters.storage import codec
 from postloom.adapters.storage.database import MEMORY, MIGRATIONS, SqliteDatabase
+from postloom.application.ports.repository import GraphContents
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind
@@ -93,6 +94,9 @@ class SqliteGraphRepository:
     def save_post(self, post: Post) -> None:
         self._put(post.id, NodeKind.POST, codec.post_to_json(post))
 
+    def list_posts(self) -> Sequence[Post]:
+        return [codec.post_from_json(d) for d in self._all(NodeKind.POST)]
+
     def save_series(self, series: Series) -> None:
         self._put(series.id, NodeKind.SERIES, codec.series_to_json(series))
 
@@ -122,10 +126,6 @@ class SqliteGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return [codec.person_from_json(d) for d in self._all(NodeKind.PERSON)]
 
-    def delete_person(self, person_id: NodeId) -> None:
-        with self._transaction() as db:
-            db.execute("DELETE FROM nodes WHERE id = ? AND kind = 'person'", (person_id,))
-
     # -- edges ------------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:
@@ -138,29 +138,8 @@ class SqliteGraphRepository:
         self._replace_live(edge)
 
     def _replace_live(self, edge: Edge) -> None:
-        """Remove the live row for the edge's key, then insert ``edge`` (live or history)."""
-        p = edge.provenance
         with self._transaction() as db:
-            db.execute(
-                "DELETE FROM edges WHERE source = ? AND target = ? AND kind = ? "
-                "AND superseded_at IS NULL",
-                (edge.source, edge.target, edge.kind.value),
-            )
-            db.execute(
-                f"INSERT INTO edges ({_EDGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    edge.source,
-                    edge.target,
-                    edge.kind.value,
-                    p.origin.value,
-                    p.grade.value,
-                    p.producer,
-                    p.recorded_at.isoformat(),
-                    p.evidence,
-                    edge.weight,
-                    edge.superseded_at.isoformat() if edge.superseded_at else None,
-                ),
-            )
+            _write_edge(db, edge)
 
     def edges_from(self, node: NodeId, *, include_history: bool = False) -> Sequence[Edge]:
         return self._edges("source", node, include_history)
@@ -168,12 +147,72 @@ class SqliteGraphRepository:
     def edges_to(self, node: NodeId, *, include_history: bool = False) -> Sequence[Edge]:
         return self._edges("target", node, include_history)
 
+    def all_edges(self) -> Sequence[Edge]:
+        rows = self._database.query(f"SELECT {_EDGE_COLUMNS} FROM edges ORDER BY seq")
+        return [_edge_from_row(r) for r in rows]
+
+    # -- whole-graph operations ---------------------------------------------------
+    def remove_node(self, node: NodeId) -> None:
+        with self._transaction() as db:
+            db.execute("DELETE FROM nodes WHERE id = ?", (node,))
+
+    def erase_nodes(self, nodes: Collection[NodeId]) -> None:
+        with self._transaction() as db:
+            for node in nodes:
+                db.execute("DELETE FROM nodes WHERE id = ?", (node,))
+                db.execute("DELETE FROM edges WHERE source = ? OR target = ?", (node, node))
+
+    def replace_graph(self, contents: GraphContents) -> None:
+        nodes: list[tuple[NodeId, NodeKind, codec.Json]] = [
+            *((t.id, NodeKind.TOPIC, codec.topic_to_json(t)) for t in contents.topics),
+            *((s.id, NodeKind.SERIES, codec.series_to_json(s)) for s in contents.series),
+            *((a.id, NodeKind.ARTICLE, codec.article_to_json(a)) for a in contents.articles),
+            *((p.id, NodeKind.POST, codec.post_to_json(p)) for p in contents.posts),
+            *((c.id, NodeKind.COMMENT, codec.comment_to_json(c)) for c in contents.comments),
+            *((p.id, NodeKind.PERSON, codec.person_to_json(p)) for p in contents.people),
+        ]
+        with self._transaction() as db:
+            db.execute("DELETE FROM nodes")
+            db.execute("DELETE FROM edges")
+            for node_id, kind, data in nodes:
+                db.execute(
+                    "INSERT INTO nodes (id, kind, data) VALUES (?, ?, ?) "
+                    "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                    (node_id, kind.value, codec.dumps(data)),
+                )
+            for edge in contents.edges:
+                _write_edge(db, edge)
+
     def _edges(self, column: str, node: NodeId, include_history: bool) -> list[Edge]:
         live_only = "" if include_history else " AND superseded_at IS NULL"
         query = f"SELECT {_EDGE_COLUMNS} FROM edges WHERE {column} = ?{live_only} ORDER BY seq"
         with self._lock:
             rows = self._db.execute(query, (node,)).fetchall()
         return [_edge_from_row(r) for r in rows]
+
+
+def _write_edge(db: sqlite3.Connection, edge: Edge) -> None:
+    """Remove the live row for the edge's key, then insert ``edge`` (live or history)."""
+    p = edge.provenance
+    db.execute(
+        "DELETE FROM edges WHERE source = ? AND target = ? AND kind = ? AND superseded_at IS NULL",
+        (edge.source, edge.target, edge.kind.value),
+    )
+    db.execute(
+        f"INSERT INTO edges ({_EDGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            edge.source,
+            edge.target,
+            edge.kind.value,
+            p.origin.value,
+            p.grade.value,
+            p.producer,
+            p.recorded_at.isoformat(),
+            p.evidence,
+            edge.weight,
+            edge.superseded_at.isoformat() if edge.superseded_at else None,
+        ),
+    )
 
 
 def _edge_from_row(row: sqlite3.Row) -> Edge:

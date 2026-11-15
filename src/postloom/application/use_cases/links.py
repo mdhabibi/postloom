@@ -23,6 +23,7 @@ import math
 import operator
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from enum import StrEnum
 
 from postloom.application.errors import ApplicationError
@@ -243,6 +244,41 @@ class Decision(StrEnum):
     """Dismiss a suggestion or remove a link; it will not be suggested again."""
 
 
+def decide_link(
+    repository: GraphRepository,
+    first: NodeId,
+    second: NodeId,
+    decision: Decision,
+    now: datetime,
+    producer: str = "user",
+) -> Edge:
+    """Record the author's decision about a pair of articles and return the new edge.
+
+    The previous state of the pair (a suggestion, or an earlier decision) moves to
+    history. ``producer`` says where the decision was made: in the app (``"user"``) or by
+    editing a note (``"vault"``).
+    """
+    key = pair_key(first, second)
+    old = next(
+        (e for e in related_edges(repository, first) if pair_key(e.source, e.target) == key),
+        None,
+    )
+    if old is not None:
+        repository.supersede_edge(old.supersede(now))
+        base = Edge(old.source, old.target, old.kind, old.provenance, weight=old.weight)
+    else:
+        manual = Provenance(Origin.MANUAL, Grade.ASSERTED, producer, now)
+        base = Edge(key[0], key[1], EdgeKind.RELATED_TO, manual)
+    provenance = (
+        base.provenance.verified(now, producer)
+        if decision is Decision.ACCEPT
+        else base.provenance.rejected(now, producer)
+    )
+    edge = replace(base, provenance=provenance)
+    repository.save_edge(edge)
+    return edge
+
+
 class ReviewLink:
     def __init__(self, repository: GraphRepository, vault: Vault, clock: Clock) -> None:
         self._repository = repository
@@ -258,24 +294,8 @@ class ReviewLink:
         if first == second:
             raise ApplicationError("An article can't be linked to itself.")
 
-        now = self._clock.now()
         key = pair_key(first, second)
-        old = next(
-            (
-                e
-                for e in related_edges(self._repository, first)
-                if pair_key(e.source, e.target) == key
-            ),
-            None,
-        )
-        if old is not None:
-            self._repository.supersede_edge(old.supersede(now))
-            base = Edge(old.source, old.target, old.kind, old.provenance, weight=old.weight)
-        else:
-            manual = Provenance(Origin.MANUAL, Grade.ASSERTED, "user", now)
-            base = Edge(key[0], key[1], EdgeKind.RELATED_TO, manual)
-        edge = base.verify(now) if decision is Decision.ACCEPT else base.reject(now)
-        self._repository.save_edge(edge)
+        edge = decide_link(self._repository, first, second, decision, self._clock.now())
 
         for node in key:
             rewrite_article_note(self._repository, self._vault, node)

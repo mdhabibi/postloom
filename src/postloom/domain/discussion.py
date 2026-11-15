@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 
 from postloom.domain.errors import EmptyContentError
@@ -143,3 +143,70 @@ def conversation_depth(comment: Comment, by_id: dict[NodeId, Comment]) -> int:
         current = by_id[current.reply_to]
         depth += 1
     return depth
+
+
+def conversation_order(comments: Sequence[Comment]) -> list[Comment]:
+    """Threads in pasted order; inside a thread, each reply right after what it answers."""
+    children: dict[NodeId | None, list[Comment]] = {}
+    known = {c.id for c in comments}
+    for comment in sorted(comments, key=lambda c: c.position):
+        parent = comment.reply_to if comment.reply_to in known else None
+        children.setdefault(parent, []).append(comment)
+    ordered: list[Comment] = []
+    seen: set[NodeId] = set()
+    pending = list(reversed(children.get(None, [])))
+    while pending:
+        comment = pending.pop()
+        if comment.id in seen:
+            continue
+        seen.add(comment.id)
+        ordered.append(comment)
+        pending.extend(reversed(children.get(comment.id, [])))
+    ordered += [c for c in comments if c.id not in seen]  # defensive: never drop a message
+    return ordered
+
+
+def without_authors(comments: Sequence[Comment], authors: Collection[NodeId]) -> list[Comment]:
+    """The discussion with every message by ``authors`` removed, still a valid conversation.
+
+    A reply to a removed message is re-attached to the nearest message above it that
+    remains; if nothing above it remains, it becomes a top-level comment and the replies
+    under it follow. Positions are renumbered so they stay dense.
+    """
+    by_id = {c.id: c for c in comments}
+    gone = {c.id for c in comments if c.author in authors}
+
+    def surviving_parent(comment: Comment) -> NodeId | None:
+        seen: set[NodeId] = set()
+        parent = comment.reply_to
+        while parent is not None and parent in gone and parent not in seen:
+            seen.add(parent)
+            above = by_id.get(parent)
+            parent = above.reply_to if above is not None else None
+        return parent if parent in by_id and parent not in gone else None
+
+    parents = {c.id: surviving_parent(c) for c in comments if c.id not in gone}
+
+    def root_of(comment_id: NodeId) -> NodeId:
+        seen: set[NodeId] = set()
+        current = comment_id
+        while (parent := parents.get(current)) is not None and current not in seen:
+            seen.add(current)
+            current = parent
+        return current
+
+    kept: list[Comment] = []
+    for comment in sorted(comments, key=lambda c: c.position):
+        if comment.id in gone:
+            continue
+        parent = parents[comment.id]
+        root = root_of(comment.id)
+        kept.append(
+            replace(
+                comment,
+                position=len(kept),
+                reply_to=parent,
+                thread=None if parent is None else root,
+            )
+        )
+    return kept

@@ -47,6 +47,10 @@ class Article:
     hashtags: tuple[str, ...] = ()
     entities: tuple[str, ...] = ()
     """Named technologies, methods and organisations mentioned (e.g. "LangGraph", "Redis")."""
+    key: str = ""
+    """Stable identity, fixed when the article is first saved, so retitling it never
+    changes its id, its file name or the comments attached to it. Empty on records
+    written before keys existed: their identity is the slug of their title."""
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -56,7 +60,7 @@ class Article:
 
     @property
     def slug(self) -> str:
-        return slugify(self.title)
+        return self.key or slugify(self.title)
 
     @property
     def id(self) -> NodeId:

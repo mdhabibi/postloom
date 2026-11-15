@@ -8,7 +8,7 @@ thread parser, chat, reply drafts, embeddings) runs on it through one metered ga
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import TracebackType
 
 from postloom.adapters.clock import SystemClock
@@ -20,15 +20,19 @@ from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.local_embeddings import LocalEmbeddings, local_embeddings_installed
 from postloom.adapters.llm.providers import PRICES, build_backend
 from postloom.adapters.storage.database import SqliteDatabase
+from postloom.adapters.storage.journaled import JournaledRepository
 from postloom.adapters.storage.search import SqliteSearchIndex
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
+from postloom.adapters.storage.stamps import SqliteNoteStamps
 from postloom.adapters.storage.usage import SqliteUsageLedger
+from postloom.adapters.vault.journal import FileEdgeJournal
 from postloom.adapters.vault.markdown_vault import MarkdownVault
 from postloom.application.errors import NotConfiguredError
 from postloom.application.ports import (
     ChatModel,
     Clock,
     ContentExtractor,
+    EdgeJournal,
     EmbeddingProvider,
     GraphRepository,
     SearchIndex,
@@ -40,10 +44,15 @@ from postloom.application.ports.usage import Task
 from postloom.application.use_cases import (
     AskQuestion,
     BrowseContent,
+    DeleteArticle,
+    DeletePerson,
     DraftReply,
+    ExportVault,
     GraphOverview,
     IndexArticle,
     IngestArticle,
+    ManageTopics,
+    OpenVault,
     Overview,
     PeopleDirectory,
     PreviewComments,
@@ -53,6 +62,9 @@ from postloom.application.use_cases import (
     SearchContent,
     SeedTopics,
     SuggestLinks,
+    SyncReport,
+    SyncVault,
+    UpdateArticle,
     UpdatePerson,
 )
 from postloom.application.use_cases.usage import BudgetPolicy, PriceBook, UsageReport
@@ -87,6 +99,8 @@ class Container:
     search_index: SearchIndex
     vault: Vault
     clock: Clock
+    journal: EdgeJournal
+    """Where each link came from, kept inside the vault so a rebuild restores it."""
     usage_ledger: UsageLedger | None = None
     gateway: LlmGateway | None = None
     extractor: ContentExtractor | None = None
@@ -100,6 +114,8 @@ class Container:
     monthly_budget_usd: float | None = None
     not_configured: str = "Connect a model provider in Settings first."
     """Shown when a model-backed feature is used before setup."""
+    vault_report: SyncReport | None = None
+    """What opening the vault did (rebuilt the index, read edited notes...), if anything."""
     closers: tuple[Callable[[], None], ...] = ()
     """Resources to release on shutdown (database connections...)."""
 
@@ -183,6 +199,34 @@ class Container:
     def search(self) -> SearchContent:
         return SearchContent(self.search_index, self.repository, self.embedder, self.min_similarity)
 
+    def update_article(self) -> UpdateArticle:
+        return UpdateArticle(self.repository, self.vault, self.index_article(), self.clock)
+
+    def delete_article(self) -> DeleteArticle:
+        return DeleteArticle(self.repository, self.vault, self.search_index)
+
+    def delete_person(self) -> DeletePerson:
+        return DeletePerson(self.repository, self.vault, self.clock)
+
+    def topics(self) -> ManageTopics:
+        return ManageTopics(self.repository, self.vault, self.clock)
+
+    def sync_vault(self) -> SyncVault:
+        return SyncVault(
+            self.repository,
+            self.vault,
+            self.journal,
+            self.search_index,
+            self.index_article(),
+            self.clock,
+        )
+
+    def export_vault(self) -> ExportVault:
+        return ExportVault(self.repository, self.vault)
+
+    def open_vault(self) -> OpenVault:
+        return OpenVault(self.repository, self.vault, self.journal, self.sync_vault())
+
     def usage(self) -> UsageReport:
         if self.usage_ledger is None:
             raise NotConfiguredError("Usage tracking isn't available in this setup.")
@@ -225,6 +269,10 @@ def build_container(
 
     ``backend`` replaces the provider's real backend, e.g. a fake HTTP-free one in tests;
     the rest of the wiring (gateway, metering, budget) stays real.
+
+    Building the container also opens the vault: if notes were edited outside postloom,
+    or the index is new, the index is brought in line with the notes before anything
+    uses it. ``Container.vault_report`` says what was done.
     """
     clock = clock or SystemClock()
     database = SqliteDatabase(settings.index_path)
@@ -263,11 +311,14 @@ def build_container(
         embedder = _default_embedder(settings, gateway)
     cutoffs = settings.cutoffs_for(embedder.name if embedder else "")
 
-    return Container(
-        repository=SqliteGraphRepository(database),
+    journal = FileEdgeJournal(settings.vault_dir)
+    container = Container(
+        # Every edge write goes to the vault's journal too; there is no other way in.
+        repository=JournaledRepository(SqliteGraphRepository(database), journal),
         search_index=SqliteSearchIndex(database),
-        vault=MarkdownVault(settings.vault_dir),
+        vault=MarkdownVault(settings.vault_dir, SqliteNoteStamps(database)),
         clock=clock,
+        journal=journal,
         usage_ledger=ledger,
         gateway=gateway,
         extractor=extractor,
@@ -281,3 +332,9 @@ def build_container(
         not_configured=setup_hint(settings),
         closers=(database.close,),
     )
+    try:
+        report = container.open_vault().execute()
+    except BaseException:
+        container.close()
+        raise
+    return replace(container, vault_report=report)

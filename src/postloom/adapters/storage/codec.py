@@ -64,6 +64,7 @@ def article_to_json(article: Article) -> Json:
         "series_part": article.series_part,
         "hashtags": list(article.hashtags),
         "entities": list(article.entities),
+        "key": article.key,
     }
 
 
@@ -79,6 +80,7 @@ def article_from_json(data: Json) -> Article:
         series_part=data.get("series_part"),
         hashtags=tuple(data.get("hashtags", ())),
         entities=tuple(data.get("entities", ())),
+        key=data.get("key", ""),
     )
 
 

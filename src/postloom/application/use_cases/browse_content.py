@@ -8,7 +8,7 @@ from datetime import date
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.use_cases.links import RelatedLink, related_links
 from postloom.domain.content import Article, Post
-from postloom.domain.discussion import Comment, conversation_depth
+from postloom.domain.discussion import Comment, conversation_depth, conversation_order
 from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.provenance import Grade
 
@@ -126,34 +126,10 @@ def comment_views(repository: GraphRepository, comments: list[Comment]) -> tuple
             reply_to_name=_author_of(by_id, c.reply_to),
             depth=conversation_depth(c, by_id),
         )
-        for c in _conversation_order(comments)
+        for c in conversation_order(comments)
     )
 
 
 def _author_of(by_id: dict[NodeId, Comment], comment_id: NodeId | None) -> str | None:
     target = by_id.get(comment_id) if comment_id is not None else None
     return target.author_name if target is not None else None
-
-
-def _conversation_order(comments: list[Comment]) -> list[Comment]:
-    """Threads in pasted order; inside a thread, each reply right after what it answers."""
-    children: dict[NodeId | None, list[Comment]] = {}
-    known = {c.id for c in comments}
-    for comment in sorted(comments, key=lambda c: c.position):
-        parent = comment.reply_to if comment.reply_to in known else None
-        children.setdefault(parent, []).append(comment)
-    ordered: list[Comment] = []
-    seen: set[NodeId] = set()
-
-    def visit(comment: Comment) -> None:
-        if comment.id in seen:
-            return
-        seen.add(comment.id)
-        ordered.append(comment)
-        for child in children.get(comment.id, []):
-            visit(child)
-
-    for root in children.get(None, []):
-        visit(root)
-    ordered += [c for c in comments if c.id not in seen]  # defensive: never drop a message
-    return ordered
