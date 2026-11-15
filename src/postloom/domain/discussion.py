@@ -166,6 +166,53 @@ def conversation_order(comments: Sequence[Comment]) -> list[Comment]:
     return ordered
 
 
+@dataclass(frozen=True, slots=True)
+class ThreadText:
+    """One conversation as plain text, for search and for a model to read."""
+
+    starter: str
+    """Who started it ("You" for the author)."""
+    participants: frozenset[NodeId]
+    comments: tuple[NodeId, ...]
+    text: str
+    """One paragraph per message: ``Name (replying to Name): what they wrote``."""
+
+
+def thread_texts(comments: Sequence[Comment]) -> list[ThreadText]:
+    """Every thread of a discussion as readable text, saying who answers whom."""
+    by_id = {c.id: c for c in comments}
+
+    def name(comment: Comment) -> str:
+        return "You" if comment.is_own else comment.author_name
+
+    threads: dict[NodeId, list[Comment]] = {}
+    for comment in conversation_order(comments):
+        root = comment.id
+        if comment.thread is not None and comment.thread in by_id:
+            root = comment.thread
+        threads.setdefault(root, []).append(comment)
+
+    texts: list[ThreadText] = []
+    for root, messages in threads.items():
+        lines: list[str] = []
+        for message in messages:
+            target = by_id.get(message.reply_to) if message.reply_to is not None else None
+            who = name(message)
+            if target is not None:
+                answered = "you" if target.is_own else target.author_name
+                who += f" (replying to {answered})"
+            lines.append(f"{who}: {message.text}")
+        texts.append(
+            ThreadText(
+                starter=name(by_id[root]) if root in by_id else name(messages[0]),
+                participants=frozenset(m.author for m in messages),
+                comments=tuple(m.id for m in messages),
+                text="\n\n".join(lines),
+            )
+        )
+    return texts
+
+
 def without_authors(comments: Sequence[Comment], authors: Collection[NodeId]) -> list[Comment]:
     """The discussion with every message by ``authors`` removed, still a valid conversation.
 

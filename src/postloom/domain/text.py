@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
+from collections.abc import Sequence
 from urllib.parse import urlsplit
 
 _HASH_LENGTH = 8
@@ -134,6 +135,44 @@ def containment(first: str, second: str) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / min(len(a), len(b))
+
+
+STOPWORDS = frozenset(
+    """a about after all also am an and any anybody anyone are as ask asked asking at be
+    because been before being both but by can could describe did do does doing done each
+    explain find for from get give got had has have having he her here him his how i if in
+    into is it its just know like many may me mention mentioned more most much my no not
+    now of on one only or other our out over said say says she should show so some
+    somebody someone such talk talked tell than that the their them then there these they
+    think this those thought to told too under up us use used using very was we were what
+    when where which while who whom why will with would you your yours""".split()  # noqa: SIM905 - a word list reads better as prose
+)
+"""Words too common to tell one passage from another (including the verbs questions are
+phrased with), for judging keyword matches."""
+
+
+def significant_terms(query: str) -> list[str]:
+    """The words of a question that carry its meaning: no stopwords, no 1-2 letter words
+    (unless the question has nothing else)."""
+    words = list(dict.fromkeys(_WORD.findall(query.casefold())))
+    kept = [w for w in words if w not in STOPWORDS and len(w) > 2]
+    return kept or [w for w in words if w not in STOPWORDS] or words
+
+
+def term_coverage(terms: Sequence[str], text: str) -> float:
+    """The share of ``terms`` that appear in ``text`` as whole words."""
+    if not terms:
+        return 0.0
+    present = set(_WORD.findall(text.casefold()))
+    return sum(1 for term in terms if term in present) / len(terms)
+
+
+def mentions(text: str, phrase: str) -> bool:
+    """True when ``phrase`` appears in ``text`` as whole words, ignoring case."""
+    wanted = " ".join(_WORD.findall(phrase.casefold()))
+    if not wanted:
+        return False
+    return f" {wanted} " in f" {' '.join(_WORD.findall(text.casefold()))} "
 
 
 def excerpt(text: str, query: str, width: int = 280) -> str:

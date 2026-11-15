@@ -9,10 +9,11 @@ to be removed); for articles it is simply what "delete" means.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import date
 
-from postloom.application.errors import ApplicationError
+from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.ports.clock import Clock
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import SearchIndex
@@ -186,9 +187,16 @@ class PersonDeleted:
 
 
 class DeletePerson:
-    def __init__(self, repository: GraphRepository, vault: Vault, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: GraphRepository,
+        vault: Vault,
+        index_article: IndexArticle,
+        clock: Clock,
+    ) -> None:
         self._repository = repository
         self._vault = vault
+        self._index_article = index_article
         self._clock = clock
 
     def execute(self, person_id: NodeId) -> PersonDeleted:
@@ -232,6 +240,10 @@ class DeletePerson:
             article = article_of_post(repo, post_id)
             if post is not None and article is not None:
                 write_discussion_note(repo, self._vault, article, post)
+                # Their words must leave the search index too. If the provider fails, the
+                # keyword index has already been replaced, which is what matters here.
+                with suppress(ProviderError, BudgetExceededError):
+                    self._index_article.execute(article.id)
         return PersonDeleted(person.name, len(erased) - 1)
 
 

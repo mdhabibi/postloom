@@ -266,15 +266,20 @@ class SyncVault:
     def _reindex(self, before: dict[NodeId, Article], after: dict[NodeId, Article]) -> str | None:
         for gone in before.keys() - after.keys():
             self._index.remove(gone)
-        error: str | None = None
-        for article_id, article in after.items():
-            if before.get(article_id) == article and self._index.chunks_of(article_id):
-                continue
-            try:
-                self._index_article.execute(article_id)
-            except (ProviderError, BudgetExceededError) as failure:
-                error = str(failure)  # keyword search still works; a reindex fills the rest
-        return error
+            self._index.remove(NodeId(f"post:{gone.partition(':')[2]}"))
+        return reindex_all(self._index_article, list(after))
+
+
+def reindex_all(index_article: IndexArticle, articles: list[NodeId]) -> str | None:
+    """Index every article and its discussion again; unchanged text reuses its vectors,
+    so this costs little. Returns why search by meaning is incomplete, if it is."""
+    error: str | None = None
+    for article_id in articles:
+        try:
+            index_article.execute(article_id)
+        except (ProviderError, BudgetExceededError) as failure:
+            error = str(failure)  # keyword search still works; a reindex fills the rest
+    return error
 
 
 class OpenVault:
@@ -286,11 +291,13 @@ class OpenVault:
         vault: Vault,
         journal: EdgeJournal,
         sync: SyncVault,
+        index_article: IndexArticle,
     ) -> None:
         self._repository = repository
         self._vault = vault
         self._journal = journal
         self._sync = sync
+        self._index_article = index_article
 
     def execute(self) -> SyncReport | None:
         """What was done, or None when the index and the vault already agreed."""
@@ -303,13 +310,16 @@ class OpenVault:
             trashed = ExportVault(repo, vault).execute()
             vault.mark_format()
             vault.mark_synced()
+            # Older versions didn't index posts and comments for search.
+            articles = [a.id for a in repo.list_articles()]
             return SyncReport(
                 True,
                 "upgraded",
-                articles=len(repo.list_articles()),
+                articles=len(articles),
                 people=len(repo.list_people()),
                 topics=len(repo.list_topics()),
                 trashed=tuple(trashed),
+                index_error=reindex_all(self._index_article, articles),
             )
         if not vault.changes():
             if vault.format < VAULT_FORMAT:

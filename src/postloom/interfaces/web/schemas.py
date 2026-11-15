@@ -157,6 +157,7 @@ class HistoryMessage(_Request):
 class AskRequest(_Request):
     question: str = Field(min_length=1, max_length=4000)
     article_id: str | None = Field(default=None, max_length=300)
+    person_id: str | None = Field(default=None, max_length=300)
     history: list[HistoryMessage] = Field(default_factory=list[HistoryMessage], max_length=40)
 
 
@@ -474,6 +475,7 @@ def search_results(found: SearchResults) -> Json:
                 "passages": [
                     {
                         "heading": p.heading,
+                        "kind": p.kind,
                         "excerpt": p.excerpt,
                         "matched_by": sorted(p.matched_by),
                         "similarity": p.similarity,
@@ -490,10 +492,13 @@ def answer(result: Answer) -> Json:
     return {
         "text": result.text,
         "grounded": result.grounded,
+        "uncited": result.uncited,
         "sources": [
             {
                 "number": s.number,
                 "article_id": s.article_id,
+                "person_id": s.person_id,
+                "kind": s.kind,
                 "title": s.title,
                 "section": s.section,
                 "text": s.text,

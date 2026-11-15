@@ -898,10 +898,10 @@ async function searchView(query, ask = false) {
       ? h("ul", { class: "results" }, found.results.map((r) => h("li", { class: "result" },
           h("h2", {}, h("a", { href: `#/article/${encodeURIComponent(r.id)}` }, r.title)),
           r.passages.map((p) => h("p", { class: "passage" }, h("span", { class: "where" }, p.heading || "Introduction"), p.excerpt)))))
-      : h("p", { class: "lede" }, "No articles match. Try other words, or ask below.");
+      : h("p", { class: "lede" }, "Nothing matches in your articles, posts or comments. Try other words, or ask below.");
     document.getElementById("search-results").replaceChildren(
       ...found.warnings.map((w) => notice("", w)), list,
-      chatPanel("library", "Ask across all your articles", "Answers use only passages that clearly match your question.", [], query, ask));
+      chatPanel("library", "Ask across your library", "Answers use only your articles, posts and comments, and what postloom knows about the people in them.", [], query, ask));
   } catch (error) {
     document.getElementById("search-results").replaceChildren(notice("error", error.message));
   }
@@ -1314,7 +1314,8 @@ async function personView(id) {
     }
   }
 
-  setMain(h("section", { class: "page" },
+  const firstName = person.name.split(/\s+/)[0];
+  const profile = h("section", { class: "page" },
     h("div", { class: "person-head" }, avatar(person.name),
       h("div", {}, h("h1", {}, person.name), person.headline ? h("p", {}, person.headline) : null)),
     earlier.length ? h("ul", { class: "history", "aria-label": "Earlier headlines" },
@@ -1352,9 +1353,15 @@ async function personView(id) {
         "Delete person", async () => {
           const gone = await api(`/api/person?id=${encodeURIComponent(person.id)}`, { method: "DELETE" });
           await refresh();
+          state.chats.delete(person.id);
           toast(`${gone.name} deleted`);
           location.hash = "#/people";
-        }))));
+        })));
+  setMain(person.messages ? h("div", { class: "article-layout" }, profile,
+    chatPanel(person.id, `Ask about ${firstName}`,
+      "Answers come only from your notes about them and the conversations you had.",
+      [`What does ${firstName} care about?`, "Summarize our conversations", "Is there anything I haven't answered?"]))
+    : profile);
   renderSidebar();
 }
 
@@ -1391,15 +1398,18 @@ function chatPanel(scope, title, subtitle, suggestions, initialQuestion, autoAsk
     const previous = history.filter((m) => m.role !== "error" && !m.pending)
       .map((m) => ({ role: m.role, text: m.text }));
     history.push({ role: "user", text: question });
-    const pending = { role: "assistant", text: "Reading your articles...", pending: true };
+    const pending = { role: "assistant", text: "Reading your library...", pending: true };
     history.push(pending);
     input.value = "";
     submit.disabled = true;
     render();
     try {
       const answer = await api("/api/ask", { method: "POST", body: {
-        question, article_id: scope === "library" ? null : scope, history: previous } });
-      Object.assign(pending, { text: answer.text, sources: answer.sources, pending: false });
+        question,
+        article_id: scope.startsWith("article:") ? scope : null,
+        person_id: scope.startsWith("person:") ? scope : null,
+        history: previous } });
+      Object.assign(pending, { text: answer.text, sources: answer.sources, uncited: answer.uncited, pending: false });
     } catch (error) {
       Object.assign(pending, { role: "error", text: error.message, pending: false });
     } finally {
@@ -1432,8 +1442,11 @@ function renderMessage(message) {
     body.append(h("div", { class: "sources" }, sources.map((s) =>
       h("details", { "data-n": s.number },
         h("summary", {}, h("strong", {}, `[${s.number}] `),
-          s.article_id === here ? s.section : `${s.title}: ${s.section}`),
+          s.article_id && s.article_id === here ? s.section : `${s.title}: ${s.section}`),
         h("p", { class: "source-text" }, s.text)))));
+  }
+  if (message.uncited) {
+    body.append(h("p", { class: "uncited" }, "This answer points to none of your sources, so it can't be checked. Treat it with care."));
   }
   body.addEventListener("click", (event) => {
     const cite = event.target.closest(".cite");
@@ -1447,6 +1460,11 @@ function renderMessage(message) {
 }
 
 function revealSection(source) {
+  if (!source.article_id) {
+    // Facts about a person open their page; library facts have nowhere to go.
+    if (source.person_id) location.hash = `#/person/${encodeURIComponent(source.person_id)}`;
+    return;
+  }
   if (currentArticleId() !== source.article_id) {
     location.hash = `#/article/${encodeURIComponent(source.article_id)}`;
     return;

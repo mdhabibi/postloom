@@ -158,7 +158,7 @@ class Container:
         return PreviewComments(self.thread_parser, self.repository)
 
     def save_comments(self) -> SaveComments:
-        return SaveComments(self.repository, self.vault, self.clock)
+        return SaveComments(self.repository, self.vault, self.clock, self.index_article())
 
     def people(self) -> PeopleDirectory:
         return PeopleDirectory(self.repository)
@@ -206,7 +206,7 @@ class Container:
         return DeleteArticle(self.repository, self.vault, self.search_index)
 
     def delete_person(self) -> DeletePerson:
-        return DeletePerson(self.repository, self.vault, self.clock)
+        return DeletePerson(self.repository, self.vault, self.index_article(), self.clock)
 
     def topics(self) -> ManageTopics:
         return ManageTopics(self.repository, self.vault, self.clock)
@@ -225,7 +225,9 @@ class Container:
         return ExportVault(self.repository, self.vault)
 
     def open_vault(self) -> OpenVault:
-        return OpenVault(self.repository, self.vault, self.journal, self.sync_vault())
+        return OpenVault(
+            self.repository, self.vault, self.journal, self.sync_vault(), self.index_article()
+        )
 
     def usage(self) -> UsageReport:
         if self.usage_ledger is None:

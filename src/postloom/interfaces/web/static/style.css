@@ -832,3 +832,4 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .settings-section > .button { margin-bottom: 0.75rem; }
 .editor .field-row { align-items: start; }
 .editor .field input { height: 2.6rem; }
+.uncited { margin: 0.6rem 0 0; padding: 0.45rem 0.7rem; border-radius: var(--r); background: var(--warn-wash); color: var(--warn); font-size: var(--ui-sm); }

@@ -1,5 +1,8 @@
 """SearchContent: hybrid keyword + semantic search, results grouped by article.
 
+Articles, their announcement posts and the comment threads under them are all searched;
+a match in a post or a comment is shown under the article it belongs to.
+
 Keyword search (BM25) is precise for names and exact terms ("LangGraph", "MinHash");
 semantic search finds passages that mean the same thing in other words ("my test score
 was too optimistic" -> data leakage). Reciprocal rank fusion combines the two rankings
@@ -17,6 +20,8 @@ from postloom.application.errors import ProviderError
 from postloom.application.ports.embeddings import EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import ChunkHit, SearchIndex
+from postloom.application.use_cases.index_content import COMMENTS_HEADING
+from postloom.application.use_cases.relations import article_of_post
 from postloom.domain.graph import NodeId
 from postloom.domain.text import excerpt
 
@@ -41,6 +46,8 @@ class Passage:
     """Cosine similarity to the query (semantic match), for explaining results."""
     keyword_score: float | None = None
     """BM25 relevance (keyword match), for explaining results."""
+    kind: str = "article"
+    """Where the passage is from: "article", "post" or "comments"."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +119,9 @@ class SearchContent:
 
         by_article: dict[NodeId, list[tuple[float, ChunkHit]]] = defaultdict(list)
         for key, score in scores.items():
-            by_article[key[0]].append((score, hits[key]))
+            article_id = article_for(self._repository, key[0])
+            if article_id is not None:
+                by_article[article_id].append((score, hits[key]))
 
         results: list[SearchResult] = []
         for node, scored in by_article.items():
@@ -127,6 +136,7 @@ class SearchContent:
                     matched_by=frozenset(raw[(hit.node, hit.index)]),
                     similarity=raw[(hit.node, hit.index)].get(Method.SEMANTIC),
                     keyword_score=raw[(hit.node, hit.index)].get(Method.KEYWORD),
+                    kind=passage_kind(hit),
                 )
                 for _, hit in top
             )
@@ -142,3 +152,17 @@ class SearchContent:
             )
         results.sort(key=lambda r: r.score, reverse=True)
         return results
+
+
+def article_for(repository: GraphRepository, node: NodeId) -> NodeId | None:
+    """The article an indexed node belongs to: itself, or the article its post announces."""
+    if node.startswith("post:"):
+        article = article_of_post(repository, node)
+        return article.id if article is not None else None
+    return node
+
+
+def passage_kind(hit: ChunkHit) -> str:
+    if not hit.node.startswith("post:"):
+        return "article"
+    return "comments" if hit.heading.startswith(COMMENTS_HEADING) else "post"

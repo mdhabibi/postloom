@@ -12,14 +12,16 @@ the existing chains.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from postloom.application.errors import ApplicationError
+from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.ports.clock import Clock
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.thread_parser import ParsedMessage, ThreadParser
 from postloom.application.ports.vault import Vault
+from postloom.application.use_cases.index_content import IndexArticle
 from postloom.application.use_cases.relations import articles_discussed_by
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, Comment, Message, comment_key, infer_reply_targets
@@ -145,10 +147,18 @@ def _comment_id(key: str) -> NodeId:
 
 
 class SaveComments:
-    def __init__(self, repository: GraphRepository, vault: Vault, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: GraphRepository,
+        vault: Vault,
+        clock: Clock,
+        index_article: IndexArticle | None = None,
+    ) -> None:
         self._repository = repository
         self._vault = vault
         self._clock = clock
+        self._index_article = index_article
+        """Given, new comments become findable by search and chat as they are saved."""
 
     def execute(self, article_id: NodeId, drafts: Sequence[DraftMessage]) -> SaveResult:
         article, post = _post_of(self._repository, article_id)
@@ -193,6 +203,11 @@ class SaveComments:
                 if person is not None:
                     articles = articles_discussed_by(self._repository, author)
                     self._vault.write_person(person, articles)
+            if self._index_article is not None:
+                # If the provider fails the comments are still indexed by keyword; a
+                # reindex adds search by meaning later. Saving them must not fail for it.
+                with suppress(ProviderError, BudgetExceededError):
+                    self._index_article.execute(article.id)
         return SaveResult(len(added), skipped, new_people, tuple(added))
 
     def _author(self, draft: DraftMessage, now: datetime) -> tuple[NodeId, bool]:

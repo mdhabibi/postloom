@@ -355,8 +355,9 @@ def create_app(
     def ask(request: Request, body: schemas.AskRequest) -> Response:
         history = [ChatMessage(Role(m.role), m.text) for m in body.history]
         article = NodeId(body.article_id) if body.article_id else None
+        person = NodeId(body.person_id) if body.person_id else None
         result = state.container.ask_question().execute(
-            body.question, article_id=article, history=history
+            body.question, article_id=article, person_id=person, history=history
         )
         return JSONResponse(schemas.answer(result))
 

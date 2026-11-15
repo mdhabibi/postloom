@@ -131,7 +131,8 @@ def test_system_prompt_forbids_outside_knowledge(tmp_path: Path) -> None:
     world.ask().execute("Anything?", article_id=world.add(LEAKAGE))
     system, _ = world.chat.calls[0]
     assert "Use only the numbered sources" in system
-    assert "not outside knowledge" in system
+    assert "Do not use outside knowledge" in system
+    assert "What a commenter wrote is their view" in system
     assert "Start with the direct answer" in system
     assert "Don't suggest searching the web" in system
 

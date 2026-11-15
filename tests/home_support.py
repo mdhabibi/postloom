@@ -16,6 +16,7 @@ from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.provenance import Provenance
 from postloom.settings import Settings
 from tests.fakes import (
+    FakeChat,
     FakeEmbedder,
     FakeExtractor,
     FakeThreadParser,
@@ -34,11 +35,19 @@ def body_of(title: str) -> str:
     return f"An introduction to {title}.\n\n## Details\n\n{words}"
 
 
-def open_home(home: Path, clock: FixedClock | None = None, **extraction: Any) -> Container:
+def open_home(
+    home: Path,
+    clock: FixedClock | None = None,
+    *,
+    chat: FakeChat | None = None,
+    min_similarity: float | None = None,
+    **extraction: Any,
+) -> Container:
     return build_container(
-        Settings(home=home),
+        Settings(home=home, min_similarity=min_similarity),
         extractor=FakeExtractor(part3_extraction(**extraction)),
         embedder=FakeEmbedder(),
+        chat=chat,
         thread_parser=FakeThreadParser(),
         clock=clock or FixedClock(),
     )

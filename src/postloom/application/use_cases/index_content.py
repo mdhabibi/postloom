@@ -1,5 +1,10 @@
 """IndexArticle / ReindexAll: keep the search index in sync with the graph.
 
+An article is indexed as two nodes: the article itself (summary and sections), and its
+post (the announcement text, then one chunk per comment thread). Keeping the discussion
+under the post's node means search and chat can find what people said, while link
+suggestions, which compare articles by what they are about, never see the comments.
+
 Embeddings cost money and time, so each chunk's vector is reused whenever a chunk with
 the same content hash was already embedded in the same vector space. Re-ingesting an
 article after fixing a typo only re-embeds the section that changed.
@@ -7,14 +12,17 @@ article after fixing a typo only re-embeds the section that changed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.ports.embeddings import DocumentText, EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import IndexedChunk, SearchIndex
+from postloom.application.use_cases.relations import post_of
 from postloom.domain.chunking import Chunk, chunk_markdown
-from postloom.domain.content import Article
+from postloom.domain.content import Article, Post
+from postloom.domain.discussion import Comment, thread_texts
 from postloom.domain.graph import NodeId
 
 
@@ -41,13 +49,26 @@ class IndexArticle:
         self._embedder = embedder
 
     def execute(self, article_id: NodeId) -> IndexResult:
+        """Index the article, its post and the discussion under it."""
         article = self._repository.get_article(article_id)
         if article is None:
             raise ApplicationError(f"Unknown article: {article_id}")
-        chunks = article_chunks(article)
+        result = self._store(article.id, article_chunks(article))
+        post = post_of(self._repository, article.id)
+        if post is None:
+            return result
+        comments = self._repository.comments_on(post.id)
+        discussion = self._store(post.id, discussion_chunks(article, post, comments))
+        return IndexResult(
+            result.chunks + discussion.chunks,
+            result.embedded + discussion.embedded,
+            result.reused + discussion.reused,
+            semantic=result.semantic,
+        )
 
+    def _store(self, node: NodeId, chunks: list[Chunk]) -> IndexResult:
         if self._embedder is None:
-            self._index.replace_chunks(article.id, [IndexedChunk(c, None, None) for c in chunks])
+            self._index.replace_chunks(node, [IndexedChunk(c, None, None) for c in chunks])
             return IndexResult(len(chunks), 0, 0, semantic=False)
 
         space = self._embedder.name
@@ -59,16 +80,14 @@ class IndexArticle:
                     [DocumentText(c.title, _embedding_text(c)) for c in missing]
                 )
             except (ProviderError, BudgetExceededError):
-                # Keep the article findable by keywords, then report why meaning search
+                # Keep the text findable by keywords, then report why meaning search
                 # isn't available for it; a later reindex fills the vectors in.
-                self._index.replace_chunks(
-                    article.id, [IndexedChunk(c, None, None) for c in chunks]
-                )
+                self._index.replace_chunks(node, [IndexedChunk(c, None, None) for c in chunks])
                 raise
             cached.update(zip((c.content_hash for c in missing), fresh, strict=True))
 
         indexed = [IndexedChunk(c, cached[c.content_hash], space) for c in chunks]
-        self._index.replace_chunks(article.id, indexed)
+        self._index.replace_chunks(node, indexed)
         return IndexResult(len(chunks), len(missing), len(chunks) - len(missing), semantic=True)
 
 
@@ -108,6 +127,29 @@ def article_chunks(article: Article) -> list[Chunk]:
         summary,
         *(Chunk(c.node, c.index + 1, c.heading, c.text, c.title) for c in body),
     ]
+
+
+POST_HEADING = "Announcement post"
+COMMENTS_HEADING = "Comments: thread started by "
+MAX_THREAD_CHARS = 2400
+
+
+def discussion_chunks(article: Article, post: Post, comments: Sequence[Comment]) -> list[Chunk]:
+    """The post's text, then each comment thread as one chunk (long threads are split
+    between messages, never inside one)."""
+    chunks = [Chunk(post.id, 0, POST_HEADING, post.text, article.title)]
+    for thread in thread_texts(comments):
+        heading = f"{COMMENTS_HEADING}{thread.starter}"
+        piece: list[str] = []
+        for message in thread.text.split("\n\n"):
+            if piece and sum(map(len, piece)) + len(message) > MAX_THREAD_CHARS:
+                chunks.append(
+                    Chunk(post.id, len(chunks), heading, "\n\n".join(piece), article.title)
+                )
+                piece = []
+            piece.append(message)
+        chunks.append(Chunk(post.id, len(chunks), heading, "\n\n".join(piece), article.title))
+    return chunks
 
 
 def _embedding_text(chunk: Chunk) -> str:
