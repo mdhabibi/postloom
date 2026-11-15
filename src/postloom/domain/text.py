@@ -12,6 +12,8 @@ import unicodedata
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
+from postloom.domain.errors import InvalidUrlError
+
 _HASH_LENGTH = 8
 # A hashtag may follow a word character because pasted LinkedIn text often loses the
 # whitespace between a link and the first hashtag ("...lnkd.in/abc#RAG").
@@ -54,6 +56,26 @@ def canonical_url(url: str) -> str:
     parts = urlsplit(text)
     host = (parts.hostname or "").lower().removeprefix("www.")
     return f"{host}{parts.path.rstrip('/')}"
+
+
+def web_url(raw: str | None) -> str | None:
+    """A link as postloom stores it: ``https://`` added when missing; None when empty.
+
+    Only web addresses are accepted. A stored link is shown as a clickable "View on
+    LinkedIn", so a ``javascript:`` or ``file:`` address must never get in.
+
+    >>> web_url("linkedin.com/pulse/x")
+    'https://linkedin.com/pulse/x'
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if "://" not in text and not text.lower().startswith(("javascript:", "data:", "file:")):
+        text = "https://" + text
+    parts = urlsplit(text)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise InvalidUrlError(f"That isn't a web link: {raw!r}")
+    return text
 
 
 def extract_hashtags(text: str) -> list[str]:

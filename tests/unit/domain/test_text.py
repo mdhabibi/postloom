@@ -1,3 +1,5 @@
+import pytest
+
 from postloom.domain.text import (
     content_size,
     detect_series_part,
@@ -112,3 +114,22 @@ def test_containment_ignores_markdown_case_and_punctuation() -> None:
         "## Hit rate matters\n\nMeasure **precision** and *recall* before you ship the cache!"
     )
     assert containment(pasted, restored) == 1.0
+
+
+def test_only_web_links_are_accepted() -> None:
+    from postloom.domain.errors import InvalidUrlError
+    from postloom.domain.text import web_url
+
+    assert web_url("linkedin.com/pulse/x") == "https://linkedin.com/pulse/x"
+    assert web_url(" http://example.com/a ") == "http://example.com/a"
+    assert web_url("") is None and web_url(None) is None
+    for bad in (
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "data:text/html,x",
+        "file:///etc/x",
+        "ftp://example.com/x",
+        "https://",
+    ):
+        with pytest.raises(InvalidUrlError):
+            web_url(bad)

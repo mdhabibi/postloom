@@ -84,7 +84,7 @@ def test_the_link_identifies_an_article_and_survives_a_re_ingest(tmp_path: Path)
         )
         assert again.article.id == CACHING and again.is_update
         plain = c.ingest_article().execute(IngestArticleCommand(text, "p"))
-        assert plain.article.url == "linkedin.com/pulse/caching-basics-abc123"  # not wiped
+        assert plain.article.url == "https://linkedin.com/pulse/caching-basics-abc123"  # kept
         assert plain.article.published_on == date(2026, 10, 1)
 
 

@@ -43,6 +43,7 @@ from postloom.domain.text import (
     extract_hashtags,
     extract_urls,
     slugify,
+    web_url,
 )
 
 PARSER = "parser"
@@ -146,7 +147,7 @@ class IngestArticle:
         post = Post(
             key=Post.key_for_article(article),
             text=command.post_text.strip(),
-            url=command.post_url or (old_post.url if old_post else None),
+            url=web_url(command.post_url) or (old_post.url if old_post else None),
             published_on=command.published_on or (old_post.published_on if old_post else None),
             hashtags=tuple(extract_hashtags(command.post_text)),
             links=tuple(extract_urls(command.post_text)),
@@ -275,7 +276,7 @@ def _build_article(command: IngestArticleCommand, extracted: ExtractedContent) -
         title=extracted.title.strip(),
         body_markdown=extracted.body_markdown.strip(),
         summary=extracted.summary.strip(),
-        url=command.article_url,
+        url=web_url(command.article_url),
         published_on=command.published_on,
         series=series,
         series_part=series_part if series is not None else None,

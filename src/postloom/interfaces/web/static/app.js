@@ -285,6 +285,30 @@ function markdown(source) {
   return out.join("\n");
 }
 
+// Links from stored data are only rendered when they are web addresses.
+function webLink(url) {
+  return typeof url === "string" && /^https?:\/\/[^\s]+$/i.test(url) ? url : null;
+}
+
+// Turn "[2]" in an answer into a button, in text only: never inside a link, code or an
+// attribute, which a string replacement over the HTML could not guarantee.
+function addCitations(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => (node.parentElement.closest("a, code, pre") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  for (const text of texts) {
+    const parts = text.nodeValue.split(/\[(\d{1,2})\]/);
+    if (parts.length === 1) continue;
+    const pieces = parts.map((part, index) => (index % 2
+      ? h("button", { type: "button", class: "cite", "data-n": part, "aria-label": `Source ${part}` }, part)
+      : document.createTextNode(part)));
+    text.replaceWith(...pieces);
+  }
+  return root;
+}
+
 function htmlBlock(className, html) {
   const node = h("div", { class: className });
   node.innerHTML = html; // safe: produced by markdown(), which escapes all input
@@ -518,7 +542,7 @@ async function articleView(id, focus = {}) {
     weave(article.topics),
     h("h1", {}, article.title),
     h("p", { class: "byline" }, byline || "Undated",
-      article.url ? [" ", h("a", { href: article.url, target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn")] : null),
+      webLink(article.url) ? [" ", h("a", { href: webLink(article.url), target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn")] : null),
     tagList(article.topics),
     articleActions(article),
     article.summary ? h("p", { class: "summary" }, article.summary) : null,
@@ -1323,7 +1347,7 @@ async function personView(id) {
     earlier.length ? h("ul", { class: "history", "aria-label": "Earlier headlines" },
       earlier.map((x) => h("li", {}, `Earlier: ${x.headline}`))) : null,
     h("p", { class: "byline" }, `${person.messages} ${person.messages === 1 ? "message" : "messages"} on ${person.articles} ${person.articles === 1 ? "article" : "articles"}. `,
-      person.profile_url ? h("a", { href: person.profile_url, target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn") : null),
+      webLink(person.profile_url) ? h("a", { href: webLink(person.profile_url), target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn") : null),
 
     h("div", { class: "person-section" },
       h("h2", {}, "Profile link"),
@@ -1436,8 +1460,7 @@ function renderMessage(message) {
   if (message.role === "user") return h("div", { class: "message user" }, message.text);
   if (message.role === "error") return h("div", { class: "message error", role: "alert" }, message.text);
   if (message.pending) return h("div", { class: "message assistant pending" }, message.text);
-  const body = htmlBlock("message assistant", markdown(message.text)
-    .replace(/\[(\d{1,2})\]/g, '<button type="button" class="cite" data-n="$1" aria-label="Source $1">$1</button>'));
+  const body = addCitations(htmlBlock("message assistant", markdown(message.text)));
   const sources = message.sources || [];
   const here = currentArticleId();
   if (sources.length) {

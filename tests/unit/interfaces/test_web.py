@@ -819,3 +819,11 @@ def test_saving_settings_does_not_break_a_request_that_is_still_running(tmp_path
     assert state.container is not running and state.settings.owner_name == "Alex Author"
     with pytest.raises(Exception, match="closed"):
         running.repository.list_topics()  # released once its last request finished
+
+
+def test_a_link_that_isnt_a_web_address_is_refused(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = ingest(client)["id"]
+    reply = client.put("/api/article", json_body={"id": article, "url": "javascript:alert(1)"})
+    assert reply.status == 400 and "isn't a web link" in reply.json["error"]
+    assert client.get(f"/api/article?id={article}").json["url"] is None

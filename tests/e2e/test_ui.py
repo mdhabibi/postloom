@@ -51,6 +51,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 CACHING = "#/article/article%3Acaching-basics"
+ANSWER = "Pick the threshold from your own data [1]. See [the guide](https://example.com/a[1]b)."
+"""A citation in text, and one inside a link that must stay part of the link."""
 JANE = "#/person/person%3Ajane-example"
 
 
@@ -82,7 +84,7 @@ def app_url(home: Path) -> Iterator[str]:
             offline,
             extractor=FakeExtractor(part3_extraction()),
             embedder=FakeEmbedder(),
-            chat=FakeChat(reply="Pick the threshold from your own data [1]."),
+            chat=FakeChat(reply=ANSWER),
             thread_parser=FakeThreadParser(),
         )
 
@@ -191,6 +193,8 @@ def test_a_question_is_answered_with_its_sources(page: Page) -> None:
     expect(answer).to_contain_text("Pick the threshold from your own data")
     expect(answer.locator(".sources")).to_contain_text("[1]")
     expect(answer.locator(".uncited")).to_have_count(0)
+    expect(answer.locator("button.cite")).to_have_count(1)  # not inside the link
+    expect(answer.locator("a")).to_have_attribute("href", "https://example.com/a[1]b")
 
 
 # -- editing and deleting --------------------------------------------------------------
