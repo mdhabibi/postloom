@@ -225,20 +225,59 @@ STOPWORDS = frozenset(
 phrased with), for judging keyword matches."""
 
 
+_UNSPACED = re.compile(
+    "[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u0e00-\u0e7f\u0e80-\u0eff"
+    "\u1000-\u109f\u1780-\u17ff]+"
+)
+"""Runs of Chinese, Japanese, Thai, Lao, Burmese or Khmer: scripts written without spaces
+between words, where a "word" found by spaces is really a whole phrase."""
+
+
+def unspaced_pieces(text: str) -> list[str]:
+    """Overlapping two-character pieces of the runs of unspaced scripts in ``text``: the
+    usual way to match words in those languages without a dictionary."""
+    pieces: list[str] = []
+    for run in _UNSPACED.findall(text):
+        pieces += [run] if len(run) == 1 else [run[i : i + 2] for i in range(len(run) - 1)]
+    return list(dict.fromkeys(pieces))
+
+
 def significant_terms(query: str) -> list[str]:
     """The words of a question that carry its meaning: no stopwords, no 1-2 letter words
-    (unless the question has nothing else)."""
-    words = list(dict.fromkeys(_WORD.findall(query.casefold())))
+    (unless the question has nothing else). Text in unspaced scripts (Chinese, Japanese,
+    Thai...) contributes its two-character pieces instead."""
+    spaced = _UNSPACED.sub(" ", query.casefold())
+    words = list(dict.fromkeys(_WORD.findall(spaced)))
     kept = [w for w in words if w not in STOPWORDS and len(w) > 2]
-    return kept or [w for w in words if w not in STOPWORDS] or words
+    terms = kept or [w for w in words if w not in STOPWORDS] or words
+    pieces = unspaced_pieces(query)
+    meaningful = [p for p in pieces if not _function_piece(p)]
+    return terms + (meaningful or pieces)
+
+
+_FUNCTION_CHARACTERS = frozenset(
+    "是的了吗呢吧啊么什怎如何哪谁在有和与或我你他她它们这那个些也都就还又很"
+)
+"""Chinese characters that mostly build questions and grammar ("what is", "how", "my")."""
+
+
+def _function_piece(piece: str) -> bool:
+    """A two-character piece that is grammar rather than subject: it contains a common
+    Chinese function character, or is all hiragana (Japanese particles and endings)."""
+    if any(c in _FUNCTION_CHARACTERS for c in piece):
+        return True
+    return all("\u3040" <= c <= "\u309f" for c in piece)
 
 
 def term_coverage(terms: Sequence[str], text: str) -> float:
-    """The share of ``terms`` that appear in ``text`` as whole words."""
+    """The share of ``terms`` that appear in ``text``: as whole words, or for pieces of an
+    unspaced script, anywhere in it."""
     if not terms:
         return 0.0
-    present = set(_WORD.findall(text.casefold()))
-    return sum(1 for term in terms if term in present) / len(terms)
+    folded = text.casefold()
+    present = set(_WORD.findall(folded))
+    found = sum(1 for t in terms if (t in folded if _UNSPACED.match(t) else t in present))
+    return found / len(terms)
 
 
 def mentions(text: str, phrase: str) -> bool:

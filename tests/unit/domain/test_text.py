@@ -164,3 +164,16 @@ def test_names_in_other_scripts_get_ids_of_their_own() -> None:
 
 def test_slugs_never_name_a_windows_device() -> None:
     assert slugify("Con") == "con-0" and slugify("NUL") == "nul-0"
+
+
+def test_questions_in_unspaced_scripts_are_judged_by_their_subject() -> None:
+    from postloom.domain.text import significant_terms, term_coverage, unspaced_pieces
+
+    chinese = "语义缓存可以重复使用大语言模型的答案"
+    assert unspaced_pieces("缓存是") == ["缓存", "存是"]
+    assert significant_terms("缓存是什么\uff1f") == ["缓存"]  # "what is" is grammar
+    assert term_coverage(significant_terms("缓存是什么\uff1f"), chinese) == 1.0
+    assert term_coverage(significant_terms("什么是量子计算"), chinese) == 0.0
+    japanese = "セマンティックキャッシュは大規模言語モデルの回答を再利用します"
+    assert term_coverage(significant_terms("キャッシュとは何ですか"), japanese) >= 0.8
+    assert significant_terms("how does a semantic cache work") == ["semantic", "cache", "work"]
