@@ -26,6 +26,8 @@ from postloom.application.use_cases import (
     SaveResult,
     SearchResults,
     SuggestResult,
+    SyncReport,
+    TopicUsage,
 )
 from postloom.application.use_cases.usage import UsageSummary
 
@@ -96,6 +98,30 @@ class PersonUpdate(_Request):
     profile_url: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=20_000)
     tags: list[str] | None = Field(default=None, max_length=50)
+
+
+class ArticleUpdate(_Request):
+    """Only the fields that are sent change; null clears series, link or date."""
+
+    id: str = Field(min_length=1, max_length=300)
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    summary: str | None = Field(default=None, max_length=2000)
+    topics: list[str] | None = Field(default=None, max_length=30)
+    series: str | None = Field(default=None, max_length=200)
+    series_part: int | None = Field(default=None, ge=1, le=999)
+    url: str | None = Field(default=None, max_length=2000)
+    published_on: date | None = None
+
+
+class TopicCreate(_Request):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=500)
+
+
+class TopicUpdate(_Request):
+    id: str = Field(min_length=1, max_length=300)
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class ReplyDraftRequest(_Request):
@@ -196,6 +222,32 @@ def person_detail(detail: PersonDetail) -> Json:
             }
             for c in detail.conversations
         ],
+    }
+
+
+def topic_usage(usage: TopicUsage) -> Json:
+    return {
+        "id": usage.topic.id,
+        "name": usage.topic.name,
+        "description": usage.topic.description,
+        "articles": usage.articles,
+    }
+
+
+def sync_report(report: SyncReport | None) -> Json | None:
+    if report is None:
+        return None
+    return {
+        "applied": report.applied,
+        "reason": report.reason,
+        "changed": report.changed,
+        "articles": report.articles,
+        "comments": report.comments,
+        "people": report.people,
+        "topics": report.topics,
+        "problems": [{"path": p.path, "reason": p.reason} for p in report.problems],
+        "trashed": list(report.trashed),
+        "index_error": report.index_error,
     }
 
 

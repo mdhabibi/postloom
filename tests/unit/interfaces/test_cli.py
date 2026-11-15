@@ -9,7 +9,14 @@ from postloom.application.defaults import DEFAULT_TOPICS
 from postloom.application.ports.extraction import ExtractedContent
 from postloom.bootstrap import Container, Settings, build_container
 from postloom.interfaces.cli.main import main
-from tests.fakes import FakeEmbedder, FakeExtractor, fixture_text, part3_extraction
+from postloom.settings import save_settings
+from tests.fakes import (
+    FakeBackend,
+    FakeEmbedder,
+    FakeExtractor,
+    fixture_text,
+    part3_extraction,
+)
 
 
 def test_init_creates_a_vault_with_the_default_topics(
@@ -245,3 +252,80 @@ def test_links_with_one_article_explain_why_nothing_was_compared(
     capsys.readouterr()
     main([*home, "links"], make_container=fake_container)
     assert "1 article of 1 has embeddings" in capsys.readouterr().out
+
+
+# -- sync and doctor --------------------------------------------------------------
+def test_a_lost_index_is_rebuilt_and_announced_by_any_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ["--home", str(tmp_path)]
+    main([*home, "init"], make_container=fake_container)
+    main([*home, "ingest", *write_inputs(tmp_path)], make_container=fake_container)
+    for file in tmp_path.glob("index.db*"):
+        file.unlink()
+    capsys.readouterr()
+
+    assert main([*home, "search", "semantic", "cache"], make_container=fake_container) == 0
+    out = capsys.readouterr().out
+    assert "Rebuilt the index from your vault: 1 article, 0 comments, 0 people." in out
+    assert "Measuring What Matters" in out  # and the search itself works
+
+
+def test_sync_reads_edited_notes_and_reports_unreadable_ones(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = ["--home", str(tmp_path)]
+    main([*home, "init"], make_container=fake_container)
+    main([*home, "ingest", *write_inputs(tmp_path)], make_container=fake_container)
+    capsys.readouterr()
+    assert main([*home, "sync"], make_container=fake_container) == 0
+    assert "Your vault and the index agree: 1 article" in capsys.readouterr().out
+
+    (note,) = (tmp_path / "vault" / "articles").glob("*.md")
+    original = note.read_text(encoding="utf-8")
+    note.write_text(original.replace("summary: ", "summary: Edited. "), encoding="utf-8")
+    assert main([*home, "sync"], make_container=fake_container) == 0
+    assert "Read 1 edited note from your vault" in capsys.readouterr().out
+
+    note.write_text(original.replace("title: ", "title: [broken "), encoding="utf-8")
+    assert main([*home, "sync"], make_container=fake_container) == 1
+    out = capsys.readouterr().out
+    assert "can't be read" in out and f"articles/{note.name}" in out
+
+
+def test_removed_default_topics_do_not_come_back(tmp_path: Path) -> None:
+    home = ["--home", str(tmp_path)]
+    main([*home, "init"], make_container=fake_container)
+    with fake_container(Settings.load(tmp_path)) as container:
+        rag = next(t for t in container.repository.list_topics() if t.name == "RAG")
+        container.topics().delete(rag.id)
+    main([*home, "init"], make_container=fake_container)
+    with fake_container(Settings.load(tmp_path)) as container:
+        assert "RAG" not in {t.name for t in container.repository.list_topics()}
+
+
+def test_doctor_checks_every_model_with_a_real_call(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    backend = FakeBackend(json_replies={"connection_test": {"ok": True}})
+
+    models = {"extraction": "small", "comments": "small", "chat": "big", "reply": "big"}
+    save_settings(tmp_path, provider="ollama", models=models)
+
+    def make(settings: Settings) -> Container:
+        return build_container(settings, backend=backend, embedder=FakeEmbedder())
+
+    assert main(["--home", str(tmp_path), "doctor"], make_container=make) == 0
+    out = capsys.readouterr().out
+    assert "Everything works." in out
+    assert "Extraction model: small (structured output)" in out
+    assert "Reply model: big (text)" in out
+    assert "every note is readable" in out
+    assert backend.calls == [("json", "small"), ("text", "big")]  # each model once per kind
+
+
+def test_doctor_reports_what_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--home", str(tmp_path), "doctor"], make_container=no_key_container) == 1
+    out = capsys.readouterr().out
+    assert "FAIL  Models:" in out and "1 of 3 checks failed" in out
+    assert "off; search uses keywords only" in out

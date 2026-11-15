@@ -11,16 +11,23 @@ Security model (the server only ever listens on 127.0.0.1):
   one is configured and where it came from.
 
 Handlers are plain functions: Starlette runs them in a thread pool, so slow model calls
-don't block other requests.
+don't block other requests. Each request borrows the wired container for its whole
+duration, so saving settings (which rewires the app) never closes a database under a
+request that is still running.
+
+The vault can be edited outside postloom while the app is open. Before any request that
+writes, edited notes are read first, so the app never overwrites an edit it hasn't seen.
 """
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import threading
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,13 +52,18 @@ from postloom.application.errors import (
     ProviderError,
 )
 from postloom.application.ports.chat import ChatMessage, Role
-from postloom.application.use_cases import Decision, IngestArticleCommand
+from postloom.application.use_cases import UNSET, Decision, IngestArticleCommand, SyncReport
 from postloom.bootstrap import Container, Settings
 from postloom.config import read_config
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId
+from postloom.domain.text import canonical_url
 from postloom.interfaces.web import schemas
 from postloom.settings import MODEL_TASKS, save_settings
+
+log = logging.getLogger("postloom.web")
+MAX_BODY_BYTES = 2_000_000
+"""Far above the largest article; stops a runaway request from filling memory."""
 
 STATIC_DIR = Path(__file__).parent / "static"
 mimetypes.add_type("font/woff2", ".woff2")  # missing from some platforms' tables
@@ -68,43 +80,113 @@ SettingsLoader = Callable[[], Settings]
 ContainerFactory = Callable[[Settings], Container]
 
 
+@dataclass
+class _Wiring:
+    """One wired container and how many running requests are using it."""
+
+    container: Container
+    settings: Settings
+    users: int = 0
+    retired: bool = False
+    """Replaced by newer settings: close it once the last request using it finishes."""
+
+
 class AppState:
     """Holds the wired container and rebuilds it when settings change."""
 
     def __init__(self, load_settings: SettingsLoader, make_container: ContainerFactory) -> None:
         self._load_settings = load_settings
         self._make_container = make_container
-        self._lock = threading.Lock()
-        self._settings: Settings | None = None
-        self._container: Container | None = None
+        self._lock = threading.RLock()
+        self._sync_lock = threading.Lock()
+        self._wiring: _Wiring | None = None
+        self._borrowed = threading.local()
+        self._report: SyncReport | None = None
 
     @property
     def settings(self) -> Settings:
-        return self._wired()[1]
+        return self._wired().settings
 
     @property
     def container(self) -> Container:
-        return self._wired()[0]
+        return self._wired().container
 
-    def _wired(self) -> tuple[Container, Settings]:
+    @property
+    def vault_report(self) -> SyncReport | None:
+        """What the last sync with the vault did, if there was one."""
+        self._wired()
+        return self._report
+
+    @contextmanager
+    def request(self) -> Generator[None, None, None]:
+        """Borrow the current wiring for one request, on the thread that handles it."""
         with self._lock:
-            if self._container is None or self._settings is None:
-                self._settings = self._load_settings()
-                self._container = self._make_container(self._settings)
-            return self._container, self._settings
+            wiring = self._current()
+            wiring.users += 1
+        self._borrowed.wiring = wiring
+        try:
+            yield
+        finally:
+            self._release(self._borrowed.wiring)
+            self._borrowed.wiring = None
 
     def reload(self) -> None:
+        """Rewire with fresh settings. Requests still running keep the wiring they have."""
         with self._lock:
-            if self._container is not None:
-                self._container.close()
-            self._container = None
-            self._settings = None
+            old, self._wiring = self._wiring, None
+            if old is not None:
+                old.retired = True
+                if old.users == 0:
+                    old.container.close()
+            mine: _Wiring | None = getattr(self._borrowed, "wiring", None)
+            if mine is not None and mine is old:
+                # The request that changed the settings sees their effect straight away.
+                self._release(mine)
+                fresh = self._current()
+                fresh.users += 1
+                self._borrowed.wiring = fresh
+
+    def sync_if_changed(self) -> SyncReport | None:
+        """Read notes that were edited outside postloom, if any were."""
+        with self._sync_lock:
+            container = self.container
+            if not container.vault.changes():
+                return None
+            self._report = container.sync_vault().execute()
+            return self._report
+
+    def sync(self) -> SyncReport:
+        with self._sync_lock:
+            self._report = self.container.sync_vault().execute()
+            return self._report
 
     def close(self) -> None:
         with self._lock:
-            if self._container is not None:
-                self._container.close()
-                self._container = None
+            if self._wiring is not None:
+                self._wiring.container.close()
+                self._wiring = None
+
+    def _wired(self) -> _Wiring:
+        mine: _Wiring | None = getattr(self._borrowed, "wiring", None)
+        if mine is not None:
+            return mine
+        with self._lock:
+            return self._current()
+
+    def _current(self) -> _Wiring:
+        if self._wiring is None:
+            settings = self._load_settings()
+            container = self._make_container(settings)
+            self._wiring = _Wiring(container, settings)
+            if container.vault_report is not None:
+                self._report = container.vault_report
+        return self._wiring
+
+    def _release(self, wiring: _Wiring) -> None:
+        with self._lock:
+            wiring.users -= 1
+            if wiring.retired and wiring.users == 0:
+                wiring.container.close()
 
 
 BackendFactory = Callable[..., LlmBackend]
@@ -159,6 +241,8 @@ def create_app(
                 "articles": articles,
                 "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
+                "vault_changes": container.vault.changes().count,
+                "vault_sync": schemas.sync_report(state.vault_report),
                 "features": {
                     "ingest": container.extractor is not None,
                     "semantic_search": container.embedder is not None,
@@ -182,8 +266,19 @@ def create_app(
         current = state.settings
         spec = provider_spec(body.provider)
         same = current.provider == spec.id
-        key = body.api_key or (current.api_key if same else _other_key(current, spec))
-        url = body.base_url or (current.base_url if same else None) or spec.base_url
+        saved_url = (current.base_url if same else _saved_url(current, spec)) or spec.base_url
+        url = body.base_url or saved_url
+        key = body.api_key
+        if not key and _same_address(url, saved_url):
+            # A saved key is only ever sent to the address it was saved for.
+            key = current.api_key if same else _other_key(current, spec)
+        if not key and spec.needs_key:
+            hint = (
+                "Enter the API key to test a different server address."
+                if not _same_address(url, saved_url)
+                else f"Enter your {spec.label} API key first."
+            )
+            return JSONResponse({"ok": False, "message": hint, "models": []})
         try:
             backend = connect(
                 spec.id, api_key=key, base_url=url, ollama_context=current.ollama_context
@@ -316,39 +411,117 @@ def create_app(
         )
         return JSONResponse({"id": new_id})
 
+    def update_article(request: Request, body: schemas.ArticleUpdate) -> Response:
+        sent = body.model_fields_set
+        container = state.container
+        article = container.update_article().execute(
+            NodeId(body.id),
+            title=body.title,
+            summary=body.summary,
+            topics=body.topics,
+            series=body.series if "series" in sent else UNSET,
+            series_part=body.series_part if "series_part" in sent else UNSET,
+            url=body.url if "url" in sent else UNSET,
+            published_on=body.published_on if "published_on" in sent else UNSET,
+        )
+        detail = container.browse().get_article(article.id)
+        assert detail is not None
+        return JSONResponse(schemas.article_detail(detail))
+
+    def delete_article(request: Request) -> Response:
+        article = state.container.delete_article().execute(NodeId(_id(request)))
+        return JSONResponse({"deleted": article.id, "title": article.title})
+
+    def delete_person(request: Request) -> Response:
+        deleted = state.container.delete_person().execute(NodeId(_id(request)))
+        return JSONResponse({"name": deleted.name, "comments": deleted.comments})
+
+    def list_topics(request: Request) -> Response:
+        topics = state.container.topics().list()
+        return JSONResponse({"topics": [schemas.topic_usage(t) for t in topics]})
+
+    def add_topic(request: Request, body: schemas.TopicCreate) -> Response:
+        state.container.topics().add(body.name, body.description)
+        return list_topics(request)
+
+    def update_topic(request: Request, body: schemas.TopicUpdate) -> Response:
+        state.container.topics().update(
+            NodeId(body.id), name=body.name, description=body.description
+        )
+        return list_topics(request)
+
+    def delete_topic(request: Request) -> Response:
+        state.container.topics().delete(NodeId(_id(request)))
+        return list_topics(request)
+
+    def vault(request: Request) -> Response:
+        container = state.container
+        changes = container.vault.changes()
+        return JSONResponse(
+            {
+                "path": str(state.settings.vault_dir),
+                "changed": [*changes.added, *changes.modified, *changes.removed],
+                "last_sync": schemas.sync_report(state.vault_report),
+            }
+        )
+
+    def sync_vault(request: Request) -> Response:
+        return JSONResponse(schemas.sync_report(state.sync()))
+
     def index_page(request: Request) -> Response:
         return FileResponse(STATIC_DIR / "index.html")
 
+    def api(
+        handler: Callable[..., Response],
+        body_model: type[BaseModel] | None = None,
+        *,
+        reads_vault: bool = True,
+    ) -> Callable[[Request], Awaitable[Response]]:
+        return _json(state, handler, body_model, reads_vault=reads_vault)
+
     routes = [
         Route("/", index_page),
-        Route("/api/status", _json(status)),
-        Route("/api/settings", _json(update_settings, schemas.SettingsUpdate), methods=["PUT"]),
+        Route("/api/status", api(status)),
+        Route(
+            "/api/settings",
+            api(update_settings, schemas.SettingsUpdate, reads_vault=False),
+            methods=["PUT"],
+        ),
         Route(
             "/api/settings/test",
-            _json(test_connection, schemas.ConnectionTest),
+            api(test_connection, schemas.ConnectionTest, reads_vault=False),
             methods=["POST"],
         ),
-        Route("/api/usage", _json(usage)),
-        Route("/api/reindex", _json(reindex), methods=["POST"]),
-        Route("/api/articles", _json(list_articles)),
-        Route("/api/articles", _json(ingest, schemas.IngestRequest), methods=["POST"]),
-        Route("/api/article", _json(get_article)),
-        Route("/api/search", _json(search)),
-        Route("/api/ask", _json(ask, schemas.AskRequest), methods=["POST"]),
+        Route("/api/usage", api(usage)),
+        Route("/api/reindex", api(reindex), methods=["POST"]),
+        Route("/api/articles", api(list_articles)),
+        Route("/api/articles", api(ingest, schemas.IngestRequest), methods=["POST"]),
+        Route("/api/article", api(get_article)),
+        Route("/api/article", api(update_article, schemas.ArticleUpdate), methods=["PUT"]),
+        Route("/api/article", api(delete_article), methods=["DELETE"]),
+        Route("/api/search", api(search)),
+        Route("/api/ask", api(ask, schemas.AskRequest), methods=["POST"]),
         Route(
             "/api/comments/preview",
-            _json(preview_comments, schemas.CommentsPreviewRequest),
+            api(preview_comments, schemas.CommentsPreviewRequest),
             methods=["POST"],
         ),
-        Route("/api/comments", _json(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
-        Route("/api/reply-draft", _json(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
-        Route("/api/overview", _json(overview)),
-        Route("/api/graph", _json(graph)),
-        Route("/api/links", _json(review_link, schemas.LinkReviewRequest), methods=["POST"]),
-        Route("/api/links/suggest", _json(suggest_links), methods=["POST"]),
-        Route("/api/people", _json(list_people)),
-        Route("/api/person", _json(get_person)),
-        Route("/api/person", _json(update_person, schemas.PersonUpdate), methods=["PUT"]),
+        Route("/api/comments", api(save_comments, schemas.SaveCommentsRequest), methods=["POST"]),
+        Route("/api/reply-draft", api(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
+        Route("/api/overview", api(overview)),
+        Route("/api/graph", api(graph)),
+        Route("/api/links", api(review_link, schemas.LinkReviewRequest), methods=["POST"]),
+        Route("/api/links/suggest", api(suggest_links), methods=["POST"]),
+        Route("/api/people", api(list_people)),
+        Route("/api/person", api(get_person)),
+        Route("/api/person", api(update_person, schemas.PersonUpdate), methods=["PUT"]),
+        Route("/api/person", api(delete_person), methods=["DELETE"]),
+        Route("/api/topics", api(list_topics)),
+        Route("/api/topics", api(add_topic, schemas.TopicCreate), methods=["POST"]),
+        Route("/api/topics", api(update_topic, schemas.TopicUpdate), methods=["PUT"]),
+        Route("/api/topics", api(delete_topic), methods=["DELETE"]),
+        Route("/api/vault", api(vault)),
+        Route("/api/vault/sync", api(sync_vault, reads_vault=False), methods=["POST"]),
         Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
     ]
 
@@ -365,10 +538,13 @@ def create_app(
 class LocalOnlyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if _hostname(request.headers.get("host") or "") not in LOCAL_HOSTS:
-            return _error(403, "postloom only accepts requests addressed to localhost.")
-        if request.method not in ("GET", "HEAD") and request.headers.get(CSRF_HEADER) != "1":
-            return _error(403, "Missing X-Postloom header.")
-        response = await call_next(request)
+            response: Response = _error(
+                403, "postloom only accepts requests addressed to localhost."
+            )
+        elif request.method not in ("GET", "HEAD") and request.headers.get(CSRF_HEADER) != "1":
+            response = _error(403, "Missing X-Postloom header.")
+        else:
+            response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -386,13 +562,29 @@ def _hostname(host: str) -> str:
 
 
 def _json(
-    handler: Callable[..., Response], body_model: type[BaseModel] | None = None
+    state: AppState,
+    handler: Callable[..., Response],
+    body_model: type[BaseModel] | None = None,
+    *,
+    reads_vault: bool = True,
 ) -> Callable[[Request], Awaitable[Response]]:
-    """Wrap a sync handler: parse/validate the JSON body, run it in a thread, map errors."""
+    """Wrap a sync handler: parse/validate the JSON body, run it in a thread, map errors.
+
+    A request that writes first reads any notes edited outside postloom (``reads_vault``),
+    so it works on what the vault says now.
+    """
+
+    def run(request: Request, args: list[Any]) -> Response:
+        with state.request():
+            if reads_vault and request.method not in ("GET", "HEAD"):
+                state.sync_if_changed()
+            return handler(*args)
 
     async def endpoint(request: Request) -> Response:
         args: list[Any] = [request]
         if body_model is not None:
+            if _content_length(request) > MAX_BODY_BYTES:
+                return _error(413, "That is too much text for one request.")
             try:
                 raw = await request.json()
                 args.append(body_model.model_validate(raw))
@@ -401,7 +593,7 @@ def _json(
             except ValueError:
                 return _error(400, "The request body must be JSON.")
         try:
-            return await run_in_threadpool(handler, *args)
+            return await run_in_threadpool(run, request, args)
         except NotConfiguredError as error:
             return _error(409, str(error))
         except BudgetExceededError as error:
@@ -412,8 +604,41 @@ def _json(
             return _error(502, str(error))
         except (ApplicationError, DomainError, ValueError) as error:
             return _error(400, str(error))
+        except Exception:
+            # A bug, not something the user did. Say so plainly and keep the details in
+            # the terminal, where they can be copied into a report.
+            log.exception("Unexpected error in %s %s", request.method, request.url.path)
+            return _error(
+                500,
+                "Something went wrong inside postloom. The terminal it runs in has the details.",
+            )
 
     return endpoint
+
+
+def _id(request: Request) -> str:
+    value = request.query_params.get("id", "")
+    if not value:
+        raise ApplicationError("Missing id.")
+    return value
+
+
+def _content_length(request: Request) -> int:
+    try:
+        return int(request.headers.get("content-length") or 0)
+    except ValueError:
+        return 0
+
+
+def _same_address(first: str | None, second: str | None) -> bool:
+    return canonical_url(first or "") == canonical_url(second or "")
+
+
+def _saved_url(settings: Settings, spec: ProviderSpec) -> str | None:
+    """The address saved for a provider other than the current one."""
+    urls: object = read_config(settings.home).get("base_urls")
+    value = cast(dict[str, object], urls).get(spec.id) if isinstance(urls, dict) else None
+    return value if isinstance(value, str) and value else None
 
 
 def _other_key(settings: Settings, spec: ProviderSpec) -> str | None:

@@ -41,6 +41,9 @@ class AsgiClient:
     def put(self, path: str, **kwargs: Any) -> Reply:
         return self.request("PUT", path, **kwargs)
 
+    def delete(self, path: str, **kwargs: Any) -> Reply:
+        return self.request("DELETE", path, **kwargs)
+
     def request(
         self,
         method: str,

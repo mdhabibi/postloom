@@ -12,6 +12,7 @@ from postloom.application.use_cases.curation import (
     DeletePerson,
     ManageTopics,
     PersonDeleted,
+    TopicUsage,
     UpdateArticle,
 )
 from postloom.application.use_cases.discussions import (
@@ -114,6 +115,7 @@ __all__ = [
     "SyncReport",
     "SyncVault",
     "TopicLink",
+    "TopicUsage",
     "UpdateArticle",
     "UpdatePerson",
     "WaitingMessage",

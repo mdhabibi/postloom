@@ -637,3 +637,185 @@ def test_overview_lists_messages_waiting_for_a_reply(tmp_path: Path) -> None:
     assert waiting["text"].startswith("Great series")
     assert [p["name"] for p in data["top_people"]] == ["Jane Example", "John Sample"]
     assert data["pending_links"] == 0
+
+
+# -- curating: edit, delete, topics ------------------------------------------------------
+def with_comments(client: AsgiClient) -> str:
+    article = ingest(client)["id"]
+    preview = client.post(
+        "/api/comments/preview", json_body={"article_id": article, "text": "pasted"}
+    ).json
+    drafts = [
+        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")}
+        for m in preview["messages"]
+    ]
+    saved = client.post("/api/comments", json_body={"article_id": article, "messages": drafts})
+    assert saved.status == 201, saved.text
+    return article
+
+
+def test_article_details_can_be_fixed(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = ingest(client)["id"]
+    reply = client.put(
+        "/api/article",
+        json_body={
+            "id": article,
+            "title": "Measuring a semantic cache",
+            "topics": ["MLOps"],
+            "series": None,
+            "published_on": "2026-09-30",
+        },
+    )
+    assert reply.status == 200, reply.text
+    body = reply.json
+    assert body["id"] == article  # the identity doesn't follow the title
+    assert (body["title"], body["series"]) == ("Measuring a semantic cache", None)
+    assert body["topics"] == [{"name": "MLOps", "grade": "verified"}]
+    assert body["published_on"] == "2026-09-30"
+    untouched = client.put("/api/article", json_body={"id": article, "summary": "Short."}).json
+    assert (untouched["published_on"], untouched["summary"]) == ("2026-09-30", "Short.")
+    assert client.put("/api/article", json_body={"id": article, "topics": ["Nope"]}).status == 400
+    assert client.put("/api/article", json_body={"id": "article:missing"}).status == 400
+
+
+def test_an_article_can_be_deleted(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = with_comments(client)
+    reply = client.delete(f"/api/article?id={article}")
+    assert reply.status == 200 and reply.json["deleted"] == article
+    assert client.get("/api/articles").json["articles"] == []
+    assert client.get(f"/api/article?id={article}").status == 404
+    assert client.get("/api/overview").json["messages"] == 0
+    assert client.delete(f"/api/article?id={article}").status == 400
+    assert client.delete("/api/article").status == 400
+    assert not list((tmp_path / "vault" / "articles").glob("*.md"))
+
+
+def test_a_person_can_be_deleted(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = with_comments(client)
+    reply = client.delete("/api/person?id=person:~jane-example")
+    assert reply.status == 200 and reply.json == {"name": "Jane Example", "comments": 2}
+    names = [p["name"] for p in client.get("/api/people").json["people"]]
+    assert names == ["John Sample"]
+    discussion = client.get(f"/api/article?id={article}").json["discussion"]
+    assert "Jane Example" not in {m["author_name"] for m in discussion}
+    assert client.delete("/api/person?id=person:~jane-example").status == 400
+
+
+def test_topics_can_be_managed(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    ingest(client)
+    listed = {t["name"]: t for t in client.get("/api/topics").json["topics"]}
+    assert listed["RAG"]["articles"] == 1 and listed["RAG"]["description"]
+
+    added = client.post("/api/topics", json_body={"name": "Vector databases"})
+    assert added.status == 200
+    assert "Vector databases" in {t["name"] for t in added.json["topics"]}
+    assert client.post("/api/topics", json_body={"name": "vector databases"}).status == 400
+    assert client.post("/api/topics", json_body={"name": ""}).status == 422
+
+    renamed = client.put("/api/topics", json_body={"id": listed["RAG"]["id"], "name": "Retrieval"})
+    after = {t["name"]: t for t in renamed.json["topics"]}
+    assert "RAG" not in after and after["Retrieval"]["articles"] == 1
+    assert "Retrieval" in client.get("/api/status").json["topics"]
+
+    removed = client.delete(f"/api/topics?id={after['Retrieval']['id']}")
+    assert "Retrieval" not in {t["name"] for t in removed.json["topics"]}
+
+
+# -- the vault ---------------------------------------------------------------------------
+def test_notes_edited_outside_are_reported_and_read_before_the_next_write(
+    tmp_path: Path,
+) -> None:
+    client = client_for(tmp_path)
+    article = ingest(client)["id"]
+    assert client.get("/api/status").json["vault_changes"] == 0
+    (note,) = (tmp_path / "vault" / "articles").glob("*.md")
+    text = note.read_text(encoding="utf-8")
+    note.write_text(text.replace("summary: How", "summary: Edited in Obsidian. How"), "utf-8")
+
+    assert client.get("/api/status").json["vault_changes"] == 1
+    assert client.get("/api/vault").json["changed"] == [f"articles/{note.name}"]
+    # A write on something else must not overwrite the edit: it is read first.
+    client.post("/api/topics", json_body={"name": "Vector databases"})
+    status = client.get("/api/status").json
+    assert status["vault_changes"] == 0 and status["vault_sync"]["reason"] == "updated"
+    assert client.get(f"/api/article?id={article}").json["summary"].startswith("Edited in Obsidian")
+    assert "Edited in Obsidian" in note.read_text(encoding="utf-8")
+
+
+def test_the_vault_can_be_read_again_on_request(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    ingest(client)
+    (note,) = (tmp_path / "vault" / "articles").glob("*.md")
+    original = note.read_text("utf-8")
+    note.write_text(original.replace("title: ", "title: [broken "), "utf-8")
+    blocked = client.post("/api/vault/sync").json
+    assert (blocked["applied"], blocked["reason"]) == (False, "blocked")
+    assert blocked["problems"][0]["path"] == f"articles/{note.name}"
+    assert client.get("/api/status").json["vault_sync"]["problems"]  # shown until fixed
+    note.write_text(original.replace("summary: ", "summary: Fixed. "), "utf-8")
+    fixed = client.post("/api/vault/sync").json
+    assert fixed["applied"] and fixed["articles"] == 1
+    assert client.get("/api/articles").json["articles"][0]["summary"].startswith("Fixed. ")
+
+
+# -- hardening ---------------------------------------------------------------------------
+def test_a_saved_key_is_never_sent_to_another_address(tmp_path: Path) -> None:
+    connect = FakeConnect()
+    client = client_for(tmp_path, connect=connect)
+    client.put("/api/settings", json_body={"provider": "openai", "api_key": "sk-saved"})
+
+    same = client.post("/api/settings/test", json_body={"provider": "openai"}).json
+    assert same["ok"] and connect.calls[-1]["api_key"] == "sk-saved"
+
+    elsewhere = {"provider": "openai", "base_url": "https://collector.example/v1"}
+    refused = client.post("/api/settings/test", json_body=elsewhere).json
+    assert not refused["ok"] and "different server address" in refused["message"]
+    assert len(connect.calls) == 1  # nothing was sent anywhere
+
+    typed = client.post("/api/settings/test", json_body={**elsewhere, "api_key": "sk-typed"}).json
+    assert typed["ok"] and connect.calls[-1]["api_key"] == "sk-typed"
+
+
+def test_unexpected_errors_are_reported_as_json(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    class Broken(FakeChat):
+        def complete(self, system: str, messages: Any) -> str:
+            raise RuntimeError("a bug")
+
+    client = client_for(tmp_path, chat=Broken())
+    ingest(client)
+    reply = client.post("/api/ask", json_body={"question": "How is a cache measured?"})
+    assert reply.status == 500
+    assert "Something went wrong inside postloom" in reply.json["error"]
+    assert "a bug" not in reply.text and "a bug" in caplog.text
+
+
+def test_oversized_requests_are_refused(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    reply = client.post("/api/topics", raw_body=b"{}", headers={"content-length": "999999999"})
+    assert reply.status == 413
+
+
+def test_refused_requests_carry_the_security_headers_too(tmp_path: Path) -> None:
+    reply = client_for(tmp_path).post("/api/reindex", headers={"x-postloom": "0"})
+    assert reply.status == 403
+    assert "default-src 'self'" in reply.headers["content-security-policy"]
+
+
+def test_saving_settings_does_not_break_a_request_that_is_still_running(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    state = client.app.state.postloom
+    with state.request():
+        running = state.container  # a slow request holds this container...
+        other = client.put("/api/settings", json_body={"owner_name": "Alex Author"})
+        assert other.status == 200  # ...while another request rewires the app
+        assert len(running.repository.list_topics()) == len(DEFAULT_TOPICS)  # still open
+        assert state.container is running
+    assert state.container is not running and state.settings.owner_name == "Alex Author"
+    with pytest.raises(Exception, match="closed"):
+        running.repository.list_topics()  # released once its last request finished

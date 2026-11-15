@@ -236,6 +236,13 @@ class DeletePerson:
 
 
 # -- topics --------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class TopicUsage:
+    topic: Topic
+    articles: int
+    """How many articles currently belong to it."""
+
+
 class ManageTopics:
     """Add, describe, rename, merge and remove the author's topics."""
 
@@ -243,6 +250,22 @@ class ManageTopics:
         self._repository = repository
         self._vault = vault
         self._clock = clock
+
+    def list(self) -> list[TopicUsage]:
+        """Every topic with its number of articles, by name."""
+        repo = self._repository
+        usage = [
+            TopicUsage(
+                topic,
+                sum(
+                    1
+                    for e in repo.edges_to(topic.id)
+                    if e.kind is EdgeKind.BELONGS_TO and e.is_current
+                ),
+            )
+            for topic in repo.list_topics()
+        ]
+        return sorted(usage, key=lambda u: u.topic.name.casefold())
 
     def add(self, name: str, description: str = "") -> Topic:
         topic = Topic(_clean_name(name), description.strip())

@@ -17,8 +17,10 @@ from postloom.application.use_cases import (
     IngestArticleResult,
     Passage,
     SearchResults,
+    SyncReport,
 )
 from postloom.bootstrap import Container, Settings, build_container
+from postloom.interfaces.cli import doctor
 
 ContainerFactory = Callable[[Settings], Container]
 DEFAULT_PORT = 8765
@@ -34,21 +36,31 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
     home: Path | None = args.home
     settings = Settings.load(home)
 
+    def opened(settings: Settings) -> Container:
+        """Open the data folder, and say so when that changed something."""
+        container = make_container(settings)
+        _print_vault_report(container.vault_report, settings)
+        return container
+
     try:
+        if args.command == "sync":
+            return _sync(settings, make_container)
+        if args.command == "doctor":
+            return _doctor(settings, opened)
         if args.command == "init":
-            return _init(settings, make_container)
+            return _init(settings, opened)
         if args.command == "ingest":
-            return _ingest(args, settings, make_container)
+            return _ingest(args, settings, opened)
         if args.command == "reindex":
-            return _reindex(settings, make_container)
+            return _reindex(settings, opened)
         if args.command == "usage":
-            return _usage(settings, make_container)
+            return _usage(settings, opened)
         if args.command == "links":
-            return _links(args, settings, make_container)
+            return _links(args, settings, opened)
         if args.command == "search":
-            return _search(args, settings, make_container)
+            return _search(args, settings, opened)
         if args.command == "start":
-            return _start(args, settings, make_container)
+            return _start(args, settings, opened)
     except ApplicationError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
@@ -115,6 +127,16 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "usage", parents=[common], help="Show this month's model calls, tokens and cost."
     )
+    commands.add_parser(
+        "sync",
+        parents=[common],
+        help="Read your vault again: after editing notes by hand, or to rebuild a lost index.",
+    )
+    commands.add_parser(
+        "doctor",
+        parents=[common],
+        help="Check that your provider, models, search and vault all work (tiny real calls).",
+    )
 
     start = commands.add_parser(
         "start", parents=[common], help="Open postloom in your browser (runs on this computer)."
@@ -124,9 +146,57 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _sync(settings: Settings, make_container: ContainerFactory) -> int:
+    with make_container(settings) as container:
+        # Opening the data folder already syncs when notes changed; otherwise do it now,
+        # so the command always checks the whole vault.
+        report = container.vault_report or container.sync_vault().execute()
+    _print_vault_report(report, settings, always=True)
+    return 0 if report.applied else 1
+
+
+def _doctor(settings: Settings, make_container: ContainerFactory) -> int:
+    with make_container(settings) as container:
+        return doctor.print_report(settings, doctor.run_checks(settings, container))
+
+
+def _print_vault_report(
+    report: SyncReport | None, settings: Settings, *, always: bool = False
+) -> None:
+    if report is None:
+        return
+    if not report.applied:
+        print("Some notes in your vault can't be read, so your recent edits were not applied:")
+        for problem in report.problems:
+            print(f"  {problem.path}: {problem.reason}")
+        print("Fix them (or undo the edit), then run `uv run postloom sync`.")
+        return
+    contents = (
+        f"{_count(report.articles, 'article')}, {_count(report.comments, 'comment')}, "
+        f"{_count(report.people, 'person', 'people')}"
+    )
+    if report.reason == "rebuilt":
+        print(f"Rebuilt the index from your vault: {contents}.")
+    elif report.reason == "upgraded":
+        print("Rewrote your vault's notes in the current format, so they can be read back.")
+    elif report.reason == "restored":
+        print(f"Your vault's notes were missing; wrote them again from the index ({contents}).")
+    elif report.changed:
+        print(f"Read {_count(report.changed, 'edited note')} from your vault: {contents}.")
+    elif always:
+        print(f"Your vault and the index agree: {contents}.")
+    for problem in report.problems:
+        print(f"  Skipped {problem.path}: {problem.reason}")
+    if report.trashed:
+        trash = settings.vault_dir / ".postloom" / "trash"
+        print(f"Moved {_count(len(report.trashed), 'note')} that match nothing to {trash}.")
+    if report.index_error:
+        print(f"Search by meaning is incomplete ({report.index_error}). Run `postloom reindex`.")
+
+
 def _init(settings: Settings, make_container: ContainerFactory) -> int:
     with make_container(settings) as container:
-        created = container.seed_topics().execute(DEFAULT_TOPICS)
+        created = container.seed_topics().execute(DEFAULT_TOPICS, only_when_empty=True)
     print(f"Vault ready at {settings.vault_dir} ({len(created)} topics created).")
     print("Open that folder in Obsidian to browse it as a graph.")
     return 0
@@ -313,8 +383,8 @@ def _start(args: argparse.Namespace, settings: Settings, make_container: Contain
     home = settings.home
     app = create_app(lambda: Settings.load(home), make_container)
 
-    with make_container(settings) as container:  # first run: make sure topics exist
-        container.seed_topics().execute(DEFAULT_TOPICS)
+    with make_container(settings) as container:  # first run: start with the default topics
+        container.seed_topics().execute(DEFAULT_TOPICS, only_when_empty=True)
 
     print(f"postloom is running at {url}")
     print(f"Your data: {home}")
@@ -337,8 +407,8 @@ def _free_port(preferred: int) -> int:
     raise ApplicationError(f"No free port between {preferred} and {preferred + 19}.")
 
 
-def _count(n: int, noun: str) -> str:
-    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+def _count(n: int, noun: str, plural: str | None = None) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {plural or noun + 's'}"
 
 
 if __name__ == "__main__":
