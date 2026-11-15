@@ -1,9 +1,9 @@
 [project]
 name = "postloom"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Local-first knowledge graph and chat for your LinkedIn articles, posts, comments and the people behind them."
-readme = "README.md"
 license = "FSL-1.1-ALv2"
+dynamic = ["readme"]
 license-files = ["LICENSE.md"]
 requires-python = ">=3.11"
 authors = [{ name = "Mahdi Habibi" }]
@@ -37,6 +37,7 @@ postloom = "postloom.interfaces.cli.main:main"
 [project.urls]
 Homepage = "https://github.com/mdhabibi/postloom"
 Issues = "https://github.com/mdhabibi/postloom/issues"
+Changelog = "https://github.com/mdhabibi/postloom/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
@@ -46,14 +47,34 @@ dev = [
     "pyright>=1.1.380",
     "types-pyyaml>=6.0",
     "pre-commit>=3.7",
+    "playwright==1.63.0",
 ]
 
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.27", "hatch-fancy-pypi-readme>=24.1"]
 build-backend = "hatchling.build"
+
+# The README links to screenshots and docs by relative path, which works on GitHub; on
+# PyPI the same links need full URLs, so they are rewritten when the package is built.
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '(\]\(|src=")(docs/images/)'
+replacement = '\1https://raw.githubusercontent.com/mdhabibi/postloom/main/\2'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\(([A-Z]+\.md)\)'
+replacement = '](https://github.com/mdhabibi/postloom/blob/main/\1)'
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/postloom"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [".github", "docs/images", ".pre-commit-config.yaml"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]

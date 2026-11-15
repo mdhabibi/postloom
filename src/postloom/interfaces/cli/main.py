@@ -8,7 +8,7 @@ from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
 
-from postloom import __version__
+from postloom import __version__, how_to_run
 from postloom.application.defaults import DEFAULT_TOPICS
 from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.use_cases import (
@@ -169,7 +169,7 @@ def _print_vault_report(
         print("Some notes in your vault can't be read, so your recent edits were not applied:")
         for problem in report.problems:
             print(f"  {problem.path}: {problem.reason}")
-        print("Fix them (or undo the edit), then run `uv run postloom sync`.")
+        print(f"Fix them (or undo the edit), then run `{how_to_run('sync')}`.")
         return
     contents = (
         f"{_count(report.articles, 'article')}, {_count(report.comments, 'comment')}, "
@@ -191,7 +191,10 @@ def _print_vault_report(
         trash = settings.vault_dir / ".postloom" / "trash"
         print(f"Moved {_count(len(report.trashed), 'note')} that match nothing to {trash}.")
     if report.index_error:
-        print(f"Search by meaning is incomplete ({report.index_error}). Run `postloom reindex`.")
+        print(
+            f"Search by meaning is incomplete ({report.index_error}). "
+            f"Run `{how_to_run('reindex')}`."
+        )
 
 
 def _init(settings: Settings, make_container: ContainerFactory) -> int:
@@ -226,7 +229,7 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
             indexed = container.index_article().execute(result.article.id)
         except (ProviderError, BudgetExceededError) as error:
             print(f"  Warning:  Saved, but not indexed for search ({error}).")
-            print("            Run `postloom reindex` to retry.")
+            print(f"            Run `{how_to_run('reindex')}` to retry.")
         else:
             print(f"  Search:   {_index_summary(indexed)}")
             suggested = container.suggest_links().execute()
@@ -275,7 +278,7 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
             f"Nothing to compare yet: {_count(result.compared, 'article')} of "
             f"{result.articles} {'has' if result.compared == 1 else 'have'} embeddings, and "
             "suggestions need at least two. Add another article"
-            + (", or run `postloom reindex`." if result.compared < result.articles else ".")
+            + (f", or run `{how_to_run('reindex')}`." if result.compared < result.articles else ".")
         )
     if args.explain:
         for pair in result.pairs:

@@ -16,10 +16,22 @@ uv run ruff check . && uv run ruff format .
 uv run pyright
 uv run pytest
 RUN_LOCAL_MODEL_TESTS=1 uv run pytest tests/integration   # downloads the local model once
+uv run playwright install chromium                         # once, for the browser tests
+RUN_BROWSER_TESTS=1 uv run pytest tests/e2e                # the app in a real browser
 ```
 
 CI runs the same checks on Linux, macOS (Apple Silicon and Intel) and Windows with Python
-3.11-3.14, and a separate job tests the real local embedding model.
+3.11-3.14; separate jobs test the real local embedding model and the app in a browser.
+A change to the UI should come with a browser test in `tests/e2e/test_ui.py`.
+
+## Releasing
+
+1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new version heading and
+   set the same version in `pyproject.toml`.
+2. Merge that, then tag the merge commit and push the tag:
+   `git tag v0.2.0 && git push origin v0.2.0`.
+3. The release workflow checks the tag, the version and the changelog, builds and
+   smoke-tests the package, publishes it to PyPI and creates the GitHub release.
 
 ## Ground rules
 

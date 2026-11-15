@@ -41,7 +41,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from postloom import __version__
+from postloom import __version__, how_to_run
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backend, provider_spec
 from postloom.application.errors import (
@@ -242,6 +242,7 @@ def create_app(
                 "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
                 "vault_changes": container.vault.changes().count,
+                "start_command": how_to_run("start"),
                 "vault_sync": schemas.sync_report(state.vault_report),
                 "features": {
                     "ingest": container.extractor is not None,
