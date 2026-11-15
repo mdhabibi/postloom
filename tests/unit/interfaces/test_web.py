@@ -827,3 +827,10 @@ def test_a_link_that_isnt_a_web_address_is_refused(tmp_path: Path) -> None:
     reply = client.put("/api/article", json_body={"id": article, "url": "javascript:alert(1)"})
     assert reply.status == 400 and "isn't a web link" in reply.json["error"]
     assert client.get(f"/api/article?id={article}").json["url"] is None
+
+
+def test_a_body_without_a_declared_length_is_still_limited(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    huge = b'{"name": "' + b"x" * 2_100_000 + b'"}'
+    reply = client.post("/api/topics", raw_body=huge, headers={"content-length": ""})
+    assert reply.status == 413
