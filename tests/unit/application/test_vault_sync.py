@@ -185,6 +185,18 @@ def test_deleting_an_article_note_removes_the_article_and_trashes_its_other_note
         assert len(c.repository.list_people()) == 2  # people are kept, with their notes
 
 
+def test_an_article_whose_post_note_was_deleted_keeps_its_note(tmp_path: Path) -> None:
+    library(tmp_path)
+    note(tmp_path, "posts", "evaluating-retrieval").unlink()
+    with open_home(tmp_path) as c:
+        report = c.vault_report
+        assert report is not None and report.applied and report.trashed == ()
+        assert c.repository.get_article(RETRIEVAL) is not None
+    assert note(tmp_path, "articles", "evaluating-retrieval").exists()
+    with open_home(tmp_path) as c:
+        assert c.vault_report is None and len(c.repository.list_articles()) == 3
+
+
 # -- protection ------------------------------------------------------------------------
 def test_an_unreadable_note_blocks_the_sync_and_changes_nothing(tmp_path: Path) -> None:
     library(tmp_path)

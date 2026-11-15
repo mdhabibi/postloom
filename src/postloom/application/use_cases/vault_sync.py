@@ -97,9 +97,10 @@ class ExportVault:
             vault.write_topic(topic)
             keep.add(topic.id)
         for article in repo.list_articles():
+            keep.add(article.id)
             post = post_of(repo, article.id)
             if post is None:
-                continue
+                continue  # its post note was removed by hand: leave the article's note be
             topics = current_topics(repo, article.id)
             vault.write_article(article, post, topics, accepted_related(repo, article.id))
             keep.update((article.id, post.id))

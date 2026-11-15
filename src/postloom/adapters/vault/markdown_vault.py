@@ -253,8 +253,9 @@ class MarkdownVault:
         return read_vault(self.root, self.format)
 
     def changes(self) -> VaultChanges:
-        known = self._stamps.all()
-        current = self._scan()
+        with self._lock:
+            known = self._stamps.all()
+            current = self._scan()
         return VaultChanges(
             added=tuple(sorted(p for p in current if p not in known)),
             modified=tuple(sorted(p for p, s in current.items() if p in known and known[p] != s)),
@@ -262,7 +263,8 @@ class MarkdownVault:
         )
 
     def mark_synced(self) -> None:
-        self._stamps.replace_all(self._scan())
+        with self._lock:
+            self._stamps.replace_all(self._scan())
 
     @property
     def format(self) -> int:
@@ -334,17 +336,22 @@ class MarkdownVault:
 
     def _write(self, path: Path, meta: Meta, body: str) -> None:
         text = render_note(meta, body)
-        try:
-            unchanged = path.read_text(encoding="utf-8") == text
-        except (OSError, UnicodeDecodeError):
-            unchanged = False
-        if not unchanged:
-            atomic_write(path, text)
-        self._stamps.put(self._relative(path), _stamp(path))
+        # Writing a note and recording its stamp happen under one lock, which ``changes``
+        # also takes: another request never mistakes postloom's own write, caught between
+        # the two steps, for an edit made outside.
+        with self._lock:
+            try:
+                unchanged = path.read_text(encoding="utf-8") == text
+            except (OSError, UnicodeDecodeError):
+                unchanged = False
+            if not unchanged:
+                atomic_write(path, text)
+            self._stamps.put(self._relative(path), _stamp(path))
 
     def _remove(self, path: Path) -> None:
-        path.unlink(missing_ok=True)
-        self._stamps.remove(self._relative(path))
+        with self._lock:
+            path.unlink(missing_ok=True)
+            self._stamps.remove(self._relative(path))
 
     def _scan(self) -> dict[str, Stamp]:
         return {self._relative(path): _stamp(path) for _, path in note_files(self.root)}
