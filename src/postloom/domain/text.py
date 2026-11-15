@@ -27,21 +27,73 @@ _TRAILING_PUNCT = ".,;:!?"
 
 
 def slugify(text: str, max_length: int = 80) -> str:
-    """Turn arbitrary text into a lowercase, ASCII, hyphen-separated slug.
+    """Turn arbitrary text into a lowercase, hyphen-separated slug, for ids and file names.
+
+    Latin text is folded to ASCII ("Núñez" -> "nunez"). Letters and digits of other
+    scripts are kept, so names in Persian, Arabic, Chinese, Cyrillic or Hindi get ids of
+    their own instead of all becoming "untitled". For anything Latin the result is exactly
+    what earlier versions produced, because people, topics and series are identified by
+    their slugs and those must not change.
 
     Long slugs are shortened and suffixed with a hash of the full slug, so two long
     titles that differ only at the end ("... - Part 1" / "... - Part 3") never collide.
 
     >>> slugify("Measuring What Matters: Part 3!")
     'measuring-what-matters-part-3'
+    >>> slugify("علی رضایی")
+    'علی-رضایی'
     """
-    normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")
+    kept: list[str] = []
+    in_foreign_word = False
+    for char in unicodedata.normalize("NFC", text):
+        folded = unicodedata.normalize("NFKD", char).encode("ascii", "ignore").decode("ascii")
+        if folded:
+            kept.append(folded.lower())
+            in_foreign_word = False
+        elif _is_foreign_letter(char) or (in_foreign_word and _is_mark(char)):
+            kept.append(char.casefold())
+            in_foreign_word = True
+        else:
+            in_foreign_word = False  # dropped without a trace, as before (ß, ø, ¡...)
+    slug = _ASCII_SEPARATORS.sub("-", "".join(kept)).strip("-")
     if len(slug) > max_length:
-        digest = hashlib.sha1(slug.encode("ascii")).hexdigest()[:_HASH_LENGTH]
+        digest = hashlib.sha1(slug.encode("utf-8")).hexdigest()[:_HASH_LENGTH]
         keep = max(max_length - _HASH_LENGTH - 1, 1)
         slug = f"{slug[:keep].rstrip('-')}-{digest}"
+    if slug in _WINDOWS_DEVICE_NAMES:
+        slug = f"{slug}-0"  # Windows can't create a file called con.md, nul.md...
     return slug or "untitled"
+
+
+_ASCII_SEPARATORS = re.compile(r"[\x00-\x2f\x3a-\x60\x7b-\x7f]+")
+"""ASCII characters other than lowercase letters and digits: where words meet."""
+_WINDOWS_DEVICE_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(10)} | {f"lpt{i}" for i in range(10)}
+)
+_LATIN_RANGES = (
+    (0x0000, 0x036F),
+    (0x1D00, 0x1EFF),
+    (0x2C60, 0x2C7F),
+    (0xA720, 0xA7FF),
+    (0xAB30, 0xAB6F),
+)
+"""Latin, IPA, spacing modifiers and combining marks, and Latin extensions: folded to
+ASCII or dropped, as earlier versions did."""
+
+
+def _is_foreign_letter(char: str) -> bool:
+    """A letter or digit of a script other than Latin, which ASCII folding would erase."""
+    code = ord(char)
+    if any(low <= code <= high for low, high in _LATIN_RANGES):
+        return False
+    if unicodedata.category(char)[0] not in "LN":
+        return False
+    return not unicodedata.name(char, "").startswith(("LATIN", "MODIFIER"))
+
+
+def _is_mark(char: str) -> bool:
+    """A vowel sign or other mark that is part of a word (Hindi, Thai, Arabic...)."""
+    return unicodedata.category(char) in ("Mn", "Mc") and ord(char) > 0x036F
 
 
 def canonical_url(url: str) -> str:

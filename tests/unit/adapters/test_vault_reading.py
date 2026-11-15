@@ -455,3 +455,29 @@ def test_the_vault_never_writes_a_note_outside_its_folders(tmp_path: Path) -> No
     with pytest.raises(VaultPathError):
         vault._remove(tmp_path / "vault" / "notes.md")  # pyright: ignore[reportPrivateUsage]
     assert list(tmp_path.rglob("*.md")) == []
+
+
+def test_a_library_in_other_scripts_round_trips(tmp_path: Path) -> None:
+    article = Article(title="حافظه نهان معنایی", body_markdown="متن مقاله.")
+    article = Article(title=article.title, body_markdown=article.body_markdown, key=article.slug)
+    post = Post(key=article.slug, text="مقاله جدید منتشر شد")
+    topic = Topic("بازیابی")
+    ali, maryam, wang = Person("علی رضایی"), Person("مریم احمدی"), Person("王伟")
+    assert len({ali.id, maryam.id, wang.id}) == 3
+    comments = [
+        Comment(post.id, ali.id, ali.name, "سوال من این است", 0),
+        Comment(post.id, maryam.id, maryam.name, "عالی بود", 1),
+        Comment(post.id, wang.id, wang.name, "很好", 2),
+    ]
+    vault = MarkdownVault(tmp_path)
+    vault.write_topic(topic)
+    vault.write_article(article, post, [topic])
+    vault.write_discussion(article, post, comments, {p.id: p for p in (ali, maryam, wang)})
+    for person in (ali, maryam, wang):
+        vault.write_person(person, [article])
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    assert snapshot.articles[0].article == article and snapshot.articles[0].topics == (topic.id,)
+    assert {p.id for p in snapshot.people} == {ali.id, maryam.id, wang.id}
+    assert sorted(snapshot.comments, key=lambda c: c.position) == comments
+    assert (tmp_path / "articles" / f"{article.slug}.md").exists()

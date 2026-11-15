@@ -10,16 +10,17 @@ from postloom.domain.errors import EmptyContentError, InvalidKeyError
 from postloom.domain.graph import NodeId, NodeKind, node_id
 from postloom.domain.text import slugify
 
-KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-"""What ``slugify`` produces, and the only shape an article or post key may have. Keys
-become file names in the vault, so anything else (a ``/`` or ``..`` read from an edited
-note, say) could point outside it."""
+KEY = re.compile(r"^[^\x00-\x2f\x3a-\x60\x7b-\x7f\s]+(?:-[^\x00-\x2f\x3a-\x60\x7b-\x7f\s]+)*$")
+"""What ``slugify`` produces, and the only shape an article or post key may have: words of
+lowercase ASCII letters, digits or letters of other scripts, joined by single hyphens.
+Keys become file names in the vault, so anything else (a ``/`` or ``..`` read from an
+edited note, say) could point outside it."""
 
 
 def check_key(key: str, what: str) -> None:
     if len(key) > 200 or not KEY.match(key):
         raise InvalidKeyError(
-            f"{what} id {key!r} isn't valid: use lowercase letters, digits and hyphens"
+            f"{what} id {key!r} isn't valid: use lowercase letters and digits joined by hyphens"
         )
 
 

@@ -133,3 +133,34 @@ def test_only_web_links_are_accepted() -> None:
     ):
         with pytest.raises(InvalidUrlError):
             web_url(bad)
+
+
+# -- slugs: ids for every language ----------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "slug"),
+    [  # Latin text: exactly what earlier versions produced, so stored ids stay valid
+        ("Measuring What Matters - Part 3", "measuring-what-matters-part-3"),
+        ("José Núñez", "jose-nunez"),
+        ("Straße", "strae"),
+        ("Łukasz Żółć", "ukasz-zoc"),
+        ("½ price ¡now!", "12-price-now"),
+        ("C++ & Rust", "c-rust"),
+        ("🚀🚀", "untitled"),
+        ("", "untitled"),
+    ],
+)
+def test_latin_slugs_are_unchanged(text: str, slug: str) -> None:
+    assert slugify(text) == slug
+
+
+def test_names_in_other_scripts_get_ids_of_their_own() -> None:
+    names = ["علی رضایی", "مریم احمدی", "王伟", "李娜", "Иван Петров", "नमस्ते दुनिया"]
+    slugs = [slugify(name) for name in names]
+    assert len(set(slugs)) == len(names) and "untitled" not in slugs
+    assert slugify("علی رضایی") == "علی-رضایی"
+    assert slugify("Иван Петров") == slugify("иван петров")  # case doesn't matter
+    assert slugify("AI 智能 agents") == "ai-智能-agents"
+
+
+def test_slugs_never_name_a_windows_device() -> None:
+    assert slugify("Con") == "con-0" and slugify("NUL") == "nul-0"
