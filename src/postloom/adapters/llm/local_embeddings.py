@@ -22,8 +22,10 @@ from postloom.application.errors import ProviderUnavailableError
 from postloom.application.ports.embeddings import DocumentText, Vector
 
 DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
-"""English, 384 dimensions, ~70 MB. For other languages, use
-``sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2``."""
+"""English, 384 dimensions, ~70 MB."""
+MULTILINGUAL_LOCAL_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+"""50+ languages, 384 dimensions, ~220 MB."""
+ENGLISH_ONLY_MODELS = frozenset({DEFAULT_LOCAL_MODEL})
 
 _BATCH_SIZE = 32
 

@@ -241,7 +241,7 @@ handy for servers and scripts.
 | Server address (Ollama, custom) | `POSTLOOM_BASE_URL` | the provider's |
 | Models per task | `POSTLOOM_EXTRACTION_MODEL`, `POSTLOOM_COMMENTS_MODEL`, `POSTLOOM_CHAT_MODEL`, `POSTLOOM_REPLY_MODEL` | the provider's defaults |
 | Search embeddings | `POSTLOOM_EMBEDDINGS` (`local`, `provider` or `off`) | `local` |
-| Local embedding model | `POSTLOOM_LOCAL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` (for other languages: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) |
+| Language of your writing (local search model) | `POSTLOOM_LOCAL_EMBEDDING_MODEL` | English (`BAAI/bge-small-en-v1.5`); choose **Many languages** in Settings for `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | calibrated per embedding model |
 | Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | calibrated per embedding model |
 | Monthly budget in US dollars | `POSTLOOM_MONTHLY_BUDGET` | none |

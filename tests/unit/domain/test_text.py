@@ -177,3 +177,16 @@ def test_questions_in_unspaced_scripts_are_judged_by_their_subject() -> None:
     japanese = "セマンティックキャッシュは大規模言語モデルの回答を再利用します"
     assert term_coverage(significant_terms("キャッシュとは何ですか"), japanese) >= 0.8
     assert significant_terms("how does a semantic cache work") == ["semantic", "cache", "work"]
+
+
+def test_english_is_told_apart_from_other_languages() -> None:
+    from postloom.domain.text import looks_english
+
+    assert looks_english(fixture_text("semantic_caching_part3", "article.txt"))
+    assert not looks_english("حافظه نهان معنایی پاسخ یک مدل زبانی را دوباره استفاده می‌کند.")
+    assert not looks_english(
+        "Der semantische Cache verwendet die Antworten eines Modells wieder, "
+        "wenn eine neue Frage einer früheren Frage ähnlich ist."
+    )
+    assert not looks_english("语义缓存可以重复使用大语言模型的答案")
+    assert looks_english("")

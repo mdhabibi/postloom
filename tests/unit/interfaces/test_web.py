@@ -834,3 +834,11 @@ def test_a_body_without_a_declared_length_is_still_limited(tmp_path: Path) -> No
     huge = b'{"name": "' + b"x" * 2_100_000 + b'"}'
     reply = client.post("/api/topics", raw_body=huge, headers={"content-length": ""})
     assert reply.status == 413
+
+
+def test_the_search_language_can_be_chosen(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    models = client.get("/api/status").json["embeddings"]["local_models"]
+    reply = client.put("/api/settings", json_body={"local_embedding_model": models["multilingual"]})
+    assert reply.status == 200
+    assert client.get("/api/status").json["embeddings"]["local_model"] == models["multilingual"]

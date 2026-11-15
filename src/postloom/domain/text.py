@@ -288,6 +288,19 @@ def mentions(text: str, phrase: str) -> bool:
     return f" {wanted} " in f" {' '.join(_WORD.findall(text.casefold()))} "
 
 
+def looks_english(text: str) -> bool:
+    """A cheap guess, good enough to warn about an English-only search model: mostly Latin
+    letters, and English's small words ("the", "and", "of"...) are common."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return True
+    latin = sum(1 for c in letters if c.isascii() or unicodedata.name(c, "").startswith("LATIN"))
+    if latin / len(letters) < 0.6:
+        return False
+    words = _WORD.findall(plain_text(text).casefold())
+    return not words or sum(1 for w in words if w in STOPWORDS) / len(words) >= 0.12
+
+
 def excerpt(text: str, query: str, width: int = 280) -> str:
     """A plain-text window of ``text`` around the first query word, on word boundaries."""
     flat = " ".join(plain_text(text).split())

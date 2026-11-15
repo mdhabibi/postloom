@@ -837,3 +837,5 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 /* Right-to-left text (Persian, Arabic, Hebrew) gets its direction from dir="auto";
    alignment, list indents and quote borders follow it (logical properties). */
 [dir="auto"] { text-align: start; }
+.language-choice { border: 0; padding: 0; margin: 1rem 0 0; }
+.language-choice legend { padding: 0; margin-bottom: 0.4rem; font-weight: 500; font-size: var(--ui); }

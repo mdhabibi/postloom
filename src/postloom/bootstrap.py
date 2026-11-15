@@ -18,7 +18,11 @@ from postloom.adapters.llm.chat import LlmChat
 from postloom.adapters.llm.content import LlmContentExtractor, LlmThreadParser
 from postloom.adapters.llm.embeddings import RemoteEmbeddings, vector_space
 from postloom.adapters.llm.gateway import LlmGateway
-from postloom.adapters.llm.local_embeddings import LocalEmbeddings, local_embeddings_installed
+from postloom.adapters.llm.local_embeddings import (
+    ENGLISH_ONLY_MODELS,
+    LocalEmbeddings,
+    local_embeddings_installed,
+)
 from postloom.adapters.llm.providers import PRICES, build_backend
 from postloom.adapters.storage.database import SqliteDatabase
 from postloom.adapters.storage.journaled import JournaledRepository
@@ -113,6 +117,8 @@ class Container:
     min_similarity: float = 0.0
     related_similarity: float = 0.75
     monthly_budget_usd: float | None = None
+    english_only_search: bool = False
+    """Search by meaning runs on a model that only understands English."""
     not_configured: str = "Connect a model provider in Settings first."
     """Shown when a model-backed feature is used before setup."""
     vault_report: SyncReport | None = None
@@ -145,7 +151,13 @@ class Container:
     def ingest_article(self) -> IngestArticle:
         self._needs(self.extractor)
         assert self.extractor is not None
-        return IngestArticle(self.extractor, self.repository, self.vault, self.clock)
+        return IngestArticle(
+            self.extractor,
+            self.repository,
+            self.vault,
+            self.clock,
+            english_only_search=self.english_only_search,
+        )
 
     def index_article(self) -> IndexArticle:
         return IndexArticle(self.repository, self.search_index, self.embedder)
@@ -332,6 +344,8 @@ def build_container(
         min_similarity=cutoffs.search,
         related_similarity=cutoffs.related,
         monthly_budget_usd=settings.monthly_budget_usd,
+        english_only_search=isinstance(embedder, LocalEmbeddings)
+        and settings.local_embedding_model in ENGLISH_ONLY_MODELS,
         not_configured=setup_hint(settings),
         closers=(database.close,),
     )

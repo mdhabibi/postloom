@@ -1222,8 +1222,31 @@ function embeddingsSection(s) {
             }
           } }),
         h("span", {}, h("strong", {}, label), h("span", { class: "hint" }, ` ${hint}`))))),
+    e.mode === "local" ? languageChoice(e) : null,
     e.needs_reindex ? notice("", "Your search index was built with a different model, so search by meaning can't use it yet.", rebuild) : null,
     !e.available && e.mode !== "off" ? notice("error", "Embeddings aren't available right now, so search uses keywords only.") : null);
+}
+
+function languageChoice(e) {
+  const options = [
+    ["english", "English", "The default. Best for English, about 70 MB."],
+    ["multilingual", "Many languages", "50+ languages, including Persian, Arabic, German, Spanish, Chinese and Hindi. About 220 MB."],
+  ];
+  const current = e.local_model === e.local_models.multilingual ? "multilingual" : "english";
+  return h("fieldset", { class: "choice-list language-choice" },
+    h("legend", {}, "Language of your writing"),
+    options.map(([value, label, hint]) => h("label", { class: "choice" },
+      h("input", { type: "radio", name: "search-language", value, checked: current === value,
+        onchange: async () => {
+          try {
+            await api("/api/settings", { method: "PUT", body: { local_embedding_model: e.local_models[value] } });
+            toast("Saved. Rebuild the search index to use it.");
+            settingsView();
+          } catch (error) {
+            toast(error.message);
+          }
+        } }),
+      h("span", {}, h("strong", {}, label), h("span", { class: "hint" }, ` ${hint}`)))));
 }
 
 function usageSection(s) {

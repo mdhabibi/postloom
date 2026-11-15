@@ -44,6 +44,7 @@ from starlette.staticfiles import StaticFiles
 
 from postloom import __version__, how_to_run
 from postloom.adapters.llm.base import LlmBackend
+from postloom.adapters.llm.local_embeddings import DEFAULT_LOCAL_MODEL, MULTILINGUAL_LOCAL_MODEL
 from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backend, provider_spec
 from postloom.application.errors import (
     ApplicationError,
@@ -231,6 +232,10 @@ def create_app(
                     "mode": settings.embeddings,
                     "space": space,
                     "local_model": settings.local_embedding_model,
+                    "local_models": {
+                        "english": DEFAULT_LOCAL_MODEL,
+                        "multilingual": MULTILINGUAL_LOCAL_MODEL,
+                    },
                     "available": container.embedder is not None,
                     "needs_reindex": bool(
                         container.embedder is not None and articles and not index_spaces.get(space)
