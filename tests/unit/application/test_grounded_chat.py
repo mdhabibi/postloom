@@ -48,7 +48,7 @@ def test_topics_and_series_named_in_a_question_are_listed_from_the_graph(tmp_pat
         answer = c.ask_question().execute("Which articles about AI Agents are in Shipping agents?")
     topic, series = answer.sources
     assert (topic.kind, series.kind) == ("topic", "series")
-    assert "Articles in this topic (3):" in topic.text
+    assert "Articles and posts in this topic (3):" in topic.text
     assert '- "Agents in production" (undated; series: Shipping agents)' in topic.text
     assert series.text.startswith("Series: Shipping agents (1 articles)")
 
@@ -60,7 +60,8 @@ def test_questions_about_the_library_are_answered_from_an_overview(tmp_path: Pat
         answer = c.ask_question().execute("How many articles have I written?")
     (overview,) = answer.sources
     assert overview.kind == "library"
-    assert overview.text.startswith("The library has 3 articles, 5 comments and 2 people")
+    assert overview.text.startswith("The library has 3 articles, 0 posts")
+    assert "5 comments and 2 people" in overview.text
     assert "1 comments have no reply" in overview.text  # John's
     assert '- "Caching basics" (undated); topics: RAG, AI Agents; comments: 5' in overview.text
     assert "- Jane Example, Senior ML Engineer at Acme Analytics: 2 messages" in overview.text

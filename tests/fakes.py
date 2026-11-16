@@ -21,7 +21,7 @@ from postloom.adapters.llm.base import (
 from postloom.adapters.llm.http import JsonObject
 from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
-from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest
+from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest, PostTopics
 from postloom.application.ports.thread_parser import ParsedMessage, ParsedThread
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -56,6 +56,22 @@ class FakeExtractor:
     def extract(self, request: ExtractionRequest) -> ExtractedContent:
         self.requests.append(request)
         return self.result
+
+
+@dataclass
+class FakePostClassifier:
+    """Chooses the given topics for every post, and records what it was asked."""
+
+    topics: tuple[str, ...] = ("RAG",)
+    requests: list[str] = field(default_factory=list[str])
+
+    @property
+    def name(self) -> str:
+        return "llm:fake-posts"
+
+    def classify(self, post_text: str, allowed_topics: tuple[str, ...]) -> PostTopics:
+        self.requests.append(post_text)
+        return PostTopics(topics=tuple(t for t in self.topics if t in allowed_topics))
 
 
 def part3_extraction(**overrides: object) -> ExtractedContent:

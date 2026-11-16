@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from postloom.application.errors import ApplicationError, NoTopicsConfiguredError
@@ -33,7 +33,7 @@ from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.links import accepted_related
 from postloom.application.use_cases.relations import current_topics, write_mentions
 from postloom.domain.content import Article, Post, Series, Topic
-from postloom.domain.graph import Edge, EdgeKind
+from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.provenance import Grade, Origin, Provenance
 from postloom.domain.text import (
     canonical_url,
@@ -200,36 +200,45 @@ class IngestArticle:
         if article.series is not None:
             proposed.append(Edge(article.id, article.series.id, EdgeKind.PART_OF, llm))
 
-        # Only edges this use case owns are reconciled; semantic links, comments etc.
-        # are managed by their own use cases and must survive a re-ingest.
-        existing = {
-            e.key: e
-            for node in (article.id, post.id)
-            for e in self._repository.edges_from(node)
-            if e.kind in _OWNED_KINDS
-        }
-        proposed_keys = {e.key for e in proposed}
+        return reconcile_edges(self._repository, (article.id, post.id), proposed, now)
 
-        # Retire what the model said last time but no longer says. The user's own
-        # decisions (verified / rejected) are never touched by a re-ingest.
-        live: list[Edge] = []
-        for key, old in existing.items():
-            if key in proposed_keys:
-                continue
-            if old.provenance.grade is Grade.ASSERTED:
-                self._repository.supersede_edge(old.supersede(now))
-            elif old.is_current:
-                live.append(old)  # verified by the user: kept even if the model forgot it
 
-        for edge in proposed:
-            old = existing.get(edge.key)
-            if old is not None and old.provenance.grade is not Grade.ASSERTED:
-                if old.is_current:
-                    live.append(old)
-                continue
-            self._repository.save_edge(edge)
-            live.append(edge)
-        return live
+def reconcile_edges(
+    repository: GraphRepository,
+    nodes: Sequence[NodeId],
+    proposed: Sequence[Edge],
+    now: datetime,
+) -> list[Edge]:
+    """Make the edges an ingest owns (announces, topics, series) from ``nodes`` match what
+    was ``proposed``, and return the live ones.
+
+    Only edges this use case owns are reconciled; semantic links, comments etc. are managed
+    by their own use cases and must survive a re-ingest. What the model said last time but
+    no longer says is retired; the user's own decisions (verified / rejected) are never
+    touched by a re-ingest.
+    """
+    existing = {
+        e.key: e for node in nodes for e in repository.edges_from(node) if e.kind in _OWNED_KINDS
+    }
+    proposed_keys = {e.key for e in proposed}
+    live: list[Edge] = []
+    for key, old in existing.items():
+        if key in proposed_keys:
+            continue
+        if old.provenance.grade is Grade.ASSERTED:
+            repository.supersede_edge(old.supersede(now))
+        elif old.is_current:
+            live.append(old)  # verified by the user: kept even if the model forgot it
+
+    for edge in proposed:
+        old = existing.get(edge.key)
+        if old is not None and old.provenance.grade is not Grade.ASSERTED:
+            if old.is_current:
+                live.append(old)
+            continue
+        repository.save_edge(edge)
+        live.append(edge)
+    return live
 
 
 def _with_link(articles: Sequence[Article], url: str | None) -> Article | None:

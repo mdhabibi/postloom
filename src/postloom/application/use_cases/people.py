@@ -20,9 +20,9 @@ from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.browse_content import CommentView, comment_views
 from postloom.application.use_cases.relations import (
-    article_of_post,
-    articles_discussed_by,
     comments_by,
+    item_of_post,
+    items_discussed_by,
     write_discussion_note,
 )
 from postloom.domain.errors import InvalidProfileUrlError
@@ -97,14 +97,14 @@ class PeopleDirectory:
         mine = comments_by(self._repository, person_id)
         conversations: list[Conversation] = []
         for post in dict.fromkeys(c.post for c in mine):
-            article = article_of_post(self._repository, post)
+            item = item_of_post(self._repository, post)
             everything = list(self._repository.comments_on(post))
             threads = {c.thread or c.id for c in mine if c.post == post}
             involved = [c for c in everything if (c.thread or c.id) in threads]
             conversations.append(
                 Conversation(
-                    article_id=article.id if article else post,
-                    article_title=article.title if article else "Untitled post",
+                    article_id=item.id if item else post,
+                    article_title=item.title if item else "Untitled post",
                     messages=comment_views(self._repository, involved),
                 )
             )
@@ -142,7 +142,7 @@ class UpdatePerson:
             self._repository.save_person(person)
         else:
             person = self._merge(person_id, person, self._clock.now())
-        self._vault.write_person(person, articles_discussed_by(self._repository, person.id))
+        self._vault.write_person(person, items_discussed_by(self._repository, person.id))
         if person.id != person_id:
             self._rewrite_discussions(person.id)
         return person.id
@@ -153,9 +153,9 @@ class UpdatePerson:
         posts = dict.fromkeys(c.post for c in comments_by(self._repository, person_id))
         for post_id in posts:
             post = self._repository.get_post(post_id)
-            article = article_of_post(self._repository, post_id)
-            if post is not None and article is not None:
-                write_discussion_note(self._repository, self._vault, article, post)
+            item = item_of_post(self._repository, post_id)
+            if post is not None and item is not None:
+                write_discussion_note(self._repository, self._vault, item, post)
 
     def _merge(self, old_id: NodeId, person: Person, now: datetime) -> Person:
         existing = self._repository.get_person(person.id)

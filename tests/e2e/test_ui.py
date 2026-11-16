@@ -155,6 +155,8 @@ def change(path: Path, old: str, new: str) -> None:
         ("#/graph", "Graph"),
         ("#/search?q=caching", "Caching basics"),
         ("#/settings", "Topics"),
+        ("#/add", "Add an article"),
+        ("#/add/post", "Add a post"),
     ],
 )
 def test_every_screen_opens_without_errors(page: Page, route: str, shows: str) -> None:
@@ -288,6 +290,43 @@ def test_a_note_that_cant_be_read_is_named_until_it_is_fixed(page: Page, home: P
 
 
 # -- the main daily flow: pasting a comment section --------------------------------------
+def test_a_post_is_added_discussed_edited_and_deleted(page: Page, home: Path) -> None:
+    visit(page, "#/")
+    page.click(".main-nav a[data-route=add]")
+    page.get_by_role("link", name="Post", exact=True).click()
+    page.fill("#text", "Hot take\n\nCaching beats bigger models for repeated questions.\n\n#RAG")
+    page.get_by_role("button", name="Add post").click()
+    expect(page.locator("#add-result")).to_contain_text('Added "Hot take"')
+    page.get_by_role("link", name="Open the post").click()
+
+    expect(page.locator(".reader h1")).to_have_text("Hot take")
+    expect(page.locator(".reader .eyebrow")).to_have_text("Post")
+    text = page.locator(".post-text")
+    expect(text).to_contain_text("Caching beats bigger models")
+    expect(text).not_to_contain_text("Hot take")  # the title isn't shown twice
+    expect(page.locator(".related")).to_have_count(0)
+    expect(page.locator("#article-list")).to_contain_text("Post")
+    assert note(home, "posts/hot-take.md").is_file()
+
+    page.get_by_role("button", name="Add comments").click()
+    page.fill("#comments-paste", "Jane Example\nHow do you choose the distance threshold?")
+    page.get_by_role("button", name="Read comments").click()
+    page.get_by_role("button", name="Save comments").click()
+    expect(page.locator(".comment-text")).to_have_count(5)
+
+    page.click(".article-actions > .button")
+    page.click(".chip:has-text('MLOps')")
+    page.click(".editor button[type=submit]")
+    expect(page.locator(".reader .tags")).to_contain_text("MLOps")
+
+    page.click(".article-actions .confirm .button")
+    expect(page.locator(".confirm-text")).to_contain_text("Delete this post and 5 comments")
+    page.click(".confirm-actions .button-danger")
+    page.wait_for_url("**/#/")
+    expect(page.locator("#article-list")).not_to_contain_text("Hot take")
+    assert not note(home, "posts/hot-take.md").exists()
+
+
 def test_a_pasted_comment_section_is_reviewed_and_saved_once(page: Page) -> None:
     agents = "#/article/article%3Aagents-in-production"
     visit(page, agents)

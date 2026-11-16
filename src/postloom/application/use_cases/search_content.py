@@ -21,7 +21,7 @@ from postloom.application.ports.embeddings import EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import ChunkHit, SearchIndex
 from postloom.application.use_cases.index_content import COMMENTS_HEADING
-from postloom.application.use_cases.relations import article_of_post
+from postloom.application.use_cases.relations import get_item, item_of_post
 from postloom.domain.graph import NodeId
 from postloom.domain.text import excerpt
 
@@ -127,7 +127,7 @@ class SearchContent:
         for node, scored in by_article.items():
             scored.sort(key=lambda item: item[0], reverse=True)
             top = scored[:PASSAGES_PER_RESULT]
-            article = self._repository.get_article(node)
+            article = get_item(self._repository, node)
             passages = tuple(
                 Passage(
                     heading=hit.heading,
@@ -155,10 +155,11 @@ class SearchContent:
 
 
 def article_for(repository: GraphRepository, node: NodeId) -> NodeId | None:
-    """The article an indexed node belongs to: itself, or the article its post announces."""
+    """The library item an indexed node belongs to: an article itself, the article a post
+    announces, or a post that stands on its own."""
     if node.startswith("post:"):
-        article = article_of_post(repository, node)
-        return article.id if article is not None else None
+        item = item_of_post(repository, node)
+        return item.id if item is not None else None
     return node
 
 

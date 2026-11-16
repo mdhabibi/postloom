@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from postloom.application.errors import ApplicationError
 from postloom.application.ports.chat import ChatMessage, ChatModel, Role
 from postloom.application.ports.repository import GraphRepository
-from postloom.application.use_cases.people import article_of_post, comments_by
+from postloom.application.use_cases.relations import article_of_post, comments_by, item_of_post
 from postloom.domain.discussion import OWNER, Comment
 from postloom.domain.graph import NodeId
 
@@ -107,7 +107,8 @@ class DraftReply:
             parts.append(f"## Your article: {article.title}\n\n{body}")
         post = self._repository.get_post(post_id)
         if post is not None:
-            parts.append(f"## Your post announcing it\n\n{post.text}")
+            heading = "Your post announcing it" if article is not None else "Your post"
+            parts.append(f"## {heading}\n\n{post.text}")
         return "\n\n".join(parts)
 
     def _person_part(self, target: Comment) -> str:
@@ -126,10 +127,10 @@ class DraftReply:
         ]
         if not elsewhere:
             return ""
-        lines = [f"## Your earlier conversations with {target.author_name} (other articles)"]
+        lines = [f"## Your earlier conversations with {target.author_name} (other posts)"]
         for comment in elsewhere[-MAX_EARLIER_MESSAGES:]:
-            article = article_of_post(self._repository, comment.post)
-            where = f' (on "{article.title}")' if article else ""
+            item = item_of_post(self._repository, comment.post)
+            where = f' (on "{item.title}")' if item else ""
             lines.append(f"{target.author_name}{where}: {_short(comment.text)}")
             for reply in self._repository.comments_on(comment.post):
                 if reply.is_own and reply.reply_to == comment.id:

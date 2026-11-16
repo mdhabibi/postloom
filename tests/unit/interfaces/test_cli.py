@@ -361,3 +361,22 @@ def test_doctor_says_when_a_slow_call_was_not_retried(monkeypatch: pytest.Monkey
     check = doctor._timed("model (text)", lambda: None)  # pyright: ignore[reportPrivateUsage]
     (note,) = check.notes
     assert note.startswith("Slow (172s) without any retry: the model itself took that long.")
+
+
+def test_a_stand_alone_post_can_be_added(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = str(tmp_path / "home")
+    main(["--home", home, "init"], make_container=no_key_container)
+    post = tmp_path / "post.txt"
+    post.write_text("Hot take\n\nCaching beats bigger models. #RAG", encoding="utf-8")
+
+    code = main(["--home", home, "post", str(post)], make_container=no_key_container)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert 'Added post: "Hot take"' in out
+    assert "No model is connected" in out
+    assert (tmp_path / "home" / "vault" / "posts" / "hot-take.md").is_file()
+    main(["--home", home, "post", str(post)], make_container=no_key_container)
+    assert 'Updated post: "Hot take"' in capsys.readouterr().out

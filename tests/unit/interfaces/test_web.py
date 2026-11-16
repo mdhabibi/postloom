@@ -842,3 +842,74 @@ def test_the_search_language_can_be_chosen(tmp_path: Path) -> None:
     reply = client.put("/api/settings", json_body={"local_embedding_model": models["multilingual"]})
     assert reply.status == 200
     assert client.get("/api/status").json["embeddings"]["local_model"] == models["multilingual"]
+
+
+STANDALONE = "Why I stopped tuning chunk sizes\n\nMeasure retrieval recall instead.\n\n#RAG"
+
+
+def test_a_post_can_be_added_opened_edited_and_deleted(tmp_path: Path) -> None:
+    client = client_for(tmp_path, providers=False)  # posts don't need a model
+    added = client.post("/api/posts", json_body={"text": STANDALONE, "published_on": "2026-10-01"})
+    assert added.status == 201, added.text
+    body = added.json
+    post = body["id"]
+    assert (post, body["title"], body["is_update"]) == (
+        "post:why-i-stopped-tuning-chunk-sizes",
+        "Why I stopped tuning chunk sizes",
+        False,
+    )
+    assert body["topics"] == [] and "No model is connected" in body["warnings"][0]
+    listed = client.get("/api/articles").json["articles"]
+    assert [(a["id"], a["kind"]) for a in listed] == [(post, "post")]
+    detail = client.get(f"/api/article?id={post}").json
+    assert (detail["kind"], detail["body_markdown"]) == ("post", STANDALONE)
+    assert client.get("/api/overview").json["posts"] == 1
+
+    edited = client.put("/api/post", json_body={"id": post, "topics": ["RAG"]})
+    assert edited.status == 200, edited.text
+    assert edited.json["topics"] == [{"name": "RAG", "grade": "verified"}]
+    assert edited.json["published_on"] == "2026-10-01"  # unsent fields are kept
+    cleared = client.put("/api/post", json_body={"id": post, "published_on": None}).json
+    assert cleared["published_on"] is None
+    bad_link = client.put("/api/post", json_body={"id": post, "url": "javascript:alert(1)"})
+    assert bad_link.status == 400
+
+    assert client.delete(f"/api/post?id={post}").json["deleted"] == post
+    assert client.get("/api/articles").json["articles"] == []
+    assert client.delete(f"/api/post?id={post}").status == 400
+
+
+def test_comments_can_be_added_to_a_post(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    post = client.post("/api/posts", json_body={"text": STANDALONE}).json["id"]
+    preview = client.post(
+        "/api/comments/preview", json_body={"article_id": post, "text": "pasted thread"}
+    )
+    assert preview.status == 200, preview.text
+    drafts = [
+        {k: v for k, v in m.items() if k not in ("already_saved", "known_person")}
+        for m in preview.json["messages"]
+    ]
+    saved = client.post("/api/comments", json_body={"article_id": post, "messages": drafts})
+    assert saved.status == 201, saved.text
+    assert len(client.get(f"/api/article?id={post}").json["discussion"]) == 5
+    graph = client.get("/api/graph").json
+    assert {"id": post, "kind": "post"}.items() <= next(
+        n for n in graph["nodes"] if n["id"] == post
+    ).items()
+
+
+def test_an_announcement_post_is_not_added_twice(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    ingest(client)
+    reply = client.post("/api/posts", json_body={"text": POST})
+    assert reply.status == 400 and "announces the article" in reply.json["error"]
+
+
+def test_a_connected_model_chooses_a_posts_topics_from_the_list(tmp_path: Path) -> None:
+    backend = FakeBackend(json_replies={"post_topics": {"topics": ["RAG", "Knitting"]}})
+    client = client_for(tmp_path, backend=backend)
+    added = client.post("/api/posts", json_body={"text": STANDALONE})
+    assert added.status == 201, added.text
+    assert (added.json["topics"], added.json["warnings"]) == (["RAG"], [])
+    assert backend.calls[0] == ("json", "fake-small")

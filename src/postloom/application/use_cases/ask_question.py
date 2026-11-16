@@ -37,14 +37,17 @@ from postloom.application.ports.embeddings import EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import ChunkHit, SearchIndex
 from postloom.application.use_cases.relations import (
-    article_of_post,
-    articles_discussed_by,
     comments_by,
     current_topics,
+    discussion_post,
+    get_item,
+    item_of_post,
+    items_discussed_by,
+    list_items,
     post_of,
 )
 from postloom.application.use_cases.search_content import article_for, passage_kind
-from postloom.domain.content import Article
+from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, thread_texts
 from postloom.domain.graph import NodeId
 from postloom.domain.people import Person
@@ -180,18 +183,24 @@ class AskQuestion:
 
     # -- one article ----------------------------------------------------------------
     def _article_items(self, article_id: NodeId) -> list[_Item]:
-        article = self._repository.get_article(article_id)
-        if article is None:
-            raise ApplicationError(f"Unknown article: {article_id}")
-        title = article.title
-        items: list[_Item] = [
-            (article_id, title, h.heading or "Introduction", h.text, "article", None)
-            for h in self._index.chunks_of(article_id)
-        ]
-        post = post_of(self._repository, article_id)
+        item = get_item(self._repository, article_id)
+        if item is None:
+            raise ApplicationError(f"Unknown article or post: {article_id}")
+        title = item.title
+        items: list[_Item] = []
+        if isinstance(item, Post):
+            post: Post | None = item
+            items.append((article_id, title, "The post", item.text, "post", None))
+        else:
+            items += [
+                (article_id, title, h.heading or "Introduction", h.text, "article", None)
+                for h in self._index.chunks_of(article_id)
+            ]
+            post = post_of(self._repository, article_id)
+            if post is not None:
+                items.append((article_id, title, "Announcement post", post.text, "post", None))
         if post is None:
             return items
-        items.append((article_id, title, "Announcement post", post.text, "post", None))
         comments = list(self._repository.comments_on(post.id))
         names = {c.id: ("you" if c.is_own else c.author_name) for c in comments}
         for comment in comments:
@@ -219,21 +228,19 @@ class AskQuestion:
         ]
         posts = dict.fromkeys(c.post for c in comments_by(self._repository, person_id))
         for post_id in posts:
-            article = article_of_post(self._repository, post_id)
-            if article is None:
+            item = item_of_post(self._repository, post_id)
+            if item is None:
                 continue
             for thread in thread_texts(self._repository.comments_on(post_id)):
                 if person_id not in thread.participants:
                     continue
                 section = f"Conversation with {person.name}"
-                items.append(
-                    (article.id, article.title, section, thread.text, "comments", person.id)
-                )
+                items.append((item.id, item.title, section, thread.text, "comments", person.id))
         return items if limit is None else items[: limit + 1]
 
     def _person_card(self, person: Person) -> str:
         written = comments_by(self._repository, person.id)
-        articles = articles_discussed_by(self._repository, person.id)
+        discussed = items_discussed_by(self._repository, person.id)
         lines = [f"Name: {person.name}"]
         if person.headline:
             lines.append(f"Headline: {person.headline}")
@@ -246,8 +253,10 @@ class AskQuestion:
             lines.append(f"Your tags for them: {', '.join(person.tags)}")
         if person.notes:
             lines.append(f"Your private notes about them: {person.notes}")
-        on = "; ".join(a.title for a in articles) or "none"
-        lines.append(f"Activity: {len(written)} messages on {len(articles)} articles ({on})")
+        on = "; ".join(i.title for i in discussed) or "none"
+        lines.append(
+            f"Activity: {len(written)} messages on {len(discussed)} articles and posts ({on})"
+        )
         return "\n".join(lines)
 
     # -- the whole library ------------------------------------------------------------
@@ -275,15 +284,14 @@ class AskQuestion:
             items += self._person_items(person.id, limit=MAX_CONVERSATIONS)
 
         articles = list(repo.list_articles())
+        library = list_items(repo)
         topics = [t for t in repo.list_topics() if mentions(asked, t.name)][:MAX_NAMED]
         for topic in topics:
-            members = [
-                a for a in articles if topic.id in {t.id for t in current_topics(repo, a.id)}
-            ]
+            members = [i for i in library if topic.id in {t.id for t in current_topics(repo, i.id)}]
             lines = [f"Topic: {topic.name}"]
             if topic.description:
                 lines.append(f"About: {topic.description}")
-            lines.append(f"Articles in this topic ({len(members)}):")
+            lines.append(f"Articles and posts in this topic ({len(members)}):")
             lines += [f"- {_article_line(a)}" for a in sorted(members, key=_by_date)]
             items.append((None, topic.name, "Topic", "\n".join(lines), "topic", None))
 
@@ -336,13 +344,13 @@ class AskQuestion:
     def _overview(self) -> str:
         """The library at a glance: enough to count, list and compare."""
         repo = self._repository
-        articles = sorted(repo.list_articles(), key=_by_date, reverse=True)
+        articles = sorted(list_items(repo), key=_by_date, reverse=True)
         if not articles:
             return ""
         counts: dict[NodeId, int] = {}
         waiting = 0
         for article in articles:
-            post = post_of(repo, article.id)
+            post = discussion_post(repo, article.id)
             comments = list(repo.comments_on(post.id)) if post is not None else []
             counts[article.id] = len(comments)
             answered = {c.reply_to for c in comments if c.is_own}
@@ -352,12 +360,14 @@ class AskQuestion:
             key=lambda item: item[0],
             reverse=True,
         )
+        posts = sum(1 for i in articles if isinstance(i, Post))
         lines = [
-            f"The library has {len(articles)} articles, {sum(counts.values())} comments "
-            f"and {len(people)} people who commented. {waiting} comments have no reply "
-            "from the author yet.",
+            f"The library has {len(articles) - posts} articles, {posts} posts (not counting "
+            f"posts that announce an article), {sum(counts.values())} comments and "
+            f"{len(people)} people who commented. {waiting} comments have no reply from the "
+            "author yet.",
             "",
-            "Articles, newest first:",
+            "Articles and posts, newest first:",
         ]
         for article in articles[:MAX_OVERVIEW_ARTICLES]:
             topics = ", ".join(t.name for t in current_topics(repo, article.id)) or "none"
@@ -365,7 +375,7 @@ class AskQuestion:
                 f"- {_article_line(article)}; topics: {topics}; comments: {counts[article.id]}"
             )
         if len(articles) > MAX_OVERVIEW_ARTICLES:
-            lines.append(f"(and {len(articles) - MAX_OVERVIEW_ARTICLES} older articles)")
+            lines.append(f"(and {len(articles) - MAX_OVERVIEW_ARTICLES} older items)")
         if people:
             lines += ["", "People who commented most:"]
             for count, person in people[:MAX_OVERVIEW_PEOPLE]:
@@ -388,8 +398,10 @@ def _named_people(asked: str, people: list[Person]) -> list[Person]:
     return found
 
 
-def _article_line(article: Article) -> str:
+def _article_line(article: Article | Post) -> str:
     when = article.published_on.isoformat() if article.published_on else "undated"
+    if isinstance(article, Post):
+        return f'post "{article.title}" ({when})'
     series = ""
     if article.series is not None:
         part = f", part {article.series_part}" if article.series_part else ""
@@ -397,7 +409,7 @@ def _article_line(article: Article) -> str:
     return f'"{article.title}" ({when}{series})'
 
 
-def _by_date(article: Article) -> tuple[str, str]:
+def _by_date(article: Article | Post) -> tuple[str, str]:
     return (article.published_on.isoformat() if article.published_on else "", article.title)
 
 

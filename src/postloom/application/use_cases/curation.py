@@ -21,7 +21,7 @@ from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.index_content import IndexArticle
 from postloom.application.use_cases.links import related_edges
 from postloom.application.use_cases.relations import (
-    article_of_post,
+    item_of_post,
     post_of,
     set_series,
     set_topics,
@@ -39,11 +39,11 @@ from postloom.domain.text import web_url
 USER = "user"
 
 
-class _Unset:
+class Unset:
     """Marks "leave this field as it is", where None means "clear it"."""
 
 
-UNSET = _Unset()
+UNSET = Unset()
 
 
 def _article(repository: GraphRepository, article_id: NodeId) -> Article:
@@ -92,10 +92,10 @@ class UpdateArticle:
         title: str | None = None,
         summary: str | None = None,
         topics: Sequence[str] | None = None,
-        series: str | _Unset | None = UNSET,
-        series_part: int | _Unset | None = UNSET,
-        url: str | _Unset | None = UNSET,
-        published_on: date | _Unset | None = UNSET,
+        series: str | Unset | None = UNSET,
+        series_part: int | Unset | None = UNSET,
+        url: str | Unset | None = UNSET,
+        published_on: date | Unset | None = UNSET,
     ) -> Article:
         """Apply the given changes. ``topics`` are topic names; None leaves them alone."""
         repo = self._repository
@@ -107,16 +107,16 @@ class UpdateArticle:
             article = replace(article, title=title.strip())
         if summary is not None:
             article = replace(article, summary=summary.strip())
-        if not isinstance(series, _Unset):
+        if not isinstance(series, Unset):
             name = (series or "").strip()
             article = replace(article, series=Series(name) if name else None)
-        if not isinstance(series_part, _Unset):
+        if not isinstance(series_part, Unset):
             article = replace(article, series_part=series_part)
         if article.series is None:
             article = replace(article, series_part=None)
-        if not isinstance(url, _Unset):
+        if not isinstance(url, Unset):
             article = replace(article, url=web_url(url))
-        if not isinstance(published_on, _Unset):
+        if not isinstance(published_on, Unset):
             article = replace(article, published_on=published_on)
 
         now = self._clock.now()
@@ -238,13 +238,13 @@ class DeletePerson:
         self._vault.remove_person(person)
         for post_id in rewritten:
             post = repo.get_post(post_id)
-            article = article_of_post(repo, post_id)
-            if post is not None and article is not None:
-                write_discussion_note(repo, self._vault, article, post)
+            item = item_of_post(repo, post_id)
+            if post is not None and item is not None:
+                write_discussion_note(repo, self._vault, item, post)
                 # Their words must leave the search index too. If the provider fails, the
                 # keyword index has already been replaced, which is what matters here.
                 with suppress(ProviderError, BudgetExceededError):
-                    self._index_article.execute(article.id)
+                    self._index_article.execute(item.id)
         return PersonDeleted(person.name, len(erased) - 1)
 
 

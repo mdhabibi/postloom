@@ -12,7 +12,8 @@ from dataclasses import dataclass
 
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.use_cases.people import PeopleDirectory, PersonSummary
-from postloom.domain.content import Article
+from postloom.application.use_cases.relations import Item, discussion_post, list_items
+from postloom.domain.content import Post
 from postloom.domain.discussion import Comment
 from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.provenance import Grade
@@ -35,6 +36,8 @@ class WaitingMessage:
 @dataclass(frozen=True, slots=True)
 class OverviewData:
     articles: int
+    posts: int
+    """Stand-alone posts; posts that announce an article are not counted."""
     messages: int
     people: int
     waiting: tuple[WaitingMessage, ...]
@@ -51,7 +54,7 @@ class Overview:
 
     def execute(self) -> OverviewData:
         repo = self._repository
-        articles = list(repo.list_articles())
+        articles = list_items(repo)
         waiting: list[WaitingMessage] = []
         messages = 0
         pending: set[tuple[NodeId, NodeId]] = set()
@@ -84,7 +87,8 @@ class Overview:
         waiting.reverse()  # later pastes and later positions first
         people = PeopleDirectory(repo).list_people()
         return OverviewData(
-            articles=len(articles),
+            articles=sum(1 for i in articles if not isinstance(i, Post)),
+            posts=sum(1 for i in articles if isinstance(i, Post)),
             messages=messages,
             people=len(people),
             waiting=tuple(waiting[:MAX_WAITING]),
@@ -93,10 +97,8 @@ class Overview:
             top_people=tuple(people[:MAX_PEOPLE]),
         )
 
-    def _comments(self, article: Article) -> list[Comment]:
-        found: list[Comment] = []
-        for edge in self._repository.edges_to(article.id):
-            if edge.kind is EdgeKind.ANNOUNCES and edge.is_current:
-                on_post = self._repository.comments_on(edge.source)
-                found += sorted(on_post, key=lambda c: c.position)
-        return found
+    def _comments(self, item: Item) -> list[Comment]:
+        post = discussion_post(self._repository, item.id)
+        if post is None:
+            return []
+        return sorted(self._repository.comments_on(post.id), key=lambda c: c.position)

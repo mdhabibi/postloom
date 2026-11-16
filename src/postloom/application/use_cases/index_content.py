@@ -19,7 +19,7 @@ from postloom.application.errors import ApplicationError, BudgetExceededError, P
 from postloom.application.ports.embeddings import DocumentText, EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import IndexedChunk, SearchIndex
-from postloom.application.use_cases.relations import post_of
+from postloom.application.use_cases.relations import get_item, post_of
 from postloom.domain.chunking import Chunk, chunk_markdown
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import Comment, thread_texts
@@ -49,8 +49,13 @@ class IndexArticle:
         self._embedder = embedder
 
     def execute(self, article_id: NodeId) -> IndexResult:
-        """Index the article, its post and the discussion under it."""
-        article = self._repository.get_article(article_id)
+        """Index an article, its post and the discussion under it; or a stand-alone post
+        and its discussion."""
+        item = get_item(self._repository, article_id)
+        if isinstance(item, Post):
+            comments = self._repository.comments_on(item.id)
+            return self._store(item.id, discussion_chunks(item, item, comments))
+        article = item
         if article is None:
             raise ApplicationError(f"Unknown article: {article_id}")
         result = self._store(article.id, article_chunks(article))
@@ -130,25 +135,27 @@ def article_chunks(article: Article) -> list[Chunk]:
 
 
 POST_HEADING = "Announcement post"
+STANDALONE_HEADING = "Post"
 COMMENTS_HEADING = "Comments: thread started by "
 MAX_THREAD_CHARS = 2400
 
 
-def discussion_chunks(article: Article, post: Post, comments: Sequence[Comment]) -> list[Chunk]:
+def discussion_chunks(item: Article | Post, post: Post, comments: Sequence[Comment]) -> list[Chunk]:
     """The post's text, then each comment thread as one chunk (long threads are split
-    between messages, never inside one)."""
-    chunks = [Chunk(post.id, 0, POST_HEADING, post.text, article.title)]
+    between messages, never inside one). ``item`` is what they are about: the article the
+    post announces, or the post itself."""
+    title = item.title
+    heading_of_post = POST_HEADING if isinstance(item, Article) else STANDALONE_HEADING
+    chunks = [Chunk(post.id, 0, heading_of_post, post.text, title)]
     for thread in thread_texts(comments):
         heading = f"{COMMENTS_HEADING}{thread.starter}"
         piece: list[str] = []
         for message in thread.text.split("\n\n"):
             if piece and sum(map(len, piece)) + len(message) > MAX_THREAD_CHARS:
-                chunks.append(
-                    Chunk(post.id, len(chunks), heading, "\n\n".join(piece), article.title)
-                )
+                chunks.append(Chunk(post.id, len(chunks), heading, "\n\n".join(piece), title))
                 piece = []
             piece.append(message)
-        chunks.append(Chunk(post.id, len(chunks), heading, "\n\n".join(piece), article.title))
+        chunks.append(Chunk(post.id, len(chunks), heading, "\n\n".join(piece), title))
     return chunks
 
 

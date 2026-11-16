@@ -106,6 +106,32 @@ class Post:
     def id(self) -> NodeId:
         return node_id(NodeKind.POST, self.key)
 
+    @property
+    def title(self) -> str:
+        """What a post is called in lists and links: its first line, shortened. Posts
+        have no title of their own; the first line is what readers see first."""
+        return post_title(self.text)
+
     @staticmethod
     def key_for_article(article: Article) -> str:
         return article.slug
+
+    @staticmethod
+    def key_for_text(text: str) -> str:
+        """The key a stand-alone post starts with: its first words."""
+        return slugify(" ".join(post_title(text).split()[:8]), max_length=60)
+
+
+TITLE_LENGTH = 90
+
+
+def post_title(text: str) -> str:
+    """The first non-empty line of a post, without Markdown or hashtags at its end,
+    cut at a word boundary."""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    first = re.sub(r"[*_`#>]+", "", first).strip()
+    first = re.sub(r"(\s+#\w+)+$", "", first).strip() or first
+    if len(first) <= TITLE_LENGTH:
+        return first or "Untitled post"
+    cut = first[:TITLE_LENGTH].rsplit(" ", 1)[0].rstrip(",.;:-")
+    return f"{cut}..."

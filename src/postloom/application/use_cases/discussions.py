@@ -22,8 +22,13 @@ from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.thread_parser import ParsedMessage, ThreadParser
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.index_content import IndexArticle
-from postloom.application.use_cases.relations import articles_discussed_by
-from postloom.domain.content import Article, Post
+from postloom.application.use_cases.relations import (
+    Item,
+    discussion_post,
+    get_item,
+    items_discussed_by,
+)
+from postloom.domain.content import Post
 from postloom.domain.discussion import OWNER, Comment, Message, comment_key, infer_reply_targets
 from postloom.domain.errors import InvalidProfileUrlError
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind, node_id
@@ -64,16 +69,15 @@ class SaveResult:
     comments: tuple[Comment, ...] = field(default=())
 
 
-def _post_of(repository: GraphRepository, article_id: NodeId) -> tuple[Article, Post]:
-    article = repository.get_article(article_id)
-    if article is None:
-        raise ApplicationError(f"Unknown article: {article_id}")
-    for edge in repository.edges_to(article_id):
-        if edge.kind is EdgeKind.ANNOUNCES and edge.is_current:
-            post = repository.get_post(edge.source)
-            if post is not None:
-                return article, post
-    raise ApplicationError("This article has no announcement post to attach comments to.")
+def _post_of(repository: GraphRepository, item_id: NodeId) -> tuple[Item, Post]:
+    """The item (article or stand-alone post) and the post its comments belong to."""
+    item = get_item(repository, item_id)
+    if item is None:
+        raise ApplicationError(f"Unknown article or post: {item_id}")
+    post = discussion_post(repository, item_id)
+    if post is None:
+        raise ApplicationError("This article has no announcement post to attach comments to.")
+    return item, post
 
 
 def _find_person(repository: GraphRepository, name: str) -> Person | None:
@@ -201,8 +205,8 @@ class SaveComments:
             for author in dict.fromkeys(c.author for c in added if not c.is_own):
                 person = people.get(author)
                 if person is not None:
-                    articles = articles_discussed_by(self._repository, author)
-                    self._vault.write_person(person, articles)
+                    items = items_discussed_by(self._repository, author)
+                    self._vault.write_person(person, items)
             if self._index_article is not None:
                 # If the provider fails the comments are still indexed by keyword; a
                 # reindex adds search by meaning later. Saving them must not fail for it.

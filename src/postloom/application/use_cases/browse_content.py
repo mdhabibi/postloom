@@ -1,4 +1,8 @@
-"""BrowseContent: read models for listing and opening articles."""
+"""BrowseContent: read models for listing and opening the library's items.
+
+An item is an article (with the post that announced it) or a post that stands on its own.
+Both are listed together and open on the same kind of page.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,7 @@ from datetime import date
 
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.use_cases.links import RelatedLink, related_links
+from postloom.application.use_cases.relations import get_item, list_items
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import Comment, conversation_depth, conversation_order
 from postloom.domain.graph import EdgeKind, NodeId
@@ -22,6 +27,8 @@ class TopicLink:
 
 @dataclass(frozen=True, slots=True)
 class ArticleSummary:
+    """One item of the library: an article or a stand-alone post (see ``kind``)."""
+
     id: NodeId
     title: str
     summary: str
@@ -30,6 +37,8 @@ class ArticleSummary:
     topics: tuple[TopicLink, ...]
     series: str | None
     series_part: int | None
+    kind: str = "article"
+    """"article" or "post"."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,8 +60,10 @@ class CommentView:
 @dataclass(frozen=True, slots=True)
 class ArticleDetail:
     summary: ArticleSummary
-    article: Article
+    article: Article | Post
+    """The item itself: an article, or a post that stands on its own."""
     posts: tuple[Post, ...]
+    """Posts announcing the article; empty for a stand-alone post."""
     discussion: tuple[CommentView, ...] = ()
     """Every comment and reply under the article's posts, in conversation order."""
     related: tuple[RelatedLink, ...] = ()
@@ -64,14 +75,20 @@ class BrowseContent:
         self._repository = repository
 
     def list_articles(self) -> list[ArticleSummary]:
-        summaries = [self._summarize(a) for a in self._repository.list_articles()]
+        """Articles and stand-alone posts, newest first."""
+        summaries = [self._summarize(item) for item in list_items(self._repository)]
         # Newest first; undated articles after dated ones, alphabetically.
         summaries.sort(key=lambda s: s.title.casefold())
         summaries.sort(key=lambda s: s.published_on or date.min, reverse=True)
         return summaries
 
     def get_article(self, article_id: NodeId) -> ArticleDetail | None:
-        article = self._repository.get_article(article_id)
+        item = get_item(self._repository, article_id)
+        if isinstance(item, Post):
+            comments = list(self._repository.comments_on(item.id))
+            discussion = comment_views(self._repository, comments)
+            return ArticleDetail(self._summarize(item), item, (), discussion, ())
+        article = item
         if article is None:
             return None
         posts = [
@@ -85,13 +102,25 @@ class BrowseContent:
         related = tuple(related_links(self._repository, article.id))
         return ArticleDetail(self._summarize(article), article, tuple(posts), discussion, related)
 
-    def _summarize(self, article: Article) -> ArticleSummary:
+    def _summarize(self, article: Article | Post) -> ArticleSummary:
         names = {t.id: t.name for t in self._repository.list_topics()}
         topics = tuple(
             TopicLink(names[edge.target], edge.provenance.grade)
             for edge in self._repository.edges_from(article.id)
             if edge.kind is EdgeKind.BELONGS_TO and edge.is_current and edge.target in names
         )
+        if isinstance(article, Post):
+            return ArticleSummary(
+                id=article.id,
+                title=article.title,
+                summary="",
+                published_on=article.published_on,
+                url=article.url,
+                topics=topics,
+                series=None,
+                series_part=None,
+                kind="post",
+            )
         return ArticleSummary(
             id=article.id,
             title=article.title,

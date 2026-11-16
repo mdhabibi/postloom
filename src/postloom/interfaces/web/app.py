@@ -54,7 +54,13 @@ from postloom.application.errors import (
     ProviderError,
 )
 from postloom.application.ports.chat import ChatMessage, Role
-from postloom.application.use_cases import UNSET, Decision, IngestArticleCommand, SyncReport
+from postloom.application.use_cases import (
+    UNSET,
+    Decision,
+    IngestArticleCommand,
+    IngestPostCommand,
+    SyncReport,
+)
 from postloom.bootstrap import Container, Settings
 from postloom.config import read_config
 from postloom.domain.errors import DomainError
@@ -353,6 +359,37 @@ def create_app(
         view = schemas.ingest_result(result, indexed, index_error, suggested)
         return JSONResponse(view, status_code=201)
 
+    def ingest_post(request: Request, body: schemas.PostIngestRequest) -> Response:
+        container = state.container
+        command = IngestPostCommand(
+            text=body.text, url=body.url or None, published_on=body.published_on
+        )
+        result = container.ingest_post().execute(command)
+        try:
+            indexed = container.index_article().execute(result.post.id)
+            index_error = None
+        except (ProviderError, BudgetExceededError) as error:
+            indexed, index_error = None, str(error)
+        view = schemas.post_ingest_result(result, indexed, index_error)
+        return JSONResponse(view, status_code=201)
+
+    def update_post(request: Request, body: schemas.PostUpdate) -> Response:
+        sent = body.model_fields_set
+        container = state.container
+        post = container.update_post().execute(
+            NodeId(body.id),
+            topics=body.topics,
+            url=body.url if "url" in sent else UNSET,
+            published_on=body.published_on if "published_on" in sent else UNSET,
+        )
+        detail = container.browse().get_article(post.id)
+        assert detail is not None
+        return JSONResponse(schemas.article_detail(detail))
+
+    def delete_post(request: Request) -> Response:
+        post = state.container.delete_post().execute(NodeId(_id(request)))
+        return JSONResponse({"deleted": post.id, "title": post.title})
+
     def search(request: Request) -> Response:
         query = request.query_params.get("q", "")
         limit = min(max(int(request.query_params.get("limit", "10") or 10), 1), 50)
@@ -507,6 +544,9 @@ def create_app(
         Route("/api/article", api(get_article)),
         Route("/api/article", api(update_article, schemas.ArticleUpdate), methods=["PUT"]),
         Route("/api/article", api(delete_article), methods=["DELETE"]),
+        Route("/api/posts", api(ingest_post, schemas.PostIngestRequest), methods=["POST"]),
+        Route("/api/post", api(update_post, schemas.PostUpdate), methods=["PUT"]),
+        Route("/api/post", api(delete_post), methods=["DELETE"]),
         Route("/api/search", api(search)),
         Route("/api/ask", api(ask, schemas.AskRequest), methods=["POST"]),
         Route(

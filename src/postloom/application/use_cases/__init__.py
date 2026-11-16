@@ -50,6 +50,13 @@ from postloom.application.use_cases.people import (
     PersonSummary,
     UpdatePerson,
 )
+from postloom.application.use_cases.posts import (
+    DeletePost,
+    IngestPost,
+    IngestPostCommand,
+    IngestPostResult,
+    UpdatePost,
+)
 from postloom.application.use_cases.reply_drafts import DraftReply, ReplyDraft
 from postloom.application.use_cases.search_content import (
     Method,
@@ -73,6 +80,7 @@ __all__ = [
     "Decision",
     "DeleteArticle",
     "DeletePerson",
+    "DeletePost",
     "DiscussionPreview",
     "DraftMessage",
     "DraftReply",
@@ -86,6 +94,9 @@ __all__ = [
     "IngestArticle",
     "IngestArticleCommand",
     "IngestArticleResult",
+    "IngestPost",
+    "IngestPostCommand",
+    "IngestPostResult",
     "ManageTopics",
     "Method",
     "OpenVault",
@@ -118,5 +129,6 @@ __all__ = [
     "TopicUsage",
     "UpdateArticle",
     "UpdatePerson",
+    "UpdatePost",
     "WaitingMessage",
 ]

@@ -54,7 +54,7 @@ Node kinds: `topic`, `series`, `article`, `post`, `comment`, `person`.
 | Edge | From -> to | Origin |
 |---|---|---|
 | `announces` | post -> article | structural (verified) |
-| `belongs_to` | article -> topic | taxonomy (LLM, asserted) |
+| `belongs_to` | article / stand-alone post -> topic | taxonomy (LLM, asserted) |
 | `part_of` | article -> series | LLM, asserted |
 | `commented_on` | comment -> post / article | structural |
 | `replied_to` | comment -> comment | structural |
@@ -64,6 +64,15 @@ Node kinds: `topic`, `series`, `article`, `post`, `comment`, `person`.
 
 The schema is enforced in `domain/graph.py`: an edge connecting the wrong node kinds cannot
 be constructed.
+
+A post either announces an article (it then belongs with that article: no topics of its
+own, its comments shown under the article) or stands alone. A stand-alone post is an item
+of the library like an article: it has topics, a page, a note in `vault/posts/` with a
+`topics` list, comments, search and chat. `relations.py` (`list_items`, `get_item`,
+`item_of_post`, `discussion_post`) is the one place that decides which is which, so the
+use cases handle both without special cases. A stand-alone post is matched again by its
+link, then by its text, never by its title (its first line), and a post already saved as
+an announcement is refused, so nothing is stored twice.
 
 ### Ids
 
@@ -254,7 +263,7 @@ writes, so it never overwrites an edit it hasn't read.
    when the provider is unreachable, search degrades to keywords with a warning.
 4. **Posts and comments** are indexed too, under the post's node: the announcement text,
    then one chunk per comment thread, written as "Name (replying to Name): text". A match
-   there is shown under the article it belongs to. Keeping the discussion out of the
+   there is shown under the article it belongs to, or as the stand-alone post itself. Keeping the discussion out of the
    article's node means link suggestions still compare articles by what they are about.
 
 ## Links between articles
@@ -425,4 +434,5 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-11-16 | Keyword search matches two-character pieces for scripts written without spaces | FTS5's tokenizer splits on spaces, so Chinese, Japanese and Thai text was one "word" and could not be found. Pieces are the standard dictionary-free approach. |
 | 2026-11-16 | Comments are marked as material, not instructions, in prompts | Pasted comments are written by other people and reach the model; postloom has no tools, so the risk is a misleading draft, which this reduces. |
 | 2026-11-15 | postloom sets each model's thinking level instead of using the default | A real `doctor` run showed Gemini 3.8 Flash taking 43-172s for a one-word answer at its default level; defaults vary per model and release, and thinking eats into the output limit. |
+| 2026-11-16 | Stand-alone posts are items of their own, without a model if need be | Most creators write many more posts than articles. A post is saved and searchable without a model (topics are chosen by a cheap call when one is connected, and a failed call still saves the post), so the main thing people have works on day one. |
 | 2026-11-15 | Requests borrow the wired container | Saving settings rewires the app; closing the old database under a running request made that request fail. |

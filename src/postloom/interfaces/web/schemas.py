@@ -18,6 +18,7 @@ from postloom.application.use_cases import (
     GraphData,
     IndexResult,
     IngestArticleResult,
+    IngestPostResult,
     OverviewData,
     PersonDetail,
     PersonSummary,
@@ -30,6 +31,7 @@ from postloom.application.use_cases import (
     TopicUsage,
 )
 from postloom.application.use_cases.usage import UsageSummary
+from postloom.domain.content import Post
 
 Json = dict[str, Any]
 
@@ -149,6 +151,21 @@ class IngestRequest(_Request):
     published_on: date | None = None
 
 
+class PostIngestRequest(_Request):
+    text: str = Field(min_length=1, max_length=50_000)
+    url: str | None = Field(default=None, max_length=2000)
+    published_on: date | None = None
+
+
+class PostUpdate(_Request):
+    """Only the fields that are sent change; null clears the link or date."""
+
+    id: str = Field(min_length=1, max_length=300)
+    topics: list[str] | None = Field(default=None, max_length=30)
+    url: str | None = Field(default=None, max_length=2000)
+    published_on: date | None = None
+
+
 class HistoryMessage(_Request):
     role: Literal["user", "assistant"]
     text: str = Field(max_length=20_000)
@@ -172,6 +189,7 @@ def article_summary(summary: ArticleSummary) -> Json:
         "topics": [{"name": t.name, "grade": t.grade.value} for t in summary.topics],
         "series": summary.series,
         "series_part": summary.series_part,
+        "kind": summary.kind,
     }
 
 
@@ -290,13 +308,17 @@ def suggest_result(result: SuggestResult) -> Json:
 
 
 def article_detail(detail: ArticleDetail) -> Json:
-    article = detail.article
+    item = detail.article
     discussion = [comment_view(c) for c in detail.discussion]
+    if isinstance(item, Post):
+        body, entities = item.text, []
+    else:
+        body, entities = item.body_markdown, list(item.entities)
     return {
         **article_summary(detail.summary),
-        "body_markdown": article.body_markdown,
-        "entities": list(article.entities),
-        "hashtags": list(article.hashtags),
+        "body_markdown": body,
+        "entities": entities,
+        "hashtags": list(item.hashtags),
         "posts": [
             {
                 "text": post.text,
@@ -354,6 +376,7 @@ def reply_draft(draft: ReplyDraft) -> Json:
 def overview(data: OverviewData) -> Json:
     return {
         "articles": data.articles,
+        "posts": data.posts,
         "messages": data.messages,
         "people": data.people,
         "waiting_total": data.waiting_total,
@@ -459,6 +482,21 @@ def ingest_result(
         "index": indexed,
         "index_error": index_error,
         "suggested_links": suggested,
+    }
+
+
+def post_ingest_result(
+    result: IngestPostResult, index: IndexResult | None, index_error: str | None
+) -> Json:
+    return {
+        "id": result.post.id,
+        "title": result.post.title,
+        "is_update": result.is_update,
+        "topics": [t.name for t in result.topics],
+        "warnings": list(result.warnings),
+        "note_path": str(result.note_path),
+        "index": None if index is None else {"chunks": index.chunks, "semantic": index.semantic},
+        "index_error": index_error,
     }
 
 

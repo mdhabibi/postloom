@@ -15,6 +15,7 @@ from postloom.application.use_cases import (
     IndexResult,
     IngestArticleCommand,
     IngestArticleResult,
+    IngestPostCommand,
     Passage,
     SearchResults,
     SyncReport,
@@ -51,6 +52,8 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _init(settings, opened)
         if args.command == "ingest":
             return _ingest(args, settings, opened)
+        if args.command == "post":
+            return _post(args, settings, opened)
         if args.command == "reindex":
             return _reindex(settings, opened)
         if args.command == "usage":
@@ -99,6 +102,19 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("--url", help="The article's LinkedIn URL.")
     ingest.add_argument("--post-url", help="The post's LinkedIn URL.")
     ingest.add_argument("--date", type=date.fromisoformat, help="Publish date, YYYY-MM-DD.")
+
+    post = commands.add_parser(
+        "post",
+        parents=[common],
+        help="Add a post that doesn't announce an article, from a text file.",
+        description=(
+            "Add a stand-alone post. Paste it into a text file first, e.g. "
+            "`pbpaste > post.txt` on macOS. Adding the same post again updates it."
+        ),
+    )
+    post.add_argument("file", type=Path, help="Text file with the pasted post.")
+    post.add_argument("--url", help="The post's LinkedIn URL.")
+    post.add_argument("--date", type=date.fromisoformat, help="Publish date, YYYY-MM-DD.")
 
     search = commands.add_parser(
         "search", parents=[common], help="Search your articles by keywords and meaning."
@@ -235,6 +251,31 @@ def _ingest(args: argparse.Namespace, settings: Settings, make_container: Contai
             suggested = container.suggest_links().execute()
             if suggested.added:
                 print(f"  Links:    {_count(suggested.added, 'related article')} suggested")
+    return 0
+
+
+def _post(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
+    file = Path(args.file).expanduser()
+    if not file.is_file():
+        raise ApplicationError(f"File not found: {file}")
+    command = IngestPostCommand(
+        text=file.read_text(encoding="utf-8"), url=args.url, published_on=args.date
+    )
+    with make_container(settings) as container:
+        result = container.ingest_post().execute(command)
+        status = "Updated" if result.is_update else "Added"
+        print(f'\n{status} post: "{result.post.title}"')
+        print(f"  Topics:   {', '.join(t.name for t in result.topics) or '(none)'}")
+        print(f"  Note:     {result.note_path}")
+        for warning in result.warnings:
+            print(f"  Warning:  {warning}")
+        try:
+            indexed = container.index_article().execute(result.post.id)
+        except (ProviderError, BudgetExceededError) as error:
+            print(f"  Warning:  Saved, but not indexed for search ({error}).")
+            print(f"            Run `{how_to_run('reindex')}` to retry.")
+        else:
+            print(f"  Search:   {_index_summary(indexed)}")
     return 0
 
 

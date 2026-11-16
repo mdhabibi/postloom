@@ -12,7 +12,8 @@ from collections import Counter
 from dataclasses import dataclass
 
 from postloom.application.ports.repository import GraphRepository
-from postloom.application.use_cases.relations import article_of_post, comments_by
+from postloom.application.use_cases.relations import comments_by, item_of_post, list_items
+from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER
 from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.provenance import Grade
@@ -26,7 +27,7 @@ DISCUSSED = "discussed"
 class GraphNode:
     id: NodeId
     kind: str
-    """"topic", "series", "article" or "person"."""
+    """"topic", "series", "article", "post" or "person"."""
     label: str
     weight: int
     """Topics and series: articles; articles: messages; people: messages."""
@@ -53,14 +54,14 @@ class GraphOverview:
 
     def execute(self) -> GraphData:
         repo = self._repository
-        articles = {a.id: a for a in repo.list_articles()}
+        articles = {a.id: a for a in list_items(repo)}
         topics = {t.id: t for t in repo.list_topics()}
         links: list[GraphLink] = []
         series: dict[NodeId, str] = {}
         per_group: Counter[NodeId] = Counter()
 
         for article in articles.values():
-            if article.series is not None:
+            if not isinstance(article, Post) and article.series is not None:
                 series[article.series.id] = article.series.name
             for edge in repo.edges_from(article.id):
                 if not edge.is_current:
@@ -80,7 +81,7 @@ class GraphOverview:
                 continue
             discussed: Counter[NodeId] = Counter()
             for comment in comments_by(repo, person.id):
-                article = article_of_post(repo, comment.post)
+                article = item_of_post(repo, comment.post)
                 if article is not None and article.id in articles:
                     discussed[article.id] += 1
             if not discussed:
@@ -97,7 +98,11 @@ class GraphOverview:
                 if per_group[t.id]
             ),
             *(GraphNode(sid, "series", name, per_group[sid]) for sid, name in series.items()),
-            *(GraphNode(a.id, "article", a.title, messages_on[a.id]) for a in articles.values()),
+            *(GraphNode(a.id, _kind(a), a.title, messages_on[a.id]) for a in articles.values()),
             *people,
         ]
         return GraphData(tuple(nodes), tuple(links))
+
+
+def _kind(item: Article | Post) -> str:
+    return "post" if isinstance(item, Post) else "article"
