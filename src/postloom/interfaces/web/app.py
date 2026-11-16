@@ -21,6 +21,7 @@ writes, edited notes are read first, so the app never overwrites an edit it hasn
 
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 import os
@@ -43,6 +44,7 @@ from starlette.staticfiles import StaticFiles
 
 from postloom import __version__, how_to_run
 from postloom.adapters.llm.base import LlmBackend
+from postloom.adapters.llm.local_embeddings import DEFAULT_LOCAL_MODEL, MULTILINGUAL_LOCAL_MODEL
 from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backend, provider_spec
 from postloom.application.errors import (
     ApplicationError,
@@ -230,6 +232,10 @@ def create_app(
                     "mode": settings.embeddings,
                     "space": space,
                     "local_model": settings.local_embedding_model,
+                    "local_models": {
+                        "english": DEFAULT_LOCAL_MODEL,
+                        "multilingual": MULTILINGUAL_LOCAL_MODEL,
+                    },
                     "available": container.embedder is not None,
                     "needs_reindex": bool(
                         container.embedder is not None and articles and not index_spaces.get(space)
@@ -586,10 +592,12 @@ def _json(
         args: list[Any] = [request]
         if body_model is not None:
             if _content_length(request) > MAX_BODY_BYTES:
-                return _error(413, "That is too much text for one request.")
+                return _error(413, TOO_LARGE)
             try:
-                raw = await request.json()
+                raw = await _read_json(request)
                 args.append(body_model.model_validate(raw))
+            except _TooLarge:
+                return _error(413, TOO_LARGE)
             except ValidationError as error:
                 return _error(422, _describe(error))
             except ValueError:
@@ -616,6 +624,23 @@ def _json(
             )
 
     return endpoint
+
+
+TOO_LARGE = "That is too much text for one request."
+
+
+class _TooLarge(Exception):
+    pass
+
+
+async def _read_json(request: Request) -> object:
+    """The JSON body, read with a size limit even when no length was declared."""
+    received = bytearray()
+    async for chunk in request.stream():
+        received += chunk
+        if len(received) > MAX_BODY_BYTES:
+            raise _TooLarge
+    return json.loads(received or b"null")
 
 
 def _id(request: Request) -> str:

@@ -16,12 +16,14 @@ import re
 import sqlite3
 import sys
 from collections.abc import Collection, Sequence
+from itertools import zip_longest
 from pathlib import Path
 
 from postloom.adapters.storage.database import MEMORY, SqliteDatabase
 from postloom.application.ports.embeddings import Vector
 from postloom.application.ports.search_index import ChunkHit, IndexedChunk
 from postloom.domain.graph import NodeId
+from postloom.domain.text import unspaced_pieces
 
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _MAX_QUERY_TOKENS = 32
@@ -120,18 +122,38 @@ class SqliteSearchIndex:
         return {str(row["vector_space"]): int(row["n"]) for row in rows}
 
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]:
+        hits: list[ChunkHit] = []
         expression = _fts_query(query)
-        if not expression:
-            return []
-        rows = self._database.query(
-            "SELECT c.id, c.node, c.idx, c.title, c.heading, c.text, "
-            "bm25(chunks_fts, 2.0, 1.5, 1.0) AS rank "
-            "FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
-            "WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
-            (expression, limit),
+        if expression:
+            rows = self._database.query(
+                "SELECT c.id, c.node, c.idx, c.title, c.heading, c.text, "
+                "bm25(chunks_fts, 2.0, 1.5, 1.0) AS rank "
+                "FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                "WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
+                (expression, limit),
+            )
+            # bm25() is "lower is better" and negative; flip it so higher is better.
+            hits = [_hit(row, -float(row["rank"])) for row in rows]
+        pieces = unspaced_pieces(query)[:_MAX_QUERY_TOKENS]
+        if pieces:
+            hits = _merge(hits, self._piece_search(pieces, limit), limit)
+        return hits
+
+    def _piece_search(self, pieces: list[str], limit: int) -> list[ChunkHit]:
+        """Chinese, Japanese, Thai...: the full-text index splits words on spaces, which
+        these scripts don't use, so match two-character pieces as substrings instead.
+        Scored by how many of the query's pieces a chunk contains."""
+        score = " + ".join(
+            "(instr(title, ?) > 0) * 2 + (instr(heading, ?) > 0) + (instr(text, ?) > 0)"
+            for _ in pieces
         )
-        # bm25() is "lower is better" and negative; flip it so higher is better.
-        return [_hit(row, -float(row["rank"])) for row in rows]
+        args: list[object] = [p for piece in pieces for p in (piece, piece, piece)]
+        rows = self._database.query(
+            f"SELECT id, node, idx, title, heading, text, ({score}) AS found FROM chunks "
+            "WHERE found > 0 ORDER BY found DESC, id LIMIT ?",
+            (*args, limit),
+        )
+        return [_hit(row, float(row["found"])) for row in rows]
 
     def vector_search(self, vector: Vector, space: str, limit: int) -> Sequence[ChunkHit]:
         candidates = self._load_vectors(space)
@@ -176,6 +198,16 @@ def _hit(row: sqlite3.Row, score: float) -> ChunkHit:
         title=row["title"],
         score=score,
     )
+
+
+def _merge(first: list[ChunkHit], second: list[ChunkHit], limit: int) -> list[ChunkHit]:
+    """Both result lists, without repeats, alternating so neither crowds out the other."""
+    merged: dict[tuple[NodeId, int], ChunkHit] = {}
+    for pair in zip_longest(first, second):
+        for hit in pair:
+            if hit is not None:
+                merged.setdefault((hit.node, hit.index), hit)
+    return list(merged.values())[:limit]
 
 
 def _fts_query(query: str) -> str:

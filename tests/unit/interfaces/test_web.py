@@ -819,3 +819,26 @@ def test_saving_settings_does_not_break_a_request_that_is_still_running(tmp_path
     assert state.container is not running and state.settings.owner_name == "Alex Author"
     with pytest.raises(Exception, match="closed"):
         running.repository.list_topics()  # released once its last request finished
+
+
+def test_a_link_that_isnt_a_web_address_is_refused(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    article = ingest(client)["id"]
+    reply = client.put("/api/article", json_body={"id": article, "url": "javascript:alert(1)"})
+    assert reply.status == 400 and "isn't a web link" in reply.json["error"]
+    assert client.get(f"/api/article?id={article}").json["url"] is None
+
+
+def test_a_body_without_a_declared_length_is_still_limited(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    huge = b'{"name": "' + b"x" * 2_100_000 + b'"}'
+    reply = client.post("/api/topics", raw_body=huge, headers={"content-length": ""})
+    assert reply.status == 413
+
+
+def test_the_search_language_can_be_chosen(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    models = client.get("/api/status").json["embeddings"]["local_models"]
+    reply = client.put("/api/settings", json_body={"local_embedding_model": models["multilingual"]})
+    assert reply.status == 200
+    assert client.get("/api/status").json["embeddings"]["local_model"] == models["multilingual"]

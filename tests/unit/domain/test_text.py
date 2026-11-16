@@ -1,3 +1,5 @@
+import pytest
+
 from postloom.domain.text import (
     content_size,
     detect_series_part,
@@ -112,3 +114,79 @@ def test_containment_ignores_markdown_case_and_punctuation() -> None:
         "## Hit rate matters\n\nMeasure **precision** and *recall* before you ship the cache!"
     )
     assert containment(pasted, restored) == 1.0
+
+
+def test_only_web_links_are_accepted() -> None:
+    from postloom.domain.errors import InvalidUrlError
+    from postloom.domain.text import web_url
+
+    assert web_url("linkedin.com/pulse/x") == "https://linkedin.com/pulse/x"
+    assert web_url(" http://example.com/a ") == "http://example.com/a"
+    assert web_url("") is None and web_url(None) is None
+    for bad in (
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "data:text/html,x",
+        "file:///etc/x",
+        "ftp://example.com/x",
+        "https://",
+    ):
+        with pytest.raises(InvalidUrlError):
+            web_url(bad)
+
+
+# -- slugs: ids for every language ----------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "slug"),
+    [  # Latin text: exactly what earlier versions produced, so stored ids stay valid
+        ("Measuring What Matters - Part 3", "measuring-what-matters-part-3"),
+        ("José Núñez", "jose-nunez"),
+        ("Straße", "strae"),
+        ("Łukasz Żółć", "ukasz-zoc"),
+        ("½ price ¡now!", "12-price-now"),
+        ("C++ & Rust", "c-rust"),
+        ("🚀🚀", "untitled"),
+        ("", "untitled"),
+    ],
+)
+def test_latin_slugs_are_unchanged(text: str, slug: str) -> None:
+    assert slugify(text) == slug
+
+
+def test_names_in_other_scripts_get_ids_of_their_own() -> None:
+    names = ["علی رضایی", "مریم احمدی", "王伟", "李娜", "Иван Петров", "नमस्ते दुनिया"]
+    slugs = [slugify(name) for name in names]
+    assert len(set(slugs)) == len(names) and "untitled" not in slugs
+    assert slugify("علی رضایی") == "علی-رضایی"
+    assert slugify("Иван Петров") == slugify("иван петров")  # case doesn't matter
+    assert slugify("AI 智能 agents") == "ai-智能-agents"
+
+
+def test_slugs_never_name_a_windows_device() -> None:
+    assert slugify("Con") == "con-0" and slugify("NUL") == "nul-0"
+
+
+def test_questions_in_unspaced_scripts_are_judged_by_their_subject() -> None:
+    from postloom.domain.text import significant_terms, term_coverage, unspaced_pieces
+
+    chinese = "语义缓存可以重复使用大语言模型的答案"
+    assert unspaced_pieces("缓存是") == ["缓存", "存是"]
+    assert significant_terms("缓存是什么\uff1f") == ["缓存"]  # "what is" is grammar
+    assert term_coverage(significant_terms("缓存是什么\uff1f"), chinese) == 1.0
+    assert term_coverage(significant_terms("什么是量子计算"), chinese) == 0.0
+    japanese = "セマンティックキャッシュは大規模言語モデルの回答を再利用します"
+    assert term_coverage(significant_terms("キャッシュとは何ですか"), japanese) >= 0.8
+    assert significant_terms("how does a semantic cache work") == ["semantic", "cache", "work"]
+
+
+def test_english_is_told_apart_from_other_languages() -> None:
+    from postloom.domain.text import looks_english
+
+    assert looks_english(fixture_text("semantic_caching_part3", "article.txt"))
+    assert not looks_english("حافظه نهان معنایی پاسخ یک مدل زبانی را دوباره استفاده می‌کند.")
+    assert not looks_english(
+        "Der semantische Cache verwendet die Antworten eines Modells wieder, "
+        "wenn eine neue Frage einer früheren Frage ähnlich ist."
+    )
+    assert not looks_english("语义缓存可以重复使用大语言模型的答案")
+    assert looks_english("")

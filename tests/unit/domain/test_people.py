@@ -63,3 +63,12 @@ def test_observing_the_same_headline_is_a_no_op() -> None:
     person = Person("Jane Example").observe("Engineer at Acme", T0)
     assert person.observe("Engineer at Acme", T1) is person
     assert person.observe("   ", T1) is person
+
+
+def test_a_profile_name_can_never_contain_a_path() -> None:
+    from postloom.domain.errors import InvalidProfileUrlError
+
+    for bad in ("../../escaped", "a/b", "..", "x"):
+        with pytest.raises(InvalidProfileUrlError):
+            ProfileUrl(bad)
+    assert ProfileUrl("jane-example-42").slug == "jane-example-42"

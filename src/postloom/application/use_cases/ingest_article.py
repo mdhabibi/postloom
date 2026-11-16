@@ -42,7 +42,9 @@ from postloom.domain.text import (
     detect_series_part,
     extract_hashtags,
     extract_urls,
+    looks_english,
     slugify,
+    web_url,
 )
 
 PARSER = "parser"
@@ -86,11 +88,15 @@ class IngestArticle:
         repository: GraphRepository,
         vault: Vault,
         clock: Clock,
+        *,
+        english_only_search: bool = False,
     ) -> None:
         self._extractor = extractor
         self._repository = repository
         self._vault = vault
         self._clock = clock
+        self._english_only_search = english_only_search
+        """True when search by meaning runs on a model that only understands English."""
 
     def execute(self, command: IngestArticleCommand) -> IngestArticleResult:
         taxonomy = list(self._repository.list_topics())
@@ -119,6 +125,12 @@ class IngestArticle:
         warnings: list[str] = []
         topics = _match_topics(extracted.topics, taxonomy, warnings)
         _check_coverage(command.article_text, extracted, warnings)
+        if self._english_only_search and not looks_english(command.article_text):
+            warnings.append(
+                "This article isn't in English, but search by meaning uses an English-only "
+                "model. In Settings, set Search by meaning to Many languages for better "
+                "results; keyword search works either way."
+            )
 
         previous = same_link or _same_text(existing, command.article_text)
         article = _build_article(command, extracted)
@@ -146,7 +158,7 @@ class IngestArticle:
         post = Post(
             key=Post.key_for_article(article),
             text=command.post_text.strip(),
-            url=command.post_url or (old_post.url if old_post else None),
+            url=web_url(command.post_url) or (old_post.url if old_post else None),
             published_on=command.published_on or (old_post.published_on if old_post else None),
             hashtags=tuple(extract_hashtags(command.post_text)),
             links=tuple(extract_urls(command.post_text)),
@@ -275,7 +287,7 @@ def _build_article(command: IngestArticleCommand, extracted: ExtractedContent) -
         title=extracted.title.strip(),
         body_markdown=extracted.body_markdown.strip(),
         summary=extracted.summary.strip(),
-        url=command.article_url,
+        url=web_url(command.article_url),
         published_on=command.published_on,
         series=series,
         series_part=series_part if series is not None else None,

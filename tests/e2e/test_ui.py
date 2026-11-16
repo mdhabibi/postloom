@@ -51,6 +51,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 CACHING = "#/article/article%3Acaching-basics"
+ANSWER = "Pick the threshold from your own data [1]. See [the guide](https://example.com/a[1]b)."
+"""A citation in text, and one inside a link that must stay part of the link."""
 JANE = "#/person/person%3Ajane-example"
 
 
@@ -82,7 +84,7 @@ def app_url(home: Path) -> Iterator[str]:
             offline,
             extractor=FakeExtractor(part3_extraction()),
             embedder=FakeEmbedder(),
-            chat=FakeChat(reply="Pick the threshold from your own data [1]."),
+            chat=FakeChat(reply=ANSWER),
             thread_parser=FakeThreadParser(),
         )
 
@@ -191,6 +193,8 @@ def test_a_question_is_answered_with_its_sources(page: Page) -> None:
     expect(answer).to_contain_text("Pick the threshold from your own data")
     expect(answer.locator(".sources")).to_contain_text("[1]")
     expect(answer.locator(".uncited")).to_have_count(0)
+    expect(answer.locator("button.cite")).to_have_count(1)  # not inside the link
+    expect(answer.locator("a")).to_have_attribute("href", "https://example.com/a[1]b")
 
 
 # -- editing and deleting --------------------------------------------------------------
@@ -281,3 +285,39 @@ def test_a_note_that_cant_be_read_is_named_until_it_is_fixed(page: Page, home: P
     change(person, "name: [Jane", "name: Jane Example")
     page.click(".banner .button")
     expect(page.locator(".banner")).to_have_count(0)
+
+
+# -- the main daily flow: pasting a comment section --------------------------------------
+def test_a_pasted_comment_section_is_reviewed_and_saved_once(page: Page) -> None:
+    agents = "#/article/article%3Aagents-in-production"
+    visit(page, agents)
+    page.get_by_role("button", name="Add comments").click()
+    page.fill("#comments-paste", "Jane Example\nHow do you choose the distance threshold?\n...")
+    page.get_by_role("button", name="Read comments").click()
+    items = page.locator(".review-item")
+    expect(items).to_have_count(5)
+    page.get_by_role("button", name="Save comments").click()
+    expect(page.locator(".comment-text")).to_have_count(5)
+    expect(page.locator("#main")).to_contain_text("How do you choose the distance threshold")
+
+    # Pasting the same section again recognises every message and adds nothing.
+    page.get_by_role("button", name="Add more comments").click()
+    page.fill("#comments-paste", "the same section again")
+    page.get_by_role("button", name="Read comments").click()
+    expect(page.locator(".saved-badge")).to_have_count(5)
+    page.get_by_role("button", name="Save comments").click()
+    expect(page.locator(".toast")).to_contain_text("Nothing new to save")
+    expect(page.locator(".comment-text")).to_have_count(5)
+
+
+def test_right_to_left_text_reads_right_to_left(page: Page) -> None:
+    visit(page, CACHING)
+    page.click(".article-actions > .button")
+    page.fill("#edit_summary", "چگونه یک حافظه نهان معنایی را بسنجیم.")
+    page.click(".editor button[type=submit]")
+    summary = page.locator(".summary")
+    expect(summary).to_contain_text("حافظه نهان")
+    assert summary.evaluate("node => getComputedStyle(node).direction") == "rtl"
+    assert (
+        page.locator(".prose p").first.evaluate("node => getComputedStyle(node).direction") == "ltr"
+    )
