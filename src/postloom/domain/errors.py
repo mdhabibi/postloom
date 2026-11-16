@@ -15,3 +15,11 @@ class InvalidEdgeError(DomainError):
 
 class EmptyContentError(DomainError):
     """Raised when required text (an article body, a comment) is empty."""
+
+
+class InvalidUrlError(DomainError):
+    """A link that isn't a web address."""
+
+
+class InvalidKeyError(DomainError):
+    """A key that can't be an identity: keys become file names, so they must be plain."""

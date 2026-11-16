@@ -54,3 +54,21 @@ def test_cutoffs_follow_the_embedder_in_use(
     settings = Settings(home=tmp_path, provider="gemini", api_key="k")  # configured for local
     with build_container(settings, backend=FakeBackend(provider="gemini")) as container:
         assert container.min_similarity == 0.66  # Gemini's calibration, not the local model's
+
+
+def test_only_the_english_local_model_counts_as_english_only(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from postloom.adapters.llm.local_embeddings import MULTILINGUAL_LOCAL_MODEL, LocalEmbeddings
+
+    settings = Settings(home=tmp_path)
+    english = build_container(settings, embedder=LocalEmbeddings(tmp_path))
+    many = build_container(
+        replace(settings, local_embedding_model=MULTILINGUAL_LOCAL_MODEL),
+        embedder=LocalEmbeddings(tmp_path, MULTILINGUAL_LOCAL_MODEL),
+    )
+    try:
+        assert english.english_only_search and not many.english_only_search
+    finally:
+        english.close()
+        many.close()

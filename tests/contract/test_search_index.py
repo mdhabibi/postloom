@@ -142,3 +142,26 @@ def test_vector_spaces_count_chunks_with_vectors(make: Callable[[], SearchIndex]
         NodeId("article:plain"), [indexed(chunk(NodeId("article:plain"), 0, "", "x"), None)]
     )
     assert index.vector_spaces() == {SPACE: 3}
+
+
+@adapters
+def test_keyword_search_works_in_every_script(make: Callable[[], SearchIndex]) -> None:
+    index = make()
+    texts = {
+        "fa": "حافظه نهان معنایی پاسخ مدل زبانی را دوباره استفاده می‌کند",
+        "ru": "Семантический кэш повторно использует ответы модели",
+        "zh": "语义缓存可以重复使用大语言模型的答案",
+        "ja": "セマンティックキャッシュは大規模言語モデルの回答を再利用します",
+    }
+    for key, text in texts.items():
+        node = NodeId(f"article:{key}")
+        index.replace_chunks(node, [indexed(chunk(node, 0, "", text), None)])
+    for query, expected in [
+        ("حافظه", "fa"),
+        ("КЭШ", "ru"),
+        ("语义缓存", "zh"),  # written without spaces between words
+        ("キャッシュ", "ja"),
+    ]:
+        hits = index.keyword_search(query, 5)
+        assert [h.node for h in hits][:1] == [NodeId(f"article:{expected}")], query
+    assert index.keyword_search("量子计算", 5) == []  # pieces that appear nowhere

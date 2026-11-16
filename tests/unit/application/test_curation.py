@@ -84,7 +84,7 @@ def test_the_link_identifies_an_article_and_survives_a_re_ingest(tmp_path: Path)
         )
         assert again.article.id == CACHING and again.is_update
         plain = c.ingest_article().execute(IngestArticleCommand(text, "p"))
-        assert plain.article.url == "linkedin.com/pulse/caching-basics-abc123"  # not wiped
+        assert plain.article.url == "https://linkedin.com/pulse/caching-basics-abc123"  # kept
         assert plain.article.published_on == date(2026, 10, 1)
 
 
@@ -271,3 +271,26 @@ def test_changing_only_the_capitals_of_a_topic_keeps_its_links(tmp_path: Path) -
         c.topics().update(Topic("MLOps").id, name="MLops")
         assert "MLops" in {t.name for t in c.repository.list_topics()}
         assert [p.name for p in (tmp_path / "vault" / "topics").glob("ML*.md")] == ["MLops.md"]
+
+
+def test_a_non_english_article_warns_when_search_only_understands_english(tmp_path: Path) -> None:
+    from postloom.application.defaults import DEFAULT_TOPICS
+    from postloom.application.use_cases.ingest_article import IngestArticle
+
+    persian = "حافظه نهان معنایی پاسخ یک مدل زبانی را دوباره استفاده می‌کند. " * 20
+    with open_home(tmp_path, title="حافظه نهان معنایی", body_markdown=persian) as c:
+        c.seed_topics().execute(DEFAULT_TOPICS)
+        assert c.extractor is not None
+
+        def ingest(english_only: bool) -> list[str]:
+            use_case = IngestArticle(
+                c.extractor,  # type: ignore[arg-type]
+                c.repository,
+                c.vault,
+                c.clock,
+                english_only_search=english_only,
+            )
+            return list(use_case.execute(IngestArticleCommand(persian, "پست")).warnings)
+
+        assert any("isn't in English" in w for w in ingest(english_only=True))
+        assert not any("isn't in English" in w for w in ingest(english_only=False))

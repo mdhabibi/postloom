@@ -7,6 +7,26 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+### Fixed
+- An edited note could make postloom write a Markdown file outside the vault. Ids from
+  notes are now validated and such a note is reported as unreadable.
+- Commenters whose names are written in Persian, Arabic, Chinese, Cyrillic, Hindi and
+  similar scripts all became one person. They now get ids of their own (Latin ids are
+  unchanged).
+- Keyword search and chat found nothing in Chinese, Japanese or Thai text.
+- Right-to-left text (Persian, Arabic, Hebrew) was shown left to right.
+- A `javascript:` link could be saved as an article's LinkedIn link; only web links are
+  accepted now. Citation numbers inside a link no longer break it.
+- Request bodies without a declared length weren't size-limited.
+
+### Added
+- Settings → Search by meaning → Language of your writing: English or Many languages.
+  Adding an article that isn't in English while the English-only model is active shows a
+  hint.
+
+### Changed
+- Reply drafts and chat treat comments as material, never as instructions to follow.
+
 ## [0.1.0] - 2026-11-16
 
 The first release.

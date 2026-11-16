@@ -25,6 +25,12 @@ class ProfileUrl:
 
     slug: str
 
+    def __post_init__(self) -> None:
+        # Also enforced here, not only in ``parse``: a profile can be built from an id
+        # read back from a note, and its slug becomes part of a file name.
+        if not _VALID_SLUG.match(self.slug):
+            raise InvalidProfileUrlError(f"invalid profile name: {self.slug!r}")
+
     @classmethod
     def parse(cls, raw: str) -> ProfileUrl:
         text = raw.strip()

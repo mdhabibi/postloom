@@ -3,6 +3,8 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 from postloom.adapters.vault.journal import FileEdgeJournal
 from postloom.adapters.vault.markdown_vault import MarkdownVault
 from postloom.application.ports.vault import ArticleNote, PostNote
@@ -416,3 +418,66 @@ def test_replies_survive_reordering_and_a_reply_to_nothing_becomes_a_comment(
     assert (answer.reply_to, answer.thread, answer.is_own) == (question.id, question.id, True)
     assert (orphan.reply_to, orphan.thread) == (None, None)
     assert [p.name for p in snapshot.people] == ["Sam"]  # recreated from the comments
+
+
+# -- notes can't steer postloom outside the vault --------------------------------------
+def test_ids_that_would_point_outside_the_vault_are_refused(tmp_path: Path) -> None:
+    written(tmp_path)
+    write(
+        tmp_path,
+        "posts/evil.md",
+        "---\nid: post:../../../escaped\ntype: post\n"
+        f"announces: '[[articles/{ARTICLE.slug}]]'\n---\n\nText\n",
+    )
+    write(
+        tmp_path,
+        "articles/evil.md",
+        "---\nid: article:../../escaped\ntype: article\ntitle: T\n---\n\n# T\n\nBody\n",
+    )
+    write(
+        tmp_path,
+        "discussions/evil.md",
+        "---\nid: discussion:x\ntype: discussion\n---\n\n"
+        '> **Eve** %%{"n":0,"by":"person:../../escaped","name":"Eve"}%%\n> Hi\n',
+    )
+    problems = {p.path: p.reason for p in MarkdownVault(tmp_path).read().problems}
+    assert set(problems) == {"posts/evil.md", "articles/evil.md", "discussions/evil.md"}
+    assert "isn't valid" in problems["posts/evil.md"]
+    assert "invalid profile name" in problems["discussions/evil.md"]
+
+
+def test_the_vault_never_writes_a_note_outside_its_folders(tmp_path: Path) -> None:
+    from postloom.adapters.vault.markdown_vault import VaultPathError
+
+    vault = MarkdownVault(tmp_path / "vault")
+    with pytest.raises(VaultPathError):
+        vault._write(tmp_path / "vault" / "posts" / ".." / ".." / "x.md", {}, "")  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(VaultPathError):
+        vault._remove(tmp_path / "vault" / "notes.md")  # pyright: ignore[reportPrivateUsage]
+    assert list(tmp_path.rglob("*.md")) == []
+
+
+def test_a_library_in_other_scripts_round_trips(tmp_path: Path) -> None:
+    article = Article(title="حافظه نهان معنایی", body_markdown="متن مقاله.")
+    article = Article(title=article.title, body_markdown=article.body_markdown, key=article.slug)
+    post = Post(key=article.slug, text="مقاله جدید منتشر شد")
+    topic = Topic("بازیابی")
+    ali, maryam, wang = Person("علی رضایی"), Person("مریم احمدی"), Person("王伟")
+    assert len({ali.id, maryam.id, wang.id}) == 3
+    comments = [
+        Comment(post.id, ali.id, ali.name, "سوال من این است", 0),
+        Comment(post.id, maryam.id, maryam.name, "عالی بود", 1),
+        Comment(post.id, wang.id, wang.name, "很好", 2),
+    ]
+    vault = MarkdownVault(tmp_path)
+    vault.write_topic(topic)
+    vault.write_article(article, post, [topic])
+    vault.write_discussion(article, post, comments, {p.id: p for p in (ali, maryam, wang)})
+    for person in (ali, maryam, wang):
+        vault.write_person(person, [article])
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    assert snapshot.articles[0].article == article and snapshot.articles[0].topics == (topic.id,)
+    assert {p.id for p in snapshot.people} == {ali.id, maryam.id, wang.id}
+    assert sorted(snapshot.comments, key=lambda c: c.position) == comments
+    assert (tmp_path / "articles" / f"{article.slug}.md").exists()

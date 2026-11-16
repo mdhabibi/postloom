@@ -34,6 +34,7 @@ from postloom.domain.content import Article, Series, Topic
 from postloom.domain.discussion import OWNER, without_authors
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.provenance import Grade, Origin, Provenance
+from postloom.domain.text import web_url
 
 USER = "user"
 
@@ -114,7 +115,7 @@ class UpdateArticle:
         if article.series is None:
             article = replace(article, series_part=None)
         if not isinstance(url, _Unset):
-            article = replace(article, url=(url or "").strip() or None)
+            article = replace(article, url=web_url(url))
         if not isinstance(published_on, _Unset):
             article = replace(article, published_on=published_on)
 
