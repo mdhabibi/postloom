@@ -412,7 +412,7 @@ def test_a_second_start_opens_the_running_postloom(
         assert already_running(tmp_path) is None  # a different data folder
 
         opened: list[str] = []
-        monkeypatch.setattr("webbrowser.open", opened.append)
+        monkeypatch.setattr("postloom.interfaces.cli.main.open_in_browser", opened.append)
         code = main(["--home", str(home), "start"], make_container=no_key_container)
         assert code == 0 and opened == [f"http://127.0.0.1:{port}/"]
     finally:

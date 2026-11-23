@@ -86,3 +86,20 @@ def test_the_suggested_model_fits_the_memory() -> None:
     assert recommended(64) == "qwen3.5:27b"
     found = memory_gb()
     assert found is None or found > 0.5
+
+
+def test_on_a_mac_the_browser_is_opened_with_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from postloom.interfaces.desktop import shortcuts
+
+    ran: list[list[str]] = []
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[bytes]:
+        ran.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert shortcuts.open_in_browser("http://127.0.0.1:8767/")
+    assert ran == [["open", "http://127.0.0.1:8767/"]]

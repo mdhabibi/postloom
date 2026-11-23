@@ -223,6 +223,30 @@ def start_in_background(home: Path, python: Path | None = None) -> subprocess.Po
     )
 
 
+def open_in_browser(url: str) -> bool:
+    """Open the address in the default browser and bring it to the front.
+
+    macOS's own `open` is used there: Python's `webbrowser` goes through AppleScript, which
+    did nothing when started from the Postloom icon.
+    """
+    try:
+        if sys.platform == "darwin":
+            done = subprocess.run(["open", url], capture_output=True, check=False, timeout=30)
+            if done.returncode == 0:
+                return True
+        elif sys.platform == "win32":
+            os.startfile(url)  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    import webbrowser
+
+    try:
+        return webbrowser.open(url)
+    except webbrowser.Error:
+        return False
+
+
 def log_to_file(home: Path) -> Path:
     """Send this process's output to the data folder's log (no terminal to show it)."""
     log = home / LOG_FILE
