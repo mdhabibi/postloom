@@ -57,3 +57,26 @@ class ContentExtractor(Protocol):
         ...
 
     def extract(self, request: ExtractionRequest) -> ExtractedContent: ...
+
+
+class PostTopics(BaseModel):
+    """What one small model call says about a post that stands on its own."""
+
+    model_config = ConfigDict(frozen=True)
+
+    topics: tuple[str, ...] = Field(
+        default=(), description="Zero to three names chosen only from allowed_topics."
+    )
+    entities: tuple[str, ...] = Field(
+        default=(), description="Technologies, methods, libraries and organisations named."
+    )
+
+
+class PostClassifier(Protocol):
+    """Chooses a post's topics. Posts keep their text exactly as pasted, so this is the
+    only thing a model is needed for when adding one."""
+
+    @property
+    def name(self) -> str: ...
+
+    def classify(self, post_text: str, allowed_topics: tuple[str, ...]) -> PostTopics: ...

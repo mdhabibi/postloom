@@ -106,7 +106,8 @@ class _Reader:
         posts: list[PostNote] = []
         for path, meta, body in notes["post"]:
             with self._reporting(path):
-                posts.append(self._post(meta, body))
+                note = self._post(meta, body)
+                posts.append(replace(note, path=path.relative_to(self._root).as_posix()))
         comments: list[Comment] = []
         for path, meta, body in notes["discussion"]:
             with self._reporting(path):
@@ -270,7 +271,8 @@ class _Reader:
         )
         target = link_target(meta.get("announces"))
         announces = node_id(NodeKind.ARTICLE, target.rsplit("/", 1)[-1]) if target else None
-        return PostNote(post, announces)
+        topics = tuple(dict.fromkeys(self._topic_link(v) for v in _items(meta, "topics")))
+        return PostNote(post, announces, () if announces else topics)
 
     # -- discussions ----------------------------------------------------------------
     def _discussion(self, meta: Meta, body: str) -> list[Comment]:

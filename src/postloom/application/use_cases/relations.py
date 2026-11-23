@@ -19,15 +19,24 @@ from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.provenance import Grade, Origin, Provenance
 
 __all__ = [
+    "Item",
     "article_of_post",
     "articles_discussed_by",
     "comments_by",
     "current_topics",
+    "discussion_post",
+    "get_item",
+    "is_standalone",
+    "item_of_post",
+    "items_discussed_by",
+    "list_items",
     "post_of",
     "set_series",
     "set_topics",
+    "standalone_posts",
     "write_article_note",
     "write_discussion_note",
+    "write_item_note",
     "write_mentions",
     "write_person_note",
 ]
@@ -62,13 +71,71 @@ def article_of_post(repository: GraphRepository, post: NodeId) -> Article | None
     return None
 
 
-def articles_discussed_by(repository: GraphRepository, person_id: NodeId) -> list[Article]:
-    articles: dict[NodeId, Article] = {}
+Item = Article | Post
+"""Something in the library: an article (with the post that announced it) or a post that
+stands on its own. Comments always belong to a post: for an article, its announcement."""
+
+
+def is_standalone(repository: GraphRepository, post_id: NodeId) -> bool:
+    return not any(
+        e.kind is EdgeKind.ANNOUNCES and e.is_current for e in repository.edges_from(post_id)
+    )
+
+
+def standalone_posts(repository: GraphRepository) -> list[Post]:
+    return [p for p in repository.list_posts() if is_standalone(repository, p.id)]
+
+
+def get_item(repository: GraphRepository, item_id: NodeId) -> Item | None:
+    """The article or stand-alone post with this id. An announcement post isn't an item
+    of its own: its article is."""
+    if item_id.startswith("post:"):
+        post = repository.get_post(item_id)
+        return post if post is not None and is_standalone(repository, post.id) else None
+    return repository.get_article(item_id)
+
+
+def list_items(repository: GraphRepository) -> list[Item]:
+    return [*repository.list_articles(), *standalone_posts(repository)]
+
+
+def discussion_post(repository: GraphRepository, item_id: NodeId) -> Post | None:
+    """The post whose comments are the item's discussion."""
+    if item_id.startswith("post:"):
+        return repository.get_post(item_id)
+    return post_of(repository, item_id)
+
+
+def item_of_post(repository: GraphRepository, post_id: NodeId) -> Item | None:
+    """What a post's comments are about: the article it announces, or the post itself."""
+    article = article_of_post(repository, post_id)
+    if article is not None:
+        return article
+    post = repository.get_post(post_id)
+    return post if post is not None and is_standalone(repository, post_id) else None
+
+
+def items_discussed_by(repository: GraphRepository, person_id: NodeId) -> list[Item]:
+    items: dict[NodeId, Item] = {}
     for post in dict.fromkeys(c.post for c in comments_by(repository, person_id)):
-        article = article_of_post(repository, post)
-        if article is not None:
-            articles.setdefault(article.id, article)
-    return list(articles.values())
+        item = item_of_post(repository, post)
+        if item is not None:
+            items.setdefault(item.id, item)
+    return list(items.values())
+
+
+def articles_discussed_by(repository: GraphRepository, person_id: NodeId) -> list[Article]:
+    return [i for i in items_discussed_by(repository, person_id) if isinstance(i, Article)]
+
+
+def write_item_note(repository: GraphRepository, vault: Vault, item_id: NodeId) -> None:
+    """Rewrite the note of an article or a stand-alone post from the graph."""
+    if not item_id.startswith("post:"):
+        rewrite_article_note(repository, vault, item_id)
+        return
+    post = get_item(repository, item_id)
+    if isinstance(post, Post):
+        vault.write_post(post, current_topics(repository, post.id))
 
 
 def current_topics(repository: GraphRepository, article_id: NodeId) -> list[Topic]:
@@ -145,7 +212,7 @@ def set_series(
 
 
 def write_discussion_note(
-    repository: GraphRepository, vault: Vault, article: Article, post: Post
+    repository: GraphRepository, vault: Vault, item: Item, post: Post
 ) -> None:
     comments = repository.comments_on(post.id)
     people = {
@@ -153,13 +220,13 @@ def write_discussion_note(
         for c in comments
         if (person := repository.get_person(c.author)) is not None
     }
-    vault.write_discussion(article, post, comments, people)
+    vault.write_discussion(item, post, comments, people)
 
 
 def write_person_note(repository: GraphRepository, vault: Vault, person_id: NodeId) -> None:
     person = repository.get_person(person_id)
     if person is not None:
-        vault.write_person(person, articles_discussed_by(repository, person_id))
+        vault.write_person(person, items_discussed_by(repository, person_id))
 
 
 def write_mentions(repository: GraphRepository, vault: Vault, article: Article) -> None:

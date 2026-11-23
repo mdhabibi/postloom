@@ -135,9 +135,27 @@ class MarkdownVault:
         self._write(self._post_path(post), post_meta, post_body)
         return article_path
 
+    def write_post(self, post: Post, topics: Sequence[Topic]) -> Path:
+        path = self._post_path(post)
+        meta: Meta = {
+            "id": post.id,
+            "type": "post",
+            "url": post.url,
+            "published_on": post.published_on,
+            "topics": [wikilink(_topic_filename(t)) for t in topics],
+            "hashtags": list(post.hashtags),
+            "links": list(post.links),
+            "banner": post.banner_path,
+        }
+        body = post.text
+        if post.banner_path:
+            body = f"![[{post.banner_path}]]\n\n{post.text}"
+        self._write(path, meta, body)
+        return path
+
     def write_discussion(
         self,
-        article: Article,
+        item: Article | Post,
         post: Post,
         comments: Sequence[Comment],
         people: Mapping[NodeId, Person],
@@ -155,14 +173,17 @@ class MarkdownVault:
         meta: Meta = {
             "id": f"discussion:{post.key}",
             "type": "discussion",
-            "article": wikilink(f"articles/{article.slug}", article.title),
-            "post": wikilink(f"posts/{post.key}", "Announcement post"),
+            "article": _item_link(item) if isinstance(item, Article) else None,
+            "post": wikilink(
+                f"posts/{post.key}",
+                "Announcement post" if isinstance(item, Article) else post.title,
+            ),
             "comments": len(comments),
             "people": sorted(set(links.values())),
         }
         by_id = {c.id: c for c in comments}
         numbers = {c.id: n for n, c in enumerate(sorted(comments, key=lambda c: c.position))}
-        lines = [f"# Discussion: {article.title}"]
+        lines = [f"# Discussion: {item.title}"]
         for comment in conversation_order(comments):
             if comment.reply_to is None or comment.reply_to not in by_id:
                 lines += ["", f"## Thread started by {comment.author_name}", ""]
@@ -178,7 +199,7 @@ class MarkdownVault:
         self._write(path, meta, "\n".join(lines))
         return path
 
-    def write_person(self, person: Person, articles: Sequence[Article]) -> Path:
+    def write_person(self, person: Person, items: Sequence[Article | Post]) -> Path:
         with self._lock:
             previous = self._people().get(person.id)
             path = self._person_path(person)
@@ -191,7 +212,8 @@ class MarkdownVault:
             "linkedin": person.profile.url if person.profile else None,
             "headline": person.headline,
             "tags": list(person.tags),
-            "articles": [wikilink(f"articles/{a.slug}", a.title) for a in articles],
+            "articles": [_item_link(i) for i in items if isinstance(i, Article)],
+            "posts": [_item_link(i) for i in items if isinstance(i, Post)],
             "headlines": [
                 {
                     "headline": o.headline,
@@ -225,6 +247,10 @@ class MarkdownVault:
         if post is not None:
             self._remove(self._post_path(post))
             self._remove(self._discussion_path(post.key))
+
+    def remove_post(self, post: Post) -> None:
+        self._remove(self._post_path(post))
+        self._remove(self._discussion_path(post.key))
 
     def remove_person(self, person: Person) -> None:
         with self._lock:
@@ -403,6 +429,12 @@ def _is_someone_elses(path: Path, person: NodeId) -> bool:
         return False
     meta = _meta_of(path)
     return meta is None or meta.get("id") != person
+
+
+def _item_link(item: Article | Post) -> str:
+    if isinstance(item, Article):
+        return wikilink(f"articles/{item.slug}", item.title)
+    return wikilink(f"posts/{item.key}", item.title)
 
 
 def _topic_filename(topic: Topic) -> str:

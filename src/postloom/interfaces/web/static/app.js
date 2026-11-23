@@ -339,15 +339,16 @@ function renderSidebar() {
   list.replaceChildren(...(visible.length ? visible.map((a) => h("li", {},
     h("a", { href: `#/article/${encodeURIComponent(a.id)}`, "aria-current": a.id === current ? "page" : null },
       warp(a.topics),
-      h("span", {}, h("span", { class: "title" }, a.title), h("span", { class: "meta" },
-        [formatDate(a.published_on), a.series && `${a.series}${a.series_part ? `, part ${a.series_part}` : ""}`]
+      h("span", {}, h("span", { class: "title", dir: "auto" }, a.title), h("span", { class: "meta" },
+        [a.kind === "post" ? "Post" : null, formatDate(a.published_on),
+          a.series && `${a.series}${a.series_part ? `, part ${a.series_part}` : ""}`]
           .filter(Boolean).join(", ") || "Undated")))))
-    : [h("li", { class: "empty" }, state.topicFilter ? "No articles in this thread yet." : "No articles yet.")]));
+    : [h("li", { class: "empty" }, state.topicFilter ? "Nothing in this thread yet." : "No articles or posts yet.")]));
 }
 
 const NAV = {
   home: { icon: "home", label: "Home", active: (hash) => hash === "#/" || hash === "" },
-  add: { icon: "plus", label: "Add article", active: (hash) => hash === "#/add" },
+  add: { icon: "plus", label: "Add", active: (hash) => hash.startsWith("#/add") },
   graph: { icon: "graph", label: "Graph", active: (hash) => hash === "#/graph" },
   people: { icon: "people", label: "People", active: (hash) => hash.startsWith("#/people") || hash.startsWith("#/person/") },
   settings: { icon: "settings", label: "Settings", active: (hash) => hash === "#/settings" },
@@ -376,16 +377,17 @@ async function homeView() {
     return setMain(h("section", { class: "dashboard" },
       h("div", { class: "dash-head" }, weaveAll(),
         h("h1", {}, "Your writing, woven together"),
-        h("p", {}, "Paste a LinkedIn article and the post that announced it. postloom restores the formatting, files it under your topics, links it to related articles and the people who discuss it, and lets you ask about everything you've written.")),
+        h("p", {}, "Paste your LinkedIn articles and posts. postloom restores the formatting, files them under your topics, links them to the people who discuss them, and lets you ask about everything you've written.")),
       keyNotice(),
       h("div", { class: "empty-state" },
-        h("h2", {}, configured ? "Add your first article" : "Connect a model, then add an article"),
+        h("h2", {}, configured ? "Add your first article or post" : "Connect a model, then add your writing"),
         h("p", {}, configured
-          ? "Copy an article from LinkedIn and paste it in. It takes about half a minute."
+          ? "Copy an article or a post from LinkedIn and paste it in. An article takes about half a minute; a post a few seconds."
           : "postloom works with Gemini, Claude, OpenAI, OpenRouter, or free local models with Ollama. Bring your own key; it stays on this computer."),
         h("div", { class: "actions" },
           configured ? null : h("a", { class: "button button-primary", href: "#/settings" }, "Connect a provider"),
-          h("a", { class: configured ? "button button-primary" : "button", href: "#/add" }, icon("plus"), "Add article")))));
+          h("a", { class: configured ? "button button-primary" : "button", href: "#/add" }, icon("plus"), "Add an article"),
+          h("a", { class: "button", href: "#/add/post" }, icon("plus"), "Add a post")))));
   }
 
   setMain(h("section", { class: "dashboard" }, h("p", { class: "hint" }, "Loading...")));
@@ -409,12 +411,12 @@ async function homeView() {
           icon("reply"), "Draft reply"))))
     : h("p", { class: "hint" }, overview.messages
       ? "You've answered everyone. Paste new comments from an article's page when there are more."
-      : "No comments saved yet. Open an article and paste its comment section to see who's talking.");
+      : "No comments saved yet. Open an article or post and paste its comment section to see who's talking.");
 
   setMain(h("section", { class: "dashboard" },
     h("div", { class: "dash-head" }, weaveAll(),
       h("h1", {}, "Home"),
-      h("p", {}, `${plural(overview.articles, "article", "articles")}, ${plural(overview.messages, "message", "messages")} from ${plural(overview.people, "person", "people")}.`)),
+      h("p", {}, `${plural(overview.articles, "article", "articles")}${overview.posts ? `, ${plural(overview.posts, "post", "posts")}` : ""}, ${plural(overview.messages, "message", "messages")} from ${plural(overview.people, "person", "people")}.`)),
     keyNotice(),
     h("div", { class: "attention" },
       h("a", { href: "#waiting", class: overview.waiting_total ? "needs" : null },
@@ -428,10 +430,11 @@ async function homeView() {
         h("section", { class: "dash-section", id: "waiting", "aria-labelledby": "waiting-heading" },
           h("h2", { id: "waiting-heading" }, "Waiting for your reply"), waiting),
         h("section", { class: "dash-section", "aria-labelledby": "articles-heading" },
-          h("h2", { id: "articles-heading" }, "Your articles", h("a", { href: "#/add" }, "Add article")),
+          h("h2", { id: "articles-heading" }, "Your writing", h("a", { href: "#/add" }, "Add")),
           h("ul", { class: "article-rows" }, state.articles.slice(0, 8).map((a) => h("li", {},
             h("a", { class: "article-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
-              h("div", {}, h("h3", { dir: "auto" }, a.title), h("p", { dir: "auto" }, a.summary || formatDate(a.published_on) || "")))))))),
+              h("div", {}, h("h3", { dir: "auto" }, a.title), h("p", { dir: "auto" },
+                a.summary || [a.kind === "post" ? "Post" : null, formatDate(a.published_on)].filter(Boolean).join(", "))))))))),
       h("aside", {},
         h("section", { class: "dash-section", "aria-labelledby": "people-heading" },
           h("h2", { id: "people-heading" }, "Most engaged", overview.top_people.length ? h("a", { href: "#/people" }, "Everyone") : null),
@@ -460,7 +463,7 @@ function keyNotice() {
   if (!s.provider || !s.provider.configured) {
     return notice("", s.provider
       ? `Finish setting up ${s.provider.label} to add articles, chat and draft replies.`
-      : "Connect a model provider to add articles, chat and draft replies. Gemini, Claude, OpenAI, OpenRouter, or free local models with Ollama.",
+      : "Connect a model provider to add articles, chat and draft replies. Posts can be added without one. Gemini, Claude, OpenAI, OpenRouter, or free local models with Ollama.",
       h("a", { href: "#/settings" }, "Open settings"));
   }
   if (s.embeddings.needs_reindex) {
@@ -470,8 +473,59 @@ function keyNotice() {
   return null;
 }
 
+function addKinds(current) {
+  const link = (kind, href, label) => h("a", { href, "aria-current": kind === current ? "page" : null }, label);
+  return h("nav", { class: "add-kinds", "aria-label": "What to add" },
+    link("article", "#/add", "Article"), link("post", "#/add/post", "Post"));
+}
+
+function addPostView() {
+  const form = h("form", { class: "page", onsubmit: submitPost },
+    addKinds("post"),
+    h("h1", {}, "Add a post"),
+    h("p", { class: "lede" }, "For a post that stands on its own. If it announces an article, add it with the article instead. Paste the post as it appears on LinkedIn; adding it again later updates it."),
+    h("div", { id: "add-result" }),
+    field("text", "Post", h("textarea", { id: "text", name: "text", required: true, rows: 10 })),
+    h("div", { class: "field-row" },
+      field("url", "Post link (optional)", h("input", { id: "url", name: "url", type: "url", placeholder: "https://www.linkedin.com/posts/..." })),
+      field("published_on", "Published on (optional)", h("input", { id: "published_on", name: "published_on", type: "date" }))),
+    h("button", { class: "button button-primary", type: "submit", id: "add-submit" }, "Add post"));
+  setMain(form);
+}
+
+async function submitPost(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form));
+  const body = { text: data.text, url: data.url || null, published_on: data.published_on || null };
+  const button = document.getElementById("add-submit");
+  const result = document.getElementById("add-result");
+  button.disabled = true;
+  button.textContent = "Saving the post...";
+  result.replaceChildren();
+  try {
+    const added = await api("/api/posts", { method: "POST", body });
+    await refresh();
+    const lines = [`${added.is_update ? "Updated" : "Added"} "${added.title}".`];
+    if (added.topics.length) lines.push(`Topics: ${added.topics.join(", ")}.`);
+    for (const warning of added.warnings) lines.push(warning);
+    if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
+    result.replaceChildren(notice("", ...lines,
+      h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the post")));
+    form.reset();
+    toast(added.is_update ? "Post updated" : "Post added");
+  } catch (error) {
+    result.replaceChildren(notice("error", error.message));
+  } finally {
+    button.disabled = false;
+    button.textContent = "Add post";
+    result.scrollIntoView({ block: "nearest" });
+  }
+}
+
 function addView() {
   const form = h("form", { class: "page", onsubmit: submitArticle },
+    addKinds("article"),
     h("h1", {}, "Add an article"),
     h("p", { class: "lede" }, "Copy the article from LinkedIn and paste it below, then do the same with the post you announced it in. The text can look messy; postloom restores the headings, lists and code."),
     keyNotice(),
@@ -536,6 +590,7 @@ async function articleView(id, focus = {}) {
     return setMain(h("section", { class: "page" }, h("h1", {}, "Article not found"),
       notice("error", error.message), h("a", { href: "#/" }, "Back to your articles")));
   }
+  if (article.kind === "post") return postView(article, focus);
   const series = article.series ? `${article.series}${article.series_part ? `, part ${article.series_part}` : ""}` : null;
   const byline = [formatDate(article.published_on), series].filter(Boolean).join(". ");
   const reader = h("article", { class: "reader" },
@@ -561,17 +616,50 @@ async function articleView(id, focus = {}) {
   if (focus.comment) focusComment(focus.comment, focus.reply);
 }
 
+function postView(post, focus) {
+  const reader = h("article", { class: "reader" },
+    weave(post.topics),
+    h("p", { class: "eyebrow" }, "Post"),
+    h("h1", { dir: "auto" }, post.title),
+    h("p", { class: "byline" }, formatDate(post.published_on) || "Undated",
+      webLink(post.url) ? [" ", h("a", { href: webLink(post.url), target: "_blank", rel: "noopener noreferrer" }, "View on LinkedIn")] : null),
+    tagList(post.topics),
+    articleActions(post),
+    h("section", { class: "post standalone", "aria-label": "Post" },
+      h("p", { dir: "auto", class: "post-text" }, withoutTitle(post.body_markdown, post.title))),
+    discussionSection(post));
+  const suggestions = post.discussion.length
+    ? ["What did people ask in the comments?", "Which questions did I not answer yet?", "What did people disagree with?"]
+    : ["Summarize this post", "What is the main claim?", "Suggest a follow-up post"];
+  setMain(h("div", { class: "article-layout" }, reader,
+    chatPanel(post.id, "Ask about this post",
+      "Answers come only from this post and its comments.", suggestions)));
+  renderSidebar();
+  if (focus.comment) focusComment(focus.comment, focus.reply);
+}
+
+function withoutTitle(text, title) {
+  // The title is the post's first line, so don't show that line twice.
+  const lines = text.split("\n");
+  const first = lines.findIndex((line) => line.trim());
+  const shown = title.replace(/\.\.\.$/, "");
+  if (first < 0 || title.endsWith("...") || !lines[first].includes(shown)) return text;
+  return lines.slice(first + 1).join("\n").replace(/^\s*\n/, "");
+}
+
 // ---------------------------------------------------------------------------- edit / delete an article
 function articleActions(article) {
   const panel = h("div", { class: "article-edit" });
   const comments = article.discussion.length;
+  const isPost = article.kind === "post";
+  const what = isPost ? "this post" : `"${article.title}", its post`;
   const remove = confirmBox("Delete",
-    `Delete "${article.title}", its post${comments ? ` and ${plural(comments, "comment")}` : ""}? People you talked to are kept. This can't be undone.`,
-    "Delete article", async () => {
-      await api(`/api/article?id=${encodeURIComponent(article.id)}`, { method: "DELETE" });
+    `Delete ${what}${comments ? ` and ${plural(comments, "comment")}` : ""}? People you talked to are kept. This can't be undone.`,
+    isPost ? "Delete post" : "Delete article", async () => {
+      await api(`/api/${isPost ? "post" : "article"}?id=${encodeURIComponent(article.id)}`, { method: "DELETE" });
       state.chats.delete(article.id);
       await refresh();
-      toast("Article deleted");
+      toast(isPost ? "Post deleted" : "Article deleted");
       location.hash = "#/";
     });
   const edit = h("button", { class: "button", type: "button", "aria-expanded": "false",
@@ -579,7 +667,7 @@ function articleActions(article) {
       const open = panel.childElementCount > 0;
       edit.setAttribute("aria-expanded", String(!open));
       if (open) panel.replaceChildren();
-      else articleEditor(article, panel, () => { panel.replaceChildren(); edit.setAttribute("aria-expanded", "false"); });
+      else (isPost ? postEditor : articleEditor)(article, panel, () => { panel.replaceChildren(); edit.setAttribute("aria-expanded", "false"); });
     } }, icon("edit"), "Edit details");
   return h("div", { class: "article-tools" }, h("div", { class: "article-actions" }, edit, remove), panel);
 }
@@ -650,6 +738,58 @@ async function articleEditor(article, panel, close) {
   title.focus();
 }
 
+async function postEditor(post, panel, close) {
+  fill(panel, h("p", { class: "hint" }, "Loading your topics…"));
+  let topics;
+  try {
+    ({ topics } = await api("/api/topics"));
+  } catch (error) {
+    return fill(panel, notice("error", error.message));
+  }
+  const chosen = new Set(post.topics.map((t) => t.name));
+  const date = h("input", { id: "edit_date", type: "date", value: post.published_on || "" });
+  const url = h("input", { id: "edit_url", type: "url", value: post.url || "", maxlength: 2000, placeholder: "https://www.linkedin.com/posts/..." });
+  const picker = h("fieldset", { class: "topic-picker" },
+    h("legend", {}, "Topics"),
+    topics.map((t) => h("label", { class: "chip" },
+      h("input", { type: "checkbox", value: t.name, checked: chosen.has(t.name) }),
+      h("span", { class: "swatch", vars: { "--thread": topicColor(t.name) } }), t.name)),
+    h("p", { class: "hint" }, "Add, rename or remove topics in ", h("a", { href: "#/settings" }, "Settings"), "."));
+  const status = h("p", { class: "hint", role: "status" });
+  const save = h("button", { class: "button button-primary", type: "submit" }, "Save changes");
+  const form = h("form", { class: "editor", "aria-label": "Edit post details",
+    onsubmit: async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      status.textContent = "Saving…";
+      const body = {
+        id: post.id,
+        topics: [...picker.querySelectorAll("input:checked")].map((box) => box.value),
+        published_on: date.value || null,
+        url: url.value.trim() || null,
+      };
+      try {
+        await api("/api/post", { method: "PUT", body });
+        await refresh();
+        toast("Post updated");
+        articleView(post.id);
+      } catch (error) {
+        save.disabled = false;
+        fill(status, notice("error", error.message));
+      }
+    } },
+    picker,
+    h("div", { class: "field-row" },
+      field("edit_date", "Published", date),
+      field("edit_url", "LinkedIn link", url)),
+    h("div", { class: "editor-actions" }, save,
+      h("button", { class: "button", type: "button", onclick: close }, "Cancel")),
+    status,
+    h("p", { class: "hint" }, "To change the post's text, edit its note in your vault; postloom reads the change."));
+  fill(panel, form);
+  picker.querySelector("input")?.focus();
+}
+
 function focusComment(commentId, openDraft) {
   const row = [...document.querySelectorAll(".comment")].find((li) => li.dataset.id === commentId);
   if (!row) return;
@@ -669,7 +809,7 @@ function relatedSection(article) {
 }
 
 function fillRelated(section, article) {
-  const others = state.articles.filter((a) => a.id !== article.id);
+  const others = state.articles.filter((a) => a.id !== article.id && a.kind !== "post");
   if (!others.length) return section.replaceChildren();
   const linked = new Set(article.related.map((r) => r.id));
 
@@ -1558,17 +1698,18 @@ async function graphView() {
     h("input", { type: "checkbox", checked: true, onchange: (e) => { options[key] = e.target.checked; draw(); } }), label);
   const draw = () => canvas.replaceChildren(graphSvg(graph, options));
 
-  const articles = graph.nodes.filter((n) => n.kind === "article");
+  const articles = graph.nodes.filter((n) => n.kind === "article" || n.kind === "post");
   setMain(h("section", { class: "graph-page" },
     h("h1", {}, "Graph"),
     h("p", { class: "lede" }, articles.length
-      ? "Your articles, their topics and series, and the people who discussed them. Drag to move around, scroll to zoom, select a node to open it."
-      : "Add an article and its topics, links and commenters will appear here."),
+      ? "Your articles and posts, their topics and series, and the people who discussed them. Drag to move around, scroll to zoom, select a node to open it."
+      : "Add an article or a post and its topics, links and commenters will appear here."),
     h("div", { class: "graph-controls" },
       toggle("people", "People"), toggle("suggested", "Suggested links"),
       h("ul", { class: "graph-legend", "aria-label": "Legend" },
         h("li", {}, h("span", { class: "key key-topic" }), "Topic"),
         h("li", {}, h("span", { class: "key key-article" }), "Article"),
+        h("li", {}, h("span", { class: "key key-post" }), "Post"),
         h("li", {}, svgEl("svg", { class: "key-person", viewBox: "-11 -11 22 22", "aria-hidden": "true" }, personGlyph(10)), "Person"),
         h("li", {}, h("span", { class: "key key-linked" }), "Linked"),
         h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
@@ -1635,7 +1776,7 @@ function graphSvg(graph, options) {
       css: topic ? { stroke: topicColor(topic.label) } : null });
   }));
   const nodeLayer = svgEl("g", { class: "nodes" }, nodes.map((n) => {
-    const href = n.kind === "article" ? `#/article/${encodeURIComponent(n.id)}`
+    const href = n.kind === "article" || n.kind === "post" ? `#/article/${encodeURIComponent(n.id)}`
       : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}` : null;
     const shape = n.kind === "person"
       ? personGlyph(n.r, { transform: `translate(${n.x} ${n.y})` })
@@ -1670,13 +1811,15 @@ function nodeRadius(n) {
   if (n.kind === "topic") return 10 + Math.min(Math.sqrt(n.weight) * 2.5, 12);
   if (n.kind === "series") return 8;
   if (n.kind === "article") return 7 + Math.min(Math.sqrt(n.weight), 5);
+  if (n.kind === "post") return 5 + Math.min(Math.sqrt(n.weight), 5);
   return 7 + Math.min(Math.sqrt(n.weight) * 1.5, 5);
 }
 
 function nodeTitle(n) {
   const count = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  if (n.kind === "topic" || n.kind === "series") return `${n.label}: ${count(n.weight, "article", "articles")}`;
-  if (n.kind === "article") return n.weight ? `${n.label}: ${count(n.weight, "comment", "comments")}` : n.label;
+  if (n.kind === "topic") return `${n.label}: ${count(n.weight, "article or post", "articles and posts")}`;
+  if (n.kind === "series") return `${n.label}: ${count(n.weight, "article", "articles")}`;
+  if (n.kind === "article" || n.kind === "post") return n.weight ? `${n.label}: ${count(n.weight, "comment", "comments")}` : n.label;
   return `${n.label}: ${count(n.weight, "message", "messages")}`;
 }
 
@@ -1774,6 +1917,7 @@ async function route() {
     }
     if (path === "#/search") return await searchView(params.get("q") || "", params.get("ask") === "1");
     if (path === "#/add") return addView();
+    if (path === "#/add/post") return addPostView();
     if (path === "#/settings") return await settingsView();
     if (path === "#/people") return await peopleView();
     if (path === "#/graph") return await graphView();

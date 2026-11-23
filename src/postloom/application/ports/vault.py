@@ -36,7 +36,10 @@ class ArticleNote:
 class PostNote:
     post: Post
     announces: NodeId | None
-    """The article this post announces."""
+    """The article this post announces; None for a post that stands on its own."""
+    topics: tuple[NodeId, ...] = ()
+    """Topics of a stand-alone post (an announcement post shares its article's)."""
+    path: str = field(default="", compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,28 +113,38 @@ class Vault(Protocol):
         """
         ...
 
+    def write_post(self, post: Post, topics: Sequence[Topic]) -> Path:
+        """Write (or overwrite) the note of a post that stands on its own."""
+        ...
+
     def write_topic(self, topic: Topic) -> Path: ...
 
     def write_discussion(
         self,
-        article: Article,
+        item: Article | Post,
         post: Post,
         comments: Sequence[Comment],
         people: Mapping[NodeId, Person],
     ) -> Path:
-        """Write (or overwrite) the note holding every thread under ``post``.
+        """Write (or overwrite) the note holding every thread under ``post``. ``item`` is
+        what the discussion is about: the article the post announces, or the post itself.
 
         With no comments left, the note is removed.
         """
         ...
 
-    def write_person(self, person: Person, articles: Sequence[Article]) -> Path:
-        """Write (or overwrite) a person's note, linking the articles they discussed."""
+    def write_person(self, person: Person, items: Sequence[Article | Post]) -> Path:
+        """Write (or overwrite) a person's note, linking the articles and posts they
+        discussed."""
         ...
 
     # -- removing ---------------------------------------------------------------
     def remove_article(self, article: Article, post: Post | None) -> None:
         """Delete the notes of an article, its post and their discussion."""
+        ...
+
+    def remove_post(self, post: Post) -> None:
+        """Delete the notes of a stand-alone post and its discussion."""
         ...
 
     def remove_person(self, person: Person) -> None: ...

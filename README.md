@@ -2,14 +2,14 @@
 
 **A local-first knowledge graph and chat for your LinkedIn articles, posts, comments and the people behind them.**
 
-You publish an article, announce it in a post, and a conversation starts in the comments.
-A week later it's all buried in the feed. postloom keeps it: paste in your article and post,
-and it becomes a connected note in your own graph, linked to its topics, its series, the
-links and hashtags you used, and every comment and reply. Then you can chat with any article
-and its discussion, see who engages with your work, and draft replies grounded in what you
-actually wrote.
+You publish a post or an article, and a conversation starts in the comments. A week later
+it's all buried in the feed. postloom keeps it: paste in your post or article, and it becomes
+a connected note in your own graph, linked to its topics, its series, the links and hashtags
+you used, and every comment and reply. Then you can chat with anything you wrote and its
+discussion, see who engages with your work, and draft replies grounded in what you actually
+wrote.
 
-> **Status: alpha.** Articles, search, chat, comment threads, people, reply drafts, related
+> **Status: alpha.** Articles, posts, search, chat, comment threads, people, reply drafts, related
 > article links and the graph view work end to end. See the [roadmap](#roadmap).
 
 ![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](docs/images/home.png)
@@ -68,8 +68,10 @@ articles and people, ask a question, or jump to a page. On first run:
 1. Open **Settings**, pick a model provider, paste your API key and click **Test
    connection**. Keys are saved only in your Postloom folder. No key? Choose Ollama and
    run models on your own computer.
-2. Click **Add article**, paste a LinkedIn article and the post that announced it.
-   postloom restores the formatting, files it under your topics and indexes it.
+2. Click **Add**. For an article, paste it and the post that announced it; postloom
+   restores the formatting, files it under your topics and indexes it. For a post that
+   stands on its own, choose **Post** and paste it (no model needed; with one, postloom
+   also picks its topics).
 3. Open the article to read it and ask questions about it, or use the search box to search
    and ask across everything you've written. Answers cite the sections they come from, and
    when nothing relevant exists postloom says so instead of guessing.
@@ -165,10 +167,12 @@ wrong question costs nothing. An answer that cites no source is marked as unveri
 ### Fixing and organising
 
 - **Edit details** on an article fixes its title, summary, topics, series, date and link.
-  The article keeps its identity, comments and links when you retitle it.
-- **Delete** removes an article with its post and comments.
+  The article keeps its identity, comments and links when you retitle it. On a post it
+  fixes the topics, date and link; edit the post's note to change its text.
+- **Delete** removes an article with its post and comments, or a post with its comments.
 - **Settings → Topics** adds, renames and removes topics. Renaming a topic to the name of
   another one merges them.
+- Adding a post again updates it; it is recognised by its link or its text.
 - Adding an article you already have updates it, even if its title changed. A different
   article that happens to have the same title is kept separately; nothing is replaced on
   the strength of a title.
@@ -217,6 +221,7 @@ put `uv run` in front):
 
 ```bash
 postloom ingest article.txt post.txt --date 2026-10-12   # add an article
+postloom post post.txt --url https://www.linkedin.com/posts/...  # add a stand-alone post
 postloom search "how do I know if my cache serves wrong answers" --explain
 postloom reindex                                         # after upgrading
 postloom links --explain                                 # how similar your articles are

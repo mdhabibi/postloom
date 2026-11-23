@@ -33,7 +33,7 @@ def kind_of(node: NodeId) -> NodeKind:
 
 
 class EdgeKind(StrEnum):
-    BELONGS_TO = "belongs_to"  # article -> topic
+    BELONGS_TO = "belongs_to"  # article | stand-alone post -> topic
     PART_OF = "part_of"  # article -> series
     ANNOUNCES = "announces"  # post -> article
     COMMENTED_ON = "commented_on"  # comment -> post | article
@@ -44,7 +44,10 @@ class EdgeKind(StrEnum):
 
 
 _ALLOWED: dict[EdgeKind, tuple[frozenset[NodeKind], frozenset[NodeKind]]] = {
-    EdgeKind.BELONGS_TO: (frozenset({NodeKind.ARTICLE}), frozenset({NodeKind.TOPIC})),
+    EdgeKind.BELONGS_TO: (
+        frozenset({NodeKind.ARTICLE, NodeKind.POST}),
+        frozenset({NodeKind.TOPIC}),
+    ),
     EdgeKind.PART_OF: (frozenset({NodeKind.ARTICLE}), frozenset({NodeKind.SERIES})),
     EdgeKind.ANNOUNCES: (frozenset({NodeKind.POST}), frozenset({NodeKind.ARTICLE})),
     EdgeKind.COMMENTED_ON: (

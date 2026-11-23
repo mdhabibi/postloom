@@ -85,6 +85,37 @@ def test_everything_written_is_read_back_unchanged(tmp_path: Path) -> None:
     assert sorted(snapshot.comments, key=lambda c: c.position) == discussion()
 
 
+STANDALONE = Post(
+    key="hot-take",
+    text="Hot take: «caching» beats bigger models 👇\n\n---\n\nکش کمک می‌کند. #RAG",
+    url="https://www.linkedin.com/posts/y",
+    published_on=date(2026, 11, 2),
+    hashtags=("RAG",),
+)
+
+
+def test_a_stand_alone_post_and_its_discussion_are_read_back(tmp_path: Path) -> None:
+    vault = written(tmp_path)
+    vault.write_post(STANDALONE, [AGENTS])
+    reply = Comment(STANDALONE.id, JANE.id, "Jane Example", "Agreed.", 0, posted_label="1h")
+    vault.write_discussion(STANDALONE, STANDALONE, [reply], {JANE.id: JANE})
+    vault.write_person(JANE, [ARTICLE, STANDALONE])
+    vault.mark_synced()
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    assert PostNote(STANDALONE, None, (AGENTS.id,)) in snapshot.posts
+    assert PostNote(POST, ARTICLE.id) in snapshot.posts  # announcements keep no topics
+    assert reply in snapshot.comments
+
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*.md")}
+    vault.write_post(STANDALONE, [AGENTS])
+    vault.write_discussion(STANDALONE, STANDALONE, [reply], {JANE.id: JANE})
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*.md")} == before
+
+    vault.remove_post(STANDALONE)
+    assert not list(tmp_path.rglob("hot-take.md"))
+
+
 def test_a_second_vault_object_reads_the_same(tmp_path: Path) -> None:
     written(tmp_path)
     assert MarkdownVault(tmp_path).read() == MarkdownVault(tmp_path).read()

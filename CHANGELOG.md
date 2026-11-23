@@ -20,6 +20,11 @@ data is stored; postloom upgrades your data folder itself when it starts.
 - Request bodies without a declared length weren't size-limited.
 
 ### Added
+- Stand-alone posts: add a post that doesn't announce an article (Add → Post, or
+  `postloom post post.txt`). It gets its own page, topics, comments, reply drafts, search,
+  chat, a place in the graph and a note in `vault/posts/`. Posts can be added without a
+  model; with one, postloom picks their topics. Adding a post again updates it, and a
+  post already saved with its article is not added twice.
 - Settings → Search by meaning → Language of your writing: English or Many languages.
   Adding an article that isn't in English while the English-only model is active shows a
   hint.

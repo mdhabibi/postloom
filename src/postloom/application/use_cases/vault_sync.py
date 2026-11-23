@@ -40,14 +40,17 @@ from postloom.application.use_cases.links import (
     pair_key,
 )
 from postloom.application.use_cases.relations import (
-    articles_discussed_by,
+    Item,
     current_topics,
+    items_discussed_by,
+    list_items,
     post_of,
     set_series,
     set_topics,
+    standalone_posts,
     write_discussion_note,
 )
-from postloom.domain.content import Article
+from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.provenance import Grade, Origin, Provenance
@@ -73,6 +76,8 @@ class SyncReport:
     changed: int = 0
     """Notes added, edited or removed outside postloom."""
     articles: int = 0
+    posts: int = 0
+    """Posts that stand on their own (announcement posts come with their article)."""
     comments: int = 0
     people: int = 0
     topics: int = 0
@@ -107,8 +112,14 @@ class ExportVault:
             if repo.comments_on(post.id):
                 write_discussion_note(repo, vault, article, post)
                 keep.add(f"discussion:{post.key}")
+        for post in standalone_posts(repo):
+            vault.write_post(post, current_topics(repo, post.id))
+            keep.add(post.id)
+            if repo.comments_on(post.id):
+                write_discussion_note(repo, vault, post, post)
+                keep.add(f"discussion:{post.key}")
         for person in repo.list_people():
-            vault.write_person(person, articles_discussed_by(repo, person.id))
+            vault.write_person(person, items_discussed_by(repo, person.id))
             keep.add(person.id)
         return vault.prune(keep, protect)
 
@@ -133,15 +144,15 @@ class SyncVault:
     def execute(self) -> SyncReport:
         repo, vault = self._repository, self._vault
         changes = vault.changes()
-        before = {a.id: a for a in repo.list_articles()}
+        before = {i.id: i for i in list_items(repo)}
         had_data = bool(before or repo.list_people())
         snapshot = vault.read()
         if snapshot.problems and had_data:
             return SyncReport(False, "blocked", changed=changes.count, problems=snapshot.problems)
-        if before and not snapshot.articles:
-            # Every article note is gone while the index still has the articles: a folder
-            # emptied by accident or a sync tool, not an author deleting their library.
-            # Put the notes back; deleting articles is done in the app, one at a time.
+        if before and not snapshot.articles and not snapshot.posts:
+            # Every note is gone while the index still has the library: a folder emptied
+            # by accident or a sync tool, not an author deleting their library. Put the
+            # notes back; deleting is done in the app, one item at a time.
             trashed = ExportVault(repo, vault).execute()
             vault.mark_format()
             vault.mark_synced()
@@ -149,7 +160,8 @@ class SyncVault:
                 True,
                 "restored",
                 changed=changes.count,
-                articles=len(before),
+                articles=len(repo.list_articles()),
+                posts=len(standalone_posts(repo)),
                 people=len(repo.list_people()),
                 topics=len(repo.list_topics()),
                 trashed=tuple(trashed),
@@ -161,7 +173,8 @@ class SyncVault:
         self._apply_declared(snapshot, changes, had_data, now)
         self._journal.rewrite(repo.all_edges())  # one line per edge again, no replays
 
-        index_error = self._reindex(before, {a.id: a for a in contents.articles})
+        after = {i.id: i for i in list_items(repo)}
+        index_error = self._reindex(before, after)
         protect = tuple(p.path for p in snapshot.problems)
         trashed = ExportVault(repo, vault).execute(protect)
         vault.mark_format()
@@ -171,6 +184,7 @@ class SyncVault:
             "updated" if had_data else "rebuilt",
             changed=changes.count,
             articles=len(contents.articles),
+            posts=sum(1 for i in after.values() if isinstance(i, Post)),
             comments=len(contents.comments),
             people=len(contents.people),
             topics=len(contents.topics),
@@ -182,7 +196,10 @@ class SyncVault:
     # -- nodes and the edges that follow from them -----------------------------------
     def _contents(self, snapshot: VaultSnapshot, had_data: bool, now: datetime) -> GraphContents:
         articles = {n.article.id: n.article for n in snapshot.articles}
-        posts = {n.post.id: n for n in snapshot.posts if n.announces in articles}
+        # Announcement posts whose article is still there, and posts that stand alone.
+        posts = {
+            n.post.id: n for n in snapshot.posts if n.announces is None or n.announces in articles
+        }
         comments = [c for c in snapshot.comments if c.post in posts]
         series = {a.series.id: a.series for a in articles.values() if a.series is not None}
         nodes: set[NodeId] = {
@@ -239,6 +256,9 @@ class SyncVault:
         known = {n.article.id for n in snapshot.articles}
         declared: dict[tuple[NodeId, NodeId], set[NodeId]] = {}
         """Pair of articles -> which of the two notes lists the other as related."""
+        for post in snapshot.posts:
+            if post.announces is None:
+                set_topics(repo, post.post.id, post.topics, now, producer=VAULT, confirm=False)
         for note in snapshot.articles:
             set_topics(repo, note.article.id, note.topics, now, producer=VAULT, confirm=False)
             set_series(repo, note.article, now, producer=VAULT)
@@ -264,20 +284,23 @@ class SyncVault:
                 decide_link(repo, pair[0], pair[1], Decision.REJECT, now, VAULT)
 
     # -- search index ------------------------------------------------------------------
-    def _reindex(self, before: dict[NodeId, Article], after: dict[NodeId, Article]) -> str | None:
-        for gone in before.keys() - after.keys():
+    def _reindex(self, before: dict[NodeId, Item], after: dict[NodeId, Item]) -> str | None:
+        for gone, item in before.items():
+            if gone in after:
+                continue
             self._index.remove(gone)
-            self._index.remove(NodeId(f"post:{gone.partition(':')[2]}"))
+            if isinstance(item, Article):  # and the announcement post's discussion
+                self._index.remove(NodeId(f"post:{Post.key_for_article(item)}"))
         return reindex_all(self._index_article, list(after))
 
 
-def reindex_all(index_article: IndexArticle, articles: list[NodeId]) -> str | None:
-    """Index every article and its discussion again; unchanged text reuses its vectors,
-    so this costs little. Returns why search by meaning is incomplete, if it is."""
+def reindex_all(index_article: IndexArticle, items: list[NodeId]) -> str | None:
+    """Index every article and post with its discussion again; unchanged text reuses its
+    vectors, so this costs little. Returns why search by meaning is incomplete, if it is."""
     error: str | None = None
-    for article_id in articles:
+    for item_id in items:
         try:
-            index_article.execute(article_id)
+            index_article.execute(item_id)
         except (ProviderError, BudgetExceededError) as failure:
             error = str(failure)  # keyword search still works; a reindex fills the rest
     return error
@@ -315,7 +338,7 @@ class OpenVault:
             vault.mark_format()
             vault.mark_synced()
             # Older versions didn't index posts and comments for search.
-            articles = [a.id for a in repo.list_articles()]
+            articles = [i.id for i in list_items(repo)]
             return SyncReport(
                 True,
                 "upgraded",

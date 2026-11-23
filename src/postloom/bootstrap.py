@@ -15,7 +15,7 @@ from postloom import how_to_run
 from postloom.adapters.clock import SystemClock
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.chat import LlmChat
-from postloom.adapters.llm.content import LlmContentExtractor, LlmThreadParser
+from postloom.adapters.llm.content import LlmContentExtractor, LlmPostClassifier, LlmThreadParser
 from postloom.adapters.llm.embeddings import RemoteEmbeddings, vector_space
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.local_embeddings import (
@@ -44,6 +44,7 @@ from postloom.application.ports import (
     UsageLedger,
     Vault,
 )
+from postloom.application.ports.extraction import PostClassifier
 from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.ports.usage import Task
 from postloom.application.use_cases import (
@@ -72,6 +73,7 @@ from postloom.application.use_cases import (
     UpdateArticle,
     UpdatePerson,
 )
+from postloom.application.use_cases.posts import DeletePost, IngestPost, UpdatePost
 from postloom.application.use_cases.usage import BudgetPolicy, PriceBook, UsageReport
 from postloom.settings import Settings
 
@@ -114,6 +116,8 @@ class Container:
     thread_parser: ThreadParser | None = None
     reply_chat: ChatModel | None = None
     """Model for reply drafts; falls back to ``chat``."""
+    post_classifier: PostClassifier | None = None
+    """Chooses a post's topics; without it posts are saved without topics."""
     min_similarity: float = 0.0
     related_similarity: float = 0.75
     monthly_budget_usd: float | None = None
@@ -158,6 +162,21 @@ class Container:
             self.clock,
             english_only_search=self.english_only_search,
         )
+
+    def ingest_post(self) -> IngestPost:
+        return IngestPost(
+            self.post_classifier,
+            self.repository,
+            self.vault,
+            self.clock,
+            english_only_search=self.english_only_search,
+        )
+
+    def update_post(self) -> UpdatePost:
+        return UpdatePost(self.repository, self.vault, self.clock)
+
+    def delete_post(self) -> DeletePost:
+        return DeletePost(self.repository, self.vault, self.search_index)
 
     def index_article(self) -> IndexArticle:
         return IndexArticle(self.repository, self.search_index, self.embedder)
@@ -278,6 +297,7 @@ def build_container(
     chat: ChatModel | None = None,
     thread_parser: ThreadParser | None = None,
     reply_chat: ChatModel | None = None,
+    post_classifier: PostClassifier | None = None,
     clock: Clock | None = None,
 ) -> Container:
     """Wire the app from settings. Anything passed explicitly wins (tests, embedding apps).
@@ -312,6 +332,9 @@ def build_container(
         fallbacks = settings.spec.models.chat_fallbacks if settings.spec else ()
         extractor = extractor or LlmContentExtractor(gateway, settings.model("extraction"))
         thread_parser = thread_parser or LlmThreadParser(gateway, settings.model("comments"))
+        post_classifier = post_classifier or LlmPostClassifier(
+            gateway, settings.model("extraction")
+        )
         chat = chat or LlmChat(gateway, settings.model("chat"), fallbacks=fallbacks)
         reply_chat = reply_chat or LlmChat(
             gateway,
@@ -341,6 +364,7 @@ def build_container(
         chat=chat,
         thread_parser=thread_parser,
         reply_chat=reply_chat,
+        post_classifier=post_classifier,
         min_similarity=cutoffs.search,
         related_similarity=cutoffs.related,
         monthly_budget_usd=settings.monthly_budget_usd,
