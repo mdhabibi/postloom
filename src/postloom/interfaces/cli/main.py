@@ -28,6 +28,7 @@ from postloom.interfaces.desktop.shortcuts import (
     Shortcuts,
     last_lines,
     log_to_file,
+    open_in_browser,
     start_in_background,
     tell,
 )
@@ -453,7 +454,6 @@ def _scores(passage: Passage) -> str:
 
 def _start(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
     import threading
-    import webbrowser
 
     import uvicorn
 
@@ -468,7 +468,7 @@ def _start(args: argparse.Namespace, settings: Settings, make_container: Contain
         # data folder twice: two servers would write the same database and vault.
         print(f"postloom is already running at {running}")
         if not args.no_browser:
-            webbrowser.open(running)
+            open_in_browser(running)
         return 0
 
     port = _free_port(args.port)
@@ -490,7 +490,7 @@ def _start(args: argparse.Namespace, settings: Settings, make_container: Contain
         print("Keep this window open while you use postloom. Close it, press Ctrl+C or")
         print("choose Quit in the app to stop.")
     if not args.no_browser:
-        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+        threading.Timer(1.0, open_in_browser, args=(url,)).start()
     marker = home / RUNNING_FILE
     _write_running(marker, port)
     try:
@@ -509,7 +509,6 @@ STARTUP_SECONDS = 90
 
 def _open(settings: Settings) -> int:
     import time
-    import webbrowser
 
     home = settings.home
     url = already_running(home)
@@ -530,7 +529,8 @@ def _open(settings: Settings) -> int:
             )
             return 1
     print(f"postloom is running at {url}")
-    webbrowser.open(url)
+    if not open_in_browser(url):
+        tell("postloom is running", f"Open {url} in your browser.")
     return 0
 
 
