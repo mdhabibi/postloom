@@ -913,3 +913,73 @@ def test_a_connected_model_chooses_a_posts_topics_from_the_list(tmp_path: Path) 
     assert added.status == 201, added.text
     assert (added.json["topics"], added.json["warnings"]) == (["RAG"], [])
     assert backend.calls[0] == ("json", "fake-small")
+
+
+def wait_for_download(client: Any) -> dict[str, Any]:
+    import time
+
+    for _ in range(100):
+        download = client.get("/api/ollama").json["download"]
+        if download and download["done"]:
+            return download
+        time.sleep(0.05)
+    raise AssertionError("the download never finished")
+
+
+def test_ollama_setup_says_when_it_is_missing_or_stopped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from postloom.interfaces.desktop import ollama
+
+    client = client_for(tmp_path)
+    nowhere = "http://127.0.0.1:9"
+    monkeypatch.setattr(ollama, "installed", lambda: False)
+    status = client.get(f"/api/ollama?url={nowhere}").json
+    assert (status["installed"], status["running"]) == (False, False)
+    assert status["download_page"] == "https://ollama.com/download"
+    monkeypatch.setattr(ollama, "installed", lambda: True)
+    assert client.get(f"/api/ollama?url={nowhere}").json["installed"] is True
+    assert client.get("/api/ollama?url=file:///etc").status == 400
+
+
+def test_ollama_models_are_suggested_by_memory_and_downloaded_with_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from postloom.interfaces.desktop import ollama
+    from tests.fake_ollama import fake_ollama
+
+    monkeypatch.setattr(ollama, "memory_gb", lambda: 16.0)
+    client = client_for(tmp_path)
+    with fake_ollama(["llama3.2:3b"]) as url:
+        client.put("/api/settings", json_body={"provider": "ollama", "base_url": url})
+        status = client.get("/api/ollama").json
+        assert status["running"] and status["models"] == ["llama3.2:3b"]
+        assert status["memory_gb"] == 16
+        picked = [s["name"] for s in status["suggestions"] if s["recommended"]]
+        assert picked == ["qwen3.5:9b"]
+
+        assert client.post("/api/ollama/pull", json_body={"model": "bad name!"}).status == 400
+        started = client.post("/api/ollama/pull", json_body={"model": "qwen3.5:9b"})
+        assert started.status == 202
+        download = wait_for_download(client)
+        assert download["error"] is None and download["completed"] == 100
+        suggestions = client.get("/api/ollama").json["suggestions"]
+        assert [s["installed"] for s in suggestions] == [False, True, False]
+
+
+def test_a_failed_ollama_download_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.fake_ollama import fake_ollama
+
+    client = client_for(tmp_path)
+    with fake_ollama([], fail="not enough disk space") as url:
+        body = {"base_url": url, "model": "qwen3.5:27b"}
+        assert client.post("/api/ollama/pull", json_body=body).status == 202
+        assert wait_for_download(client)["error"] == "not enough disk space"
+
+
+def test_quit_is_offered_only_when_postloom_can_stop_itself(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    assert client.get("/api/status").json["can_quit"] is False
+    assert client.post("/api/quit", json_body={}).status == 400

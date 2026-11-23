@@ -41,33 +41,53 @@ wrote.
   LinkedIn profile URL, with every article they've interacted with. Anyone can be removed
   completely when they ask.
 
-## Quick start
+## Install
 
-With [uv](https://docs.astral.sh/uv/) installed, one command downloads and starts postloom:
+You don't need Python or anything else first, and nothing needs administrator rights.
+Copy one line, paste it, press Enter:
 
-```bash
-uvx postloom start
-```
-
-To keep it installed (`postloom` then works in any terminal):
+**Mac** (press <kbd>⌘ Space</kbd>, type *Terminal*, press Enter) or **Linux** (open a
+terminal):
 
 ```bash
-uv tool install postloom      # or: pipx install postloom
-postloom start
-uv tool upgrade postloom      # later, to update
+curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh
 ```
 
-Your data stays in `~/Postloom` whichever way you run it, and upgrading never touches it.
-To work on postloom itself, clone the repository and run `uv sync` then
-`uv run postloom start`.
+**Windows** (open the Start menu, type *PowerShell*, press Enter):
 
-`postloom start` opens the app in your browser (dark by default; switch to light at the
-bottom of the sidebar). Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> anywhere to search your
+```powershell
+irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
+```
+
+It takes a minute or two and opens postloom in your browser. From then on, open it from
+the **Postloom** icon: Launchpad or Spotlight on a Mac, the Start menu or the desktop on
+Windows, the applications menu on Linux. You won't need the terminal again.
+
+- **Update:** run the same line again. Your data is never touched.
+- **Stop:** choose **Quit postloom** at the bottom of the sidebar.
+- **Uninstall:** add `-s -- --uninstall` to the Mac/Linux line (`... install.sh | sh -s --
+  --uninstall`), or on Windows run
+  `$env:POSTLOOM_UNINSTALL = 1; irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex`.
+  Your data folder is kept; delete it yourself if you want.
+
+The installer uses [uv](https://docs.astral.sh/uv/), which downloads its own copy of Python
+for postloom, so it never changes the Python on your computer. Everything else postloom
+needs (its database, search engine and local search model) is inside it or downloaded on
+first use: there is no database server to install.
+
+**For developers:** `uvx postloom start` runs it from PyPI, `uv tool install postloom` keeps
+it installed, and `uv sync && uv run postloom start` runs a clone.
+
+## First steps
+
+postloom opens in your browser (dark by default; switch to light at the bottom of the
+sidebar). Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> anywhere to search your
 articles and people, ask a question, or jump to a page. On first run:
 
 1. Open **Settings**, pick a model provider, paste your API key and click **Test
-   connection**. Keys are saved only in your Postloom folder. No key? Choose Ollama and
-   run models on your own computer.
+   connection**. Keys are saved only in your Postloom folder. No key? Choose **Ollama**:
+   postloom walks you through installing it, suggests a model that fits your computer's
+   memory and downloads it, all without a terminal.
 2. Click **Add**. For an article, paste it and the post that announced it; postloom
    restores the formatting, files it under your topics and indexes it. For a post that
    stands on its own, choose **Post** and paste it (no model needed; with one, postloom
@@ -106,9 +126,10 @@ run on your computer. (On Intel Macs, where the local embedding runtime isn't av
 postloom uses your provider's embeddings for search instead, or keywords.) Nothing runs in the background; a model is only called when you
 click something.
 
-**Local models with Ollama.** Install [Ollama](https://ollama.com), pull a model
-(`ollama pull <model>`), choose Ollama in Settings and click **Test connection** to pick
-from your installed models. Reading comments and chat work well with mid-size models.
+**Local models with Ollama.** Choose Ollama in Settings. postloom checks whether
+[Ollama](https://ollama.com) is installed and running (and starts it for you), suggests a
+model for your computer's memory (Qwen 3.5 in 4B, 9B or 27B), downloads it with a progress
+bar and uses it for every task. Models you already pulled are offered too. Reading comments and chat work well with mid-size models.
 Restoring long articles needs a capable model (14B parameters or more, so 32 GB of memory
 helps) and can take several minutes. postloom sizes Ollama's context for every request and
 refuses, with a clear message, texts too long for the limit you set, instead of letting

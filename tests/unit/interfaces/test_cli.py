@@ -380,3 +380,64 @@ def test_a_stand_alone_post_can_be_added(
     assert (tmp_path / "home" / "vault" / "posts" / "hot-take.md").is_file()
     main(["--home", home, "post", str(post)], make_container=no_key_container)
     assert 'Updated post: "Hot take"' in capsys.readouterr().out
+
+
+def test_a_second_start_opens_the_running_postloom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+    import threading
+
+    import uvicorn
+
+    from postloom.interfaces.cli.main import RUNNING_FILE, already_running
+    from postloom.interfaces.web.app import create_app
+
+    home = tmp_path / "home"
+    home.mkdir()
+    assert already_running(home) is None
+    (home / RUNNING_FILE).write_text('{"port": 1}', encoding="utf-8")
+    assert already_running(home) is None  # stale: nothing answers there
+
+    app = create_app(lambda: Settings.load(home), no_key_container)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        threading.Event().wait(0.02)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    try:
+        (home / RUNNING_FILE).write_text(json.dumps({"port": port}), encoding="utf-8")
+        assert already_running(home) == f"http://127.0.0.1:{port}/"
+        assert already_running(tmp_path) is None  # a different data folder
+
+        opened: list[str] = []
+        monkeypatch.setattr("webbrowser.open", opened.append)
+        code = main(["--home", str(home), "start"], make_container=no_key_container)
+        assert code == 0 and opened == [f"http://127.0.0.1:{port}/"]
+    finally:
+        server.should_exit = True
+        thread.join(5)
+
+
+def test_stop_when_nothing_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--home", str(tmp_path), "stop"], make_container=no_key_container) == 0
+    assert "isn't running" in capsys.readouterr().out
+
+
+def test_open_says_why_postloom_could_not_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import subprocess
+    import sys
+
+    (tmp_path / "postloom.log").write_text("Error: the vault is locked\n", encoding="utf-8")
+
+    def crashing(home: Path) -> subprocess.Popen[bytes]:
+        return subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+
+    monkeypatch.setattr("postloom.interfaces.cli.main.start_in_background", crashing)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    assert main(["--home", str(tmp_path), "open"], make_container=no_key_container) == 1
+    out = capsys.readouterr().out
+    assert "postloom could not start" in out and "the vault is locked" in out

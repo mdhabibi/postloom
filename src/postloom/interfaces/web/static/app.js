@@ -42,6 +42,7 @@ async function refresh() {
 const ICONS = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  power: '<path d="M12 3v8"/><path d="M6.4 7a8 8 0 1 0 11.2 0"/>',
   graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6.2l7 .5M7.1 8.3l3.8 7.4M16.8 9.3l-3.6 6.5"/>',
   people: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.3 6-5.3s5.4 1.9 6 5.3"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.9c1.6.7 2.7 2.4 3 5.1"/>',
   settings: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -356,6 +357,7 @@ const NAV = {
 
 function renderNav() {
   const hash = location.hash || "#/";
+  document.getElementById("quit").hidden = !(state.status && state.status.can_quit);
   for (const link of document.querySelectorAll(".main-nav a")) {
     const item = NAV[link.dataset.route];
     const count = link.dataset.route === "people" && state.status && state.status.people
@@ -1310,7 +1312,12 @@ function providerForm(s, spec, found, tested, onTested) {
         h("a", { href: spec.key_url, target: "_blank", rel: "noopener noreferrer" }, new URL(spec.key_url).host),
         ". It's stored only in your Postloom folder, readable only by you.") : "Only if your server needs one.") : null,
     urlInput ? field(id("url"), "Server address", urlInput, spec.local ? "Where Ollama listens. The default is right unless you changed it." : "The server's OpenAI-compatible base URL, usually ending in /v1.") : null,
-    spec.notes.map((note) => h("p", { class: "hint" }, note)),
+    spec.local ? ollamaSetup(urlInput, (model) => {
+      for (const input of form.querySelectorAll("input[data-task]")) {
+        if (!input.disabled) input.value = model;
+      }
+      form.requestSubmit();
+    }) : spec.notes.map((note) => h("p", { class: "hint" }, note)),
     h("details", { class: "models", open: !spec.models.chat || (current && Object.keys(TASK_LABELS).some((t) => s.models[t] !== spec.models[t])) },
       h("summary", {}, "Models"),
       h("p", { class: "hint" }, spec.models.chat ? "Leave a field empty to use the default shown." : "Choose a model for each task, or fill in one and it's used for all. Test the connection to see what's available."),
@@ -1324,6 +1331,91 @@ function providerForm(s, spec, found, tested, onTested) {
       } }, "Remove saved key") : null),
     result);
   return form;
+}
+
+// Ollama without a terminal: install, start, pick a model that fits, download it, use it.
+function ollamaSetup(urlInput, useModel) {
+  const panel = h("div", { class: "ollama-setup", role: "status", "aria-live": "polite" },
+    h("p", { class: "hint" }, "Checking Ollama on this computer..."));
+  let timer = null;
+  const later = (ms) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (panel.isConnected) check(); }, ms);
+  };
+  const gb = (bytes) => (bytes / 2 ** 30).toFixed(1);
+  const step = (title, ...body) => fill(panel, h("h3", {}, title), ...body);
+  const act = (label, run, primary = true) => {
+    const button = h("button", { class: `button${primary ? " button-primary" : ""}`, type: "button", onclick: async () => {
+      button.disabled = true;
+      try {
+        await run();
+      } catch (error) {
+        button.disabled = false;
+        toast(error.message);
+      }
+    } }, label);
+    return button;
+  };
+
+  async function check() {
+    let o;
+    try {
+      o = await api(`/api/ollama?url=${encodeURIComponent(urlInput.value.trim())}`);
+    } catch (error) {
+      return fill(panel, notice("error", error.message));
+    }
+    const d = o.download;
+    if (d && !d.done) {
+      const percent = d.total ? Math.floor((100 * d.completed) / d.total) : 0;
+      step(`Downloading ${d.model}`,
+        h("progress", { max: 100, value: percent, "aria-label": `Download progress of ${d.model}` }),
+        h("p", { class: "hint" }, d.total
+          ? `${percent}%: ${gb(d.completed)} of ${gb(d.total)} GB. You can keep using postloom; the download continues.`
+          : d.status || "Starting..."));
+      return later(1000);
+    }
+    if (!o.installed) {
+      return step("1. Install Ollama",
+        h("p", {}, "Ollama runs AI models on your own computer, for free; nothing you write leaves it. Install it like any other app, then come back here."),
+        h("div", { class: "actions" },
+          h("a", { class: "button button-primary", href: o.download_page, target: "_blank", rel: "noopener noreferrer" }, "Download Ollama"),
+          act("I've installed it", check, false)));
+    }
+    if (!o.running) {
+      return step("2. Start Ollama",
+        h("p", {}, "Ollama is installed but not running."),
+        h("div", { class: "actions" },
+          act("Start Ollama", async () => {
+            await api("/api/ollama/start", { method: "POST", body: {} });
+            fill(panel, h("p", { class: "hint" }, "Starting Ollama..."));
+            later(1500);
+          }),
+          act("Check again", check, false)));
+    }
+    const failed = d && d.error ? notice("error", `${d.model}: ${d.error}`) : null;
+    const memory = o.memory_gb ? `This computer has ${o.memory_gb} GB of memory. ` : "";
+    const others = o.models.filter((m) => !o.suggestions.some((s) => s.installed && (m === s.name || m === `${s.name}:latest`)));
+    step("3. Choose a model",
+      h("p", { class: "hint" }, `${memory}Bigger models answer better but need more memory and are slower. You can change this any time.`),
+      failed,
+      h("ul", { class: "model-choices" }, o.suggestions.map((s) => h("li", { class: s.recommended ? "recommended" : null },
+        h("div", {},
+          h("strong", {}, `${s.label}: ${s.name}`),
+          s.recommended ? h("span", { class: "badge free" }, "Fits this computer") : null,
+          h("p", { class: "hint" }, `${s.why} ${s.installed ? "Downloaded." : `Download about ${s.size_gb} GB.`}`)),
+        s.installed
+          ? act("Use this model", async () => useModel(s.name), s.recommended)
+          : act(`Download`, async () => {
+              await api("/api/ollama/pull", { method: "POST", body: { base_url: urlInput.value.trim() || null, model: s.name } });
+              later(300);
+            }, s.recommended)))),
+      others.length ? h("div", { class: "field" },
+        h("p", { class: "hint" }, "Or use a model you already have:"),
+        h("div", { class: "actions" }, others.map((m) => act(m, async () => useModel(m), false)))) : null);
+  }
+  urlInput.addEventListener("change", check);
+  check();
+  return panel;
 }
 
 function embeddingsSection(s) {
@@ -2081,6 +2173,22 @@ function toggleTheme() {
 }
 
 document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+
+// Started from the Postloom icon, postloom has no window to close; this stops it.
+const quitButton = document.getElementById("quit");
+fill(quitButton, icon("power"), h("span", {}, "Quit postloom"));
+quitButton.addEventListener("click", async () => {
+  quitButton.disabled = true;
+  try {
+    await api("/api/quit", { method: "POST", body: {} });
+  } catch (error) {
+    quitButton.disabled = false;
+    return toast(error.message);
+  }
+  document.body.replaceChildren(h("main", { class: "stopped" },
+    h("h1", {}, "postloom has stopped"),
+    h("p", {}, "Your data is saved. You can close this tab, and open postloom again from its icon.")));
+});
 renderThemeToggle();
 
 const menuToggle = document.getElementById("menu-toggle");

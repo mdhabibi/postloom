@@ -100,3 +100,25 @@ jobs:
             echo "::error title=browser tests::$(tail -n 60 e2e.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
             exit 1
           }
+
+  install:
+    # The one-line installers on clean machines (no uv on PATH), as a user would run them.
+    if: github.event_name != 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      POSTLOOM_SOURCE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install, open, update and uninstall
+        if: runner.os != 'Windows'
+        env:
+          BROWSER: "true"
+        run: sh scripts/ci/check_install.sh
+      - name: Install, open, update and uninstall (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/ci/check_install.ps1
