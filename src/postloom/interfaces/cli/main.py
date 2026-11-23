@@ -535,6 +535,7 @@ def _open(settings: Settings) -> int:
 
 
 def _stop(settings: Settings) -> int:
+    import http.client
     import time
     import urllib.request
 
@@ -551,6 +552,8 @@ def _stop(settings: Settings) -> int:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         opener.open(request, timeout=5).close()
+    except (ConnectionError, http.client.HTTPException):
+        pass  # it closed the connection while stopping; the check below says whether it did
     except OSError as error:
         raise ApplicationError(f"postloom at {url} didn't stop: {error}") from error
     deadline = time.monotonic() + 15

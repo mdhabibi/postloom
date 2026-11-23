@@ -203,6 +203,9 @@ class AppState:
 BackendFactory = Callable[..., LlmBackend]
 
 
+QUIT_DELAY_SECONDS = 0.3
+
+
 def create_app(
     load_settings: SettingsLoader,
     make_container: ContainerFactory,
@@ -220,8 +223,10 @@ def create_app(
     def quit_app(request: Request) -> Response:
         if shutdown is None:
             return JSONResponse({"error": "postloom can't be stopped from here."}, 400)
-        # Stop after the answer is sent, so the page can say that postloom stopped.
-        return JSONResponse({"stopping": True}, background=BackgroundTask(shutdown))
+        # Stop a moment after the answer is sent, so the page can say that postloom stopped
+        # (on Windows, stopping at once aborted the connection before the answer arrived).
+        timer = threading.Timer(QUIT_DELAY_SECONDS, shutdown)
+        return JSONResponse({"stopping": True}, background=BackgroundTask(timer.start))
 
     def status(request: Request) -> Response:
         container, settings = state.container, state.settings

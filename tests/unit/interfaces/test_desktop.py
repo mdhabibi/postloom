@@ -14,6 +14,12 @@ PYTHON = Path("/opt/tools/post loom/bin/python")
 HOME = Path("/data/My Postloom's $folder")
 
 
+OTHER_SYSTEMS = pytest.mark.skipif(
+    sys.platform == "win32", reason="macOS and Linux paths and file modes"
+)
+
+
+@OTHER_SYSTEMS
 def test_the_mac_app_runs_postloom_open_for_the_data_folder(tmp_path: Path) -> None:
     shortcuts = Shortcuts("Darwin", tmp_path, PYTHON)
     [app] = shortcuts.create(HOME)
@@ -33,6 +39,7 @@ def test_the_mac_app_runs_postloom_open_for_the_data_folder(tmp_path: Path) -> N
     assert shortcuts.remove() == []
 
 
+@OTHER_SYSTEMS
 def test_the_linux_menu_entry_quotes_its_command(tmp_path: Path) -> None:
     shortcuts = Shortcuts("Linux", tmp_path, PYTHON)
     [entry] = shortcuts.create(Path("/data/100% $mine"))
