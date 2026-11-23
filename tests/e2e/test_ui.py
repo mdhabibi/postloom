@@ -374,7 +374,7 @@ def test_a_local_model_is_downloaded_and_chosen_without_a_terminal(
         visit(page, "#/settings")
         page.locator(".provider-card", has_text="Ollama").click()
         page.fill("#ollama-url", url)
-        page.dispatch_event("#ollama-url", "change")
+        page.locator("#ollama-url").press("Tab")  # leaving the field fires "change"
         small = page.locator(".model-choices li", has_text="qwen3.5:4b")
         expect(small).to_contain_text("Fits this computer")
         small.get_by_role("button", name="Download").click()
