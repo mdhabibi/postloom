@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 from postloom import __version__, how_to_run
 from postloom.application.defaults import DEFAULT_TOPICS
@@ -22,6 +23,14 @@ from postloom.application.use_cases import (
 )
 from postloom.bootstrap import Container, Settings, build_container
 from postloom.interfaces.cli import doctor
+from postloom.interfaces.desktop.shortcuts import (
+    LOG_FILE,
+    Shortcuts,
+    last_lines,
+    log_to_file,
+    start_in_background,
+    tell,
+)
 
 ContainerFactory = Callable[[Settings], Container]
 DEFAULT_PORT = 8765
@@ -64,6 +73,12 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _search(args, settings, opened)
         if args.command == "start":
             return _start(args, settings, opened)
+        if args.command == "open":
+            return _open(settings)
+        if args.command == "stop":
+            return _stop(settings)
+        if args.command == "shortcut":
+            return _shortcut(args, settings)
     except ApplicationError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
@@ -159,6 +174,28 @@ def _parser() -> argparse.ArgumentParser:
     )
     start.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on.")
     start.add_argument("--no-browser", action="store_true", help="Don't open a browser tab.")
+    start.add_argument(
+        "--background",
+        action="store_true",
+        help=f"Write messages to {LOG_FILE} in the data folder instead of the terminal.",
+    )
+    commands.add_parser(
+        "open",
+        parents=[common],
+        help="Open postloom in your browser, starting it in the background if needed.",
+        description="What the desktop shortcut does. `postloom start` runs in this terminal.",
+    )
+    commands.add_parser(
+        "stop",
+        parents=[common],
+        help="Stop a postloom that runs in the background (the installer does this to update).",
+    )
+    shortcut = commands.add_parser(
+        "shortcut",
+        parents=[common],
+        help="Add a Postloom icon to your applications (the installer does this).",
+    )
+    shortcut.add_argument("--remove", action="store_true", help="Remove the icon instead.")
     return parser
 
 
@@ -422,22 +459,174 @@ def _start(args: argparse.Namespace, settings: Settings, make_container: Contain
 
     from postloom.interfaces.web.app import create_app
 
+    home = settings.home
+    if args.background or sys.stdout is None:  # sys.stdout is None under pythonw
+        log_to_file(home)
+    running = already_running(home)
+    if running is not None:
+        # A second start (say, the desktop shortcut clicked again) must not serve the same
+        # data folder twice: two servers would write the same database and vault.
+        print(f"postloom is already running at {running}")
+        if not args.no_browser:
+            webbrowser.open(running)
+        return 0
+
     port = _free_port(args.port)
     url = f"http://127.0.0.1:{port}/"
-    home = settings.home
-    app = create_app(lambda: Settings.load(home), make_container)
+    servers: list[uvicorn.Server] = []
+
+    def shutdown() -> None:  # the app's Quit button: there may be no window to close
+        for server in servers:
+            server.should_exit = True
+
+    app = create_app(lambda: Settings.load(home), make_container, shutdown=shutdown)
 
     with make_container(settings) as container:  # first run: start with the default topics
         container.seed_topics().execute(DEFAULT_TOPICS, only_when_empty=True)
 
     print(f"postloom is running at {url}")
     print(f"Your data: {home}")
-    print("Press Ctrl+C to stop.")
+    if not args.background:
+        print("Keep this window open while you use postloom. Close it, press Ctrl+C or")
+        print("choose Quit in the app to stop.")
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
-    # Listen on the loopback interface only: postloom is never reachable from the network.
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    marker = home / RUNNING_FILE
+    _write_running(marker, port)
+    try:
+        # Listen on the loopback interface only: postloom is never reachable from the network.
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        servers.append(uvicorn.Server(config))
+        servers[0].run()
+    finally:
+        marker.unlink(missing_ok=True)
     return 0
+
+
+STARTUP_SECONDS = 90
+"""How long `open` waits for a background start (a first start may upgrade the vault)."""
+
+
+def _open(settings: Settings) -> int:
+    import time
+    import webbrowser
+
+    home = settings.home
+    url = already_running(home)
+    if url is None:
+        process = start_in_background(home)
+        deadline = time.monotonic() + STARTUP_SECONDS
+        while url is None and time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            time.sleep(0.3)
+            url = already_running(home)
+        if url is None:
+            details = last_lines(home / LOG_FILE)
+            tell(
+                "postloom could not start",
+                f"Details are in {home / LOG_FILE}."
+                + (f"\n\nThe last lines:\n{details}" if details else ""),
+            )
+            return 1
+    print(f"postloom is running at {url}")
+    webbrowser.open(url)
+    return 0
+
+
+def _stop(settings: Settings) -> int:
+    import http.client
+    import time
+    import urllib.request
+
+    url = already_running(settings.home)
+    if url is None:
+        print("postloom isn't running.")
+        return 0
+    request = urllib.request.Request(
+        url + "api/quit",
+        data=b"{}",
+        method="POST",
+        headers={"X-Postloom": "1", "Content-Type": "application/json"},
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        opener.open(request, timeout=5).close()
+    except (ConnectionError, http.client.HTTPException):
+        pass  # it closed the connection while stopping; the check below says whether it did
+    except OSError as error:
+        raise ApplicationError(f"postloom at {url} didn't stop: {error}") from error
+    deadline = time.monotonic() + 15
+    while already_running(settings.home) is not None and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if already_running(settings.home) is not None:
+        raise ApplicationError(f"postloom at {url} is still running.")
+    print("postloom has stopped.")
+    return 0
+
+
+def _shortcut(args: argparse.Namespace, settings: Settings) -> int:
+    shortcuts = Shortcuts.here()
+    try:
+        changed = shortcuts.remove() if args.remove else shortcuts.create(settings.home)
+    except OSError as error:
+        raise ApplicationError(f"Couldn't change the Postloom icon: {error}") from error
+    if args.remove:
+        print("Removed the Postloom icon." if changed else "There was no Postloom icon to remove.")
+        print(f"Your data stays in {settings.home}.")
+        return 0
+    for path in changed:
+        print(f"Added {path}")
+    where = {
+        "Darwin": "in Launchpad, Spotlight and ~/Applications",
+        "Windows": "in the Start menu and on your desktop",
+    }.get(shortcuts.system, "in your applications menu")
+    print(f"Open postloom any time from the Postloom icon {where}.")
+    return 0
+
+
+RUNNING_FILE = ".running.json"
+"""Written while `postloom start` serves a data folder: which port to find it on."""
+
+
+def already_running(home: Path) -> str | None:
+    """The address of a postloom already serving this data folder, if one answers."""
+    import json
+    import urllib.request
+
+    try:
+        port = int(json.loads((home / RUNNING_FILE).read_text(encoding="utf-8"))["port"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    url = f"http://127.0.0.1:{port}/"
+    # Never through a proxy: the address is this computer's.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url + "api/ping", timeout=2) as reply:
+            answer: object = json.loads(reply.read())
+    except (OSError, ValueError):
+        return None  # left behind by a postloom that was killed; the port is someone else's
+    if not isinstance(answer, dict):
+        return None
+    fields = cast("dict[str, object]", answer)
+    if fields.get("app") != "postloom":
+        return None
+    try:
+        same = Path(str(fields.get("home"))).resolve() == home.resolve()
+    except OSError:
+        return None
+    return url if same else None
+
+
+def _write_running(marker: Path, port: int) -> None:
+    import json
+    import os
+
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"port": port, "pid": os.getpid()}), encoding="utf-8")
+    except OSError:
+        pass  # only a convenience for a second start; never a reason not to run
 
 
 def _free_port(preferred: int) -> int:

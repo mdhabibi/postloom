@@ -20,6 +20,14 @@ data is stored; postloom upgrades your data folder itself when it starts.
 - Request bodies without a declared length weren't size-limited.
 
 ### Added
+- One-line installers for macOS, Linux and Windows. They need nothing installed first,
+  add a Postloom icon (Launchpad, Start menu and desktop, applications menu), open the
+  app, update when run again and uninstall without touching your data.
+- `postloom open` (what the icon runs) starts postloom in the background and opens it;
+  clicking the icon again opens the running one instead of starting a second copy.
+  `postloom stop`, **Quit postloom** in the sidebar, and `postloom shortcut`.
+- Settings → Ollama sets up local models without a terminal: install, start, a model
+  suggested for your computer's memory, download with progress, use.
 - Stand-alone posts: add a post that doesn't announce an article (Add → Post, or
   `postloom post post.txt`). It gets its own page, topics, comments, reply drafts, search,
   chat, a place in the graph and a note in `vault/posts/`. Posts can be added without a

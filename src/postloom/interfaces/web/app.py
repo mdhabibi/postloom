@@ -25,6 +25,7 @@ import json
 import logging
 import mimetypes
 import os
+import subprocess
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from contextlib import asynccontextmanager, contextmanager
@@ -34,6 +35,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -66,6 +68,7 @@ from postloom.config import read_config
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId
 from postloom.domain.text import canonical_url
+from postloom.interfaces.desktop import ollama
 from postloom.interfaces.web import schemas
 from postloom.settings import MODEL_TASKS, save_settings
 
@@ -200,14 +203,30 @@ class AppState:
 BackendFactory = Callable[..., LlmBackend]
 
 
+QUIT_DELAY_SECONDS = 0.3
+
+
 def create_app(
     load_settings: SettingsLoader,
     make_container: ContainerFactory,
     *,
     connect: BackendFactory = build_backend,
+    shutdown: Callable[[], None] | None = None,
 ) -> Starlette:
     """``connect`` builds a backend for "Test connection"; tests pass a fake one."""
     state = AppState(load_settings, make_container)
+
+    def ping(request: Request) -> Response:
+        """Tells a second `postloom start` that this one already serves the data folder."""
+        return JSONResponse({"app": "postloom", "home": str(state.settings.home)})
+
+    def quit_app(request: Request) -> Response:
+        if shutdown is None:
+            return JSONResponse({"error": "postloom can't be stopped from here."}, 400)
+        # Stop a moment after the answer is sent, so the page can say that postloom stopped
+        # (on Windows, stopping at once aborted the connection before the answer arrived).
+        timer = threading.Timer(QUIT_DELAY_SECONDS, shutdown)
+        return JSONResponse({"stopping": True}, background=BackgroundTask(timer.start))
 
     def status(request: Request) -> Response:
         container, settings = state.container, state.settings
@@ -255,6 +274,7 @@ def create_app(
                 "topics": [t.name for t in container.repository.list_topics()],
                 "vault_changes": container.vault.changes().count,
                 "start_command": how_to_run("start"),
+                "can_quit": shutdown is not None,
                 "vault_sync": schemas.sync_report(state.vault_report),
                 "features": {
                     "ingest": container.extractor is not None,
@@ -308,6 +328,71 @@ def create_app(
         if spec.local and not models:
             message = f"{spec.label} is running but has no models yet. Run `ollama pull <model>`."
         return JSONResponse({"ok": True, "message": message, "models": models})
+
+    downloads = ollama.Downloads()
+
+    def ollama_url(given: str | None) -> str:
+        spec = provider_spec("ollama")
+        current = state.settings
+        saved = current.base_url if current.provider == "ollama" else _saved_url(current, spec)
+        url = (given or saved or spec.base_url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            raise ApplicationError("The Ollama address must start with http:// or https://.")
+        return url
+
+    def ollama_status(request: Request) -> Response:
+        url = ollama_url(request.query_params.get("url"))
+        models = ollama.running_models(url)
+        memory = ollama.memory_gb()
+        best = ollama.recommended(memory)
+        download = downloads.current
+        return JSONResponse(
+            {
+                "url": url,
+                "installed": models is not None or ollama.installed(),
+                "running": models is not None,
+                "models": models or [],
+                "memory_gb": None if memory is None else round(memory),
+                "download_page": ollama.DOWNLOAD_PAGE,
+                "suggestions": [
+                    {
+                        "name": s.name,
+                        "size_gb": s.size_gb,
+                        "label": s.label,
+                        "why": s.why,
+                        "recommended": s.name == best,
+                        "installed": any(
+                            m == s.name or m == s.name + ":latest" for m in models or []
+                        ),
+                    }
+                    for s in ollama.SUGGESTIONS
+                ],
+                "download": None
+                if download is None
+                else {
+                    "model": download.model,
+                    "status": download.status,
+                    "completed": download.completed,
+                    "total": download.total,
+                    "done": download.done,
+                    "error": download.error,
+                },
+            }
+        )
+
+    def ollama_start(request: Request, body: schemas.OllamaStart) -> Response:
+        try:
+            ollama.start()
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ApplicationError(f"Couldn't start Ollama: {error}") from error
+        return JSONResponse({"starting": True})
+
+    def ollama_pull(request: Request, body: schemas.OllamaPull) -> Response:
+        try:
+            started = downloads.start(ollama_url(body.base_url), body.model.strip())
+        except ValueError as error:
+            raise ApplicationError(str(error)) from error
+        return JSONResponse({"model": started.model}, status_code=202)
 
     def usage(request: Request) -> Response:
         month = request.query_params.get("month") or None
@@ -526,6 +611,8 @@ def create_app(
 
     routes = [
         Route("/", index_page),
+        Route("/api/ping", ping),
+        Route("/api/quit", api(quit_app, reads_vault=False), methods=["POST"]),
         Route("/api/status", api(status)),
         Route(
             "/api/settings",
@@ -538,6 +625,17 @@ def create_app(
             methods=["POST"],
         ),
         Route("/api/usage", api(usage)),
+        Route("/api/ollama", api(ollama_status, reads_vault=False)),
+        Route(
+            "/api/ollama/start",
+            api(ollama_start, schemas.OllamaStart, reads_vault=False),
+            methods=["POST"],
+        ),
+        Route(
+            "/api/ollama/pull",
+            api(ollama_pull, schemas.OllamaPull, reads_vault=False),
+            methods=["POST"],
+        ),
         Route("/api/reindex", api(reindex), methods=["POST"]),
         Route("/api/articles", api(list_articles)),
         Route("/api/articles", api(ingest, schemas.IngestRequest), methods=["POST"]),

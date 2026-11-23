@@ -231,6 +231,17 @@ main:focus { outline: none; }
   color: var(--muted); font-size: var(--ui-sm); cursor: pointer;
 }
 .theme-toggle:hover { background: var(--hover); color: var(--text); }
+.theme-toggle[hidden] { display: none; }
+.ollama-setup { margin: 1rem 0; padding: 1rem; border: 1px solid var(--line); border-radius: var(--r); }
+.ollama-setup h3 { margin: 0 0 0.5rem; font-size: var(--ui-md); }
+.ollama-setup progress { width: 100%; height: 0.6rem; accent-color: var(--accent); }
+.model-choices { list-style: none; margin: 0.75rem 0; padding: 0; display: grid; gap: 0.5rem; }
+.model-choices li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.model-choices li.recommended { border-color: var(--accent); }
+.model-choices .badge { margin-inline-start: 0.5rem; }
+.model-choices p { margin: 0.2rem 0 0; }
+.stopped { max-width: 32rem; margin: 18vh auto; padding: 0 1rem; text-align: center; }
+.stopped p { color: var(--text-soft); }
 
 /* The signature element: an article's topics as vertical warp threads. */
 .warp { display: flex; gap: 2px; flex: none; }

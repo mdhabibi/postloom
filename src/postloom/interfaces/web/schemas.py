@@ -65,6 +65,15 @@ class ConnectionTest(_Request):
     base_url: str | None = Field(default=None, max_length=500)
 
 
+class OllamaPull(_Request):
+    base_url: str | None = Field(default=None, max_length=500)
+    model: str = Field(min_length=1, max_length=120)
+
+
+class OllamaStart(_Request):
+    pass
+
+
 class CommentsPreviewRequest(_Request):
     article_id: str = Field(min_length=1, max_length=300)
     text: str = Field(min_length=1, max_length=300_000)

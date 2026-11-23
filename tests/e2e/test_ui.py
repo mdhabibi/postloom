@@ -360,3 +360,26 @@ def test_right_to_left_text_reads_right_to_left(page: Page) -> None:
     assert (
         page.locator(".prose p").first.evaluate("node => getComputedStyle(node).direction") == "ltr"
     )
+
+
+def test_a_local_model_is_downloaded_and_chosen_without_a_terminal(
+    page: Page, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from postloom.interfaces.desktop import ollama
+    from postloom.settings import read_config
+    from tests.fake_ollama import fake_ollama
+
+    monkeypatch.setattr(ollama, "memory_gb", lambda: 8.0)
+    with fake_ollama([]) as url:
+        visit(page, "#/settings")
+        page.locator(".provider-card", has_text="Ollama").click()
+        page.fill("#ollama-url", url)
+        page.locator("#ollama-url").press("Tab")  # leaving the field fires "change"
+        small = page.locator(".model-choices li", has_text="qwen3.5:4b")
+        expect(small).to_contain_text("Fits this computer")
+        small.get_by_role("button", name="Download").click()
+        small.get_by_role("button", name="Use this model").click()
+        expect(page.locator(".toast")).to_contain_text("Ollama (on this computer) saved")
+    config = read_config(home)
+    assert config["provider"] == "ollama"
+    assert set(config["models"]["ollama"].values()) == {"qwen3.5:4b"}
