@@ -8,6 +8,9 @@ data is stored; postloom upgrades your data folder itself when it starts.
 ## [Unreleased]
 
 ### Fixed
+- When Gemini's small model is overloaded ("high demand"), reading an article, a post,
+  comments or mentions now switches to Gemini Flash instead of failing, as chat already
+  did. The same applies through OpenRouter.
 - Words written with LinkedIn "fancy text" converters (bold, italic, script, double-struck,
   monospace, small capitals, circled, fullwidth, struck-through) are found by search and
   chat, matched as hashtags and names, and read correctly by the model. Posts keep the

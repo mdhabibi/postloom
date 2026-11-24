@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from postloom.adapters.llm import prompts
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.structured import structured
@@ -23,9 +25,10 @@ MENTIONS_MAX_OUTPUT = 8_192
 
 
 class LlmContentExtractor:
-    def __init__(self, gateway: LlmGateway, model: str) -> None:
+    def __init__(self, gateway: LlmGateway, model: str, fallbacks: Sequence[str] = ()) -> None:
         self._gateway = gateway
         self._model = model
+        self._fallbacks = tuple(fallbacks)
 
     @property
     def name(self) -> str:
@@ -44,13 +47,15 @@ class LlmContentExtractor:
             temperature=0.2,
             max_output_tokens=EXTRACTION_MAX_OUTPUT,
             failure="The model couldn't restore this article reliably.",
+            fallbacks=self._fallbacks,
         )
 
 
 class LlmPostClassifier:
-    def __init__(self, gateway: LlmGateway, model: str) -> None:
+    def __init__(self, gateway: LlmGateway, model: str, fallbacks: Sequence[str] = ()) -> None:
         self._gateway = gateway
         self._model = model
+        self._fallbacks = tuple(fallbacks)
 
     @property
     def name(self) -> str:
@@ -69,13 +74,15 @@ class LlmPostClassifier:
             temperature=0.0,
             max_output_tokens=POST_TOPICS_MAX_OUTPUT,
             failure="The model couldn't choose topics for this post.",
+            fallbacks=self._fallbacks,
         )
 
 
 class LlmMentionFinder:
-    def __init__(self, gateway: LlmGateway, model: str) -> None:
+    def __init__(self, gateway: LlmGateway, model: str, fallbacks: Sequence[str] = ()) -> None:
         self._gateway = gateway
         self._model = model
+        self._fallbacks = tuple(fallbacks)
 
     @property
     def name(self) -> str:
@@ -94,13 +101,15 @@ class LlmMentionFinder:
             temperature=0.0,
             max_output_tokens=MENTIONS_MAX_OUTPUT,
             failure="The model couldn't read the names in this text.",
+            fallbacks=self._fallbacks,
         )
 
 
 class LlmThreadParser:
-    def __init__(self, gateway: LlmGateway, model: str) -> None:
+    def __init__(self, gateway: LlmGateway, model: str, fallbacks: Sequence[str] = ()) -> None:
         self._gateway = gateway
         self._model = model
+        self._fallbacks = tuple(fallbacks)
 
     @property
     def name(self) -> str:
@@ -119,4 +128,5 @@ class LlmThreadParser:
             temperature=0.0,
             max_output_tokens=THREADS_MAX_OUTPUT,
             failure="The model couldn't split these comments reliably.",
+            fallbacks=self._fallbacks,
         )

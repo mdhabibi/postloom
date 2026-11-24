@@ -352,12 +352,17 @@ def build_container(
             budget=BudgetPolicy(ledger, clock, settings.monthly_budget_usd),
         )
         fallbacks = settings.spec.models.chat_fallbacks if settings.spec else ()
-        extractor = extractor or LlmContentExtractor(gateway, settings.model("extraction"))
-        thread_parser = thread_parser or LlmThreadParser(gateway, settings.model("comments"))
-        post_classifier = post_classifier or LlmPostClassifier(
-            gateway, settings.model("extraction")
+        reading = settings.spec.models.reading_fallbacks if settings.spec else ()
+        extractor = extractor or LlmContentExtractor(gateway, settings.model("extraction"), reading)
+        thread_parser = thread_parser or LlmThreadParser(
+            gateway, settings.model("comments"), reading
         )
-        mention_finder = mention_finder or LlmMentionFinder(gateway, settings.model("extraction"))
+        post_classifier = post_classifier or LlmPostClassifier(
+            gateway, settings.model("extraction"), reading
+        )
+        mention_finder = mention_finder or LlmMentionFinder(
+            gateway, settings.model("extraction"), reading
+        )
         chat = chat or LlmChat(gateway, settings.model("chat"), fallbacks=fallbacks)
         reply_chat = reply_chat or LlmChat(
             gateway,
