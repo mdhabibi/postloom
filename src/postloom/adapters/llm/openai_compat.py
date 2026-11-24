@@ -20,6 +20,7 @@ from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
     HttpApi,
+    Image,
     InvalidRequestError,
     JsonReply,
     OutputTruncatedError,
@@ -119,6 +120,7 @@ class OpenAICompatibleBackend:
         temperature: float,
         max_output_tokens: int,
         effort: str = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
         def build(quirks: Quirks) -> JsonObject:
             instructions = system
@@ -127,6 +129,17 @@ class OpenAICompatibleBackend:
             payload = self._base(
                 model, quirks, instructions, [("user", prompt)], temperature, max_output_tokens
             )
+            if images:
+                payload["messages"][-1]["content"] = [
+                    {"type": "text", "text": prompt},
+                    *(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{i.mime};base64,{i.base64()}"},
+                        }
+                        for i in images
+                    ),
+                ]
             self._effort(payload, quirks, effort)
             if quirks.json_mode == "schema":
                 payload["response_format"] = {

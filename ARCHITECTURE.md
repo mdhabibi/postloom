@@ -288,6 +288,15 @@ writes, so it never overwrites an edit it hasn't read.
    then one chunk per comment thread, written as "Name (replying to Name): text". A match
    there is shown under the article it belongs to, or as the stand-alone post itself. Keeping the discussion out of the
    article's node means link suggestions still compare articles by what they are about.
+5. **Images and videos** (`domain/media.py`, `use_cases/media.py`) are files in
+   `vault/media/<item>/`, listed in the item's note (`media:` with each file's caption,
+   model description and subtitle file). They are indexed as chunks of the item, headed
+   "Image: <caption>" or "Video: <caption>", from the caption, what a model saw in the
+   image (port `ImageDescriber`; every backend accepts images with a prompt) and the
+   subtitles' words. A video's transcript is never stored in the note: it is read from
+   the subtitle file, so the vault stays the source. Removed files go to the trash. The
+   server streams uploads to disk and serves `/media/...` with range requests, refusing
+   any path outside the media folder; SVG and HTML are never accepted.
 
 ## Links between articles
 

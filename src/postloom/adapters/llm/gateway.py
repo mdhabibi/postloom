@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from postloom.adapters.llm.base import (
     Effort,
     EmbeddingKind,
+    Image,
     LlmBackend,
     Turn,
     Usage,
@@ -60,6 +61,7 @@ class LlmGateway:
         temperature: float,
         max_output_tokens: int,
         effort: Effort = "low",
+        images: Sequence[Image] = (),
     ) -> JsonObject:
         self._check_budget()
         reply = self.backend.complete_json(
@@ -71,6 +73,7 @@ class LlmGateway:
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             effort=effort,
+            images=images,
         )
         self._record(task, model, reply.usage)
         return reply.data

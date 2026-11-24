@@ -611,6 +611,7 @@ function addPostView() {
     field("text", "The post", h("textarea", { id: "text", name: "text", required: true, rows: 10, dir: "auto",
       placeholder: "Paste the post here, with its hashtags.\n\ne.g.\nThree things I learned shipping our first AI agent...\n\n#AI #Agents" }),
     "On LinkedIn, open your post, click \u2026see more so the whole text shows, then copy it and paste it here. Bold or fancy letters are fine. Adding the same post again later updates it."),
+    mediaField(),
     optionalDetails("They let you jump back to LinkedIn and sort your writing by date.",
       h("div", { class: "field-row" },
         field("url", "Link to the post", h("input", { id: "url", name: "url", type: "url", placeholder: "https://www.linkedin.com/posts/..." }),
@@ -635,12 +636,14 @@ async function submitPost(event) {
   result.replaceChildren();
   try {
     const added = await api("/api/posts", { method: "POST", body });
+    const files = [...document.getElementById("media_files").files];
     await refresh();
     const lines = [`${added.is_update ? "Updated" : "Added"} "${added.title}".`];
     if (added.topics.length) lines.push(`Topics: ${added.topics.join(", ")}.`);
     for (const warning of added.warnings) lines.push(warning);
     if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
     result.replaceChildren(notice("", ...lines,
+      uploadAfterAdd(added.id, files),
       lookForMentions(added.id, "post"),
       h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the post")));
     form.reset();
@@ -683,6 +686,7 @@ function addView() {
       placeholder: "e.g.\nNew article: how we cut our LLM bill in half without losing quality.\n\n#LLM #RAG" }),
     "The short post on your feed that links to the article. Copy its text with the hashtags: its comments will be read from there.",
     { step: 2 }),
+    mediaField(),
     optionalDetails("They let you jump back to LinkedIn and sort your writing by date. Copy a link from your browser's address bar while the page is open.",
       h("div", { class: "field-row" },
         field("article_url", "Link to the article", h("input", { id: "article_url", name: "article_url", type: "url", placeholder: "https://www.linkedin.com/pulse/..." })),
@@ -713,6 +717,28 @@ function optionalDetails(summary, ...fields) {
     h("p", { class: "hint" }, summary), ...fields);
 }
 
+function mediaField() {
+  const input = h("input", { type: "file", id: "media_files", multiple: true, accept: MEDIA_ACCEPT });
+  return field("media_files", "Images and videos", input,
+    "The pictures, slides or video you posted with it, from your computer. You can also add them later on its page.",
+    { optional: true });
+}
+
+// After adding an item: send the files chosen in the form, one by one, saying how it goes.
+function uploadAfterAdd(id, files) {
+  if (!files.length) return null;
+  const line = h("p", { class: "hint", role: "status" }, "Sending images and videos...");
+  const problems = [];
+  addMediaFiles(id, files, { describe: canDescribe(), report: (text, problem) => {
+    if (problem) problems.push(text);
+    line.textContent = problem ? problems.join(" ") : text;
+  } }).then((added) => {
+    const done = `${plural(added.length, "image or video", "images and videos")} added${canDescribe() ? " and described" : ""}.`;
+    line.textContent = problems.length ? `${done} ${problems.join(" ")}` : done;
+  });
+  return line;
+}
+
 function nextSteps(text) {
   return h("p", { class: "hint next-steps" }, text);
 }
@@ -735,6 +761,7 @@ async function submitArticle(event) {
   result.replaceChildren();
   try {
     const added = await api("/api/articles", { method: "POST", body });
+    const files = [...document.getElementById("media_files").files];
     await refresh();
     const lines = [`${added.is_update ? "Updated" : "Added"} "${added.title}".`];
     if (added.topics.length) lines.push(`Topics: ${added.topics.join(", ")}.`);
@@ -742,6 +769,7 @@ async function submitArticle(event) {
     if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
     if (added.suggested_links) lines.push(`${added.suggested_links} related ${added.suggested_links === 1 ? "article" : "articles"} suggested. Review them on the article's page.`);
     result.replaceChildren(notice(added.warnings.length || added.index_error ? "" : "", ...lines,
+      uploadAfterAdd(added.id, files),
       lookForMentions(added.id, "article"),
       h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the article")));
     form.reset();
@@ -777,6 +805,7 @@ async function articleView(id, focus = {}) {
     htmlBlock("prose", markdown(article.body_markdown)),
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
       h("h2", {}, "Announcement post"), h("p", { dir: "auto", class: "post-text" }, post.text))),
+    mediaSection(article),
     relatedSection(article),
     mentionsSection(article),
     article.posts.length ? discussionSection(article) : null);
@@ -801,6 +830,7 @@ function postView(post, focus) {
     articleActions(post),
     h("section", { class: "post standalone", "aria-label": "Post" },
       h("p", { dir: "auto", class: "post-text" }, withoutTitle(post.body_markdown, post.title))),
+    mediaSection(post),
     mentionsSection(post),
     discussionSection(post));
   const suggestions = post.discussion.length
@@ -820,6 +850,161 @@ function withoutTitle(text, title) {
   const shown = title.replace(/\.\.\.$/, "");
   if (first < 0 || title.endsWith("...") || !lines[first].includes(shown)) return text;
   return lines.slice(first + 1).join("\n").replace(/^\s*\n/, "");
+}
+
+// ---------------------------------------------------------------------------- images and videos
+const MEDIA_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/webm,.m4v";
+const canDescribe = () => Boolean(state.status && state.status.features && state.status.features.describe_images);
+
+// Sends one file as the request body, reporting progress (a video can be large).
+function uploadFile(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", url);
+    request.setRequestHeader("X-Postloom", "1");
+    request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    request.upload.addEventListener("progress", (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); });
+    request.addEventListener("load", () => {
+      let data = {};
+      try { data = JSON.parse(request.responseText); } catch { /* not JSON */ }
+      if (request.status >= 200 && request.status < 300) resolve(data);
+      else reject(new Error(data.error || `Upload failed (${request.status}).`));
+    });
+    request.addEventListener("error", () => reject(new Error("postloom isn't running, so the file couldn't be sent.")));
+    request.send(file);
+  });
+}
+
+// Upload files to an item, describing images with the model when asked. Reports each step.
+async function addMediaFiles(itemId, files, { describe, report }) {
+  const added = [];
+  for (const [i, file] of [...files].entries()) {
+    const label = files.length > 1 ? `${file.name} (${i + 1} of ${files.length})` : file.name;
+    try {
+      let media = await uploadFile(`/api/media/upload?id=${encodeURIComponent(itemId)}&name=${encodeURIComponent(file.name)}`,
+        file, (part) => report(`Sending ${label}: ${Math.round(part * 100)}%`));
+      if (describe && media.kind === "image") {
+        report(`Looking at ${label}...`);
+        try {
+          media = await api("/api/media/describe", { method: "POST", body: { id: itemId, file: media.file } });
+        } catch (error) {
+          report(`${label} was added, but not described: ${error.message}`, true);
+        }
+      }
+      added.push(media);
+    } catch (error) {
+      report(`${label}: ${error.message}`, true);
+    }
+  }
+  return added;
+}
+
+function mediaSection(item) {
+  const section = h("section", { class: "media-section", id: "media", "aria-labelledby": "media-heading" });
+  let media = [...(item.media || [])];
+  const status = h("div", { class: "media-status", role: "status" });
+  const problems = [];
+  const report = (text, problem = false) => {
+    if (problem) problems.push(text);
+    fill(status, problems.map((p) => h("p", { class: "notice error" }, p)), problem ? null : h("p", { class: "hint" }, text));
+  };
+  const describeBox = h("input", { type: "checkbox", checked: canDescribe(), disabled: !canDescribe() });
+  const picker = h("input", { type: "file", multiple: true, accept: MEDIA_ACCEPT, class: "visually-hidden", id: "media-files" });
+  async function addFiles(files) {
+    if (!files.length) return;
+    problems.length = 0;
+    const added = await addMediaFiles(item.id, files, { describe: describeBox.checked, report });
+    media = media.concat(added);
+    if (!problems.length) fill(status, added.length ? h("p", { class: "hint" }, `Added ${plural(added.length, "file")}.`) : null);
+    draw();
+  }
+  picker.addEventListener("change", () => { addFiles(picker.files); picker.value = ""; });
+  const drop = h("label", { class: "media-drop", for: "media-files" },
+    icon("plus"), h("span", {}, h("strong", {}, "Add images or videos"), h("br"),
+      h("span", { class: "hint" }, "Click to choose, or drop files here. PNG, JPG, GIF, WebP, MP4, MOV or WebM.")));
+  for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("dragging"); });
+  for (const type of ["dragleave", "drop"]) drop.addEventListener(type, () => drop.classList.remove("dragging"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles(e.dataTransfer.files); });
+
+  const grid = h("ul", { class: "media-grid" });
+  function draw() {
+    fill(grid, media.map((m) => mediaCard(item, m, {
+      changed: (updated) => { media = media.map((x) => (x.file === updated.file ? updated : x)); draw(); },
+      removed: () => { media = media.filter((x) => x.file !== m.file); draw(); },
+    })));
+  }
+  draw();
+  return fill(section,
+    h("h2", { id: "media-heading" }, "Images and videos"),
+    h("p", { class: "section-hint" }, "Add the pictures and videos you shared with it. What you write about each one, what AI sees in an image and a video's subtitles make them findable in search and chat."),
+    grid, drop, picker,
+    h("label", { class: "check media-describe" }, describeBox,
+      canDescribe() ? "Describe new images with AI, so search finds what's in them (a fraction of a cent each)"
+        : "Connect a model in Settings to have images described; your own captions work without one"),
+    status);
+}
+
+function mediaCard(item, m, { changed, removed }) {
+  const ref = { id: item.id, file: m.file };
+  const caption = h("textarea", { rows: 2, dir: "auto", maxlength: 5000, "aria-label": `What ${m.name} shows`,
+    placeholder: m.kind === "image" ? "What does it show? e.g. Latency before and after caching" : "What is it about? e.g. Demo of the agent booking a meeting" }, m.caption);
+  const message = h("p", { class: "hint", role: "status" });
+  const busy = async (button, text, work) => {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = text;
+    message.textContent = "";
+    try { await work(); } catch (error) { message.textContent = error.message; } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  };
+  const save = h("button", { class: "button", type: "button", onclick: (e) => busy(e.currentTarget, "Saving...", async () => {
+    changed(await api("/api/media/update", { method: "POST", body: { ...ref, caption: caption.value } }));
+    toast("Saved");
+  }) }, "Save");
+  const describe = m.kind === "image" ? h("button", { class: "button", type: "button", disabled: !canDescribe(),
+    title: canDescribe() ? null : "Connect a model in Settings first",
+    onclick: (e) => busy(e.currentTarget, "Looking...", async () => {
+      changed(await api("/api/media/describe", { method: "POST", body: ref }));
+    }) }, m.description ? "Describe again" : "Describe with AI") : null;
+  const subtitlesPicker = h("input", { type: "file", accept: ".vtt,.srt", class: "visually-hidden",
+    id: `subtitles-${m.file}` });
+  subtitlesPicker.addEventListener("change", async () => {
+    const [file] = subtitlesPicker.files;
+    if (!file) return;
+    message.textContent = "Reading the subtitles...";
+    try {
+      changed(await uploadFile(`/api/media/upload?id=${encodeURIComponent(item.id)}&video=${encodeURIComponent(m.file)}&name=${encodeURIComponent(file.name)}`,
+        file, () => {}));
+      toast("Subtitles added: what is said in the video can now be searched");
+    } catch (error) { message.textContent = error.message; }
+  });
+  const remove = h("button", { class: "button button-danger-quiet", type: "button", onclick: (e) => busy(e.currentTarget, "Removing...", async () => {
+    await api("/api/media/remove", { method: "POST", body: ref });
+    removed();
+    toast(`${m.name} removed (kept in the vault's trash)`);
+  }) }, "Remove");
+  const preview = m.kind === "image"
+    ? h("a", { href: m.url, target: "_blank", rel: "noopener", class: "media-preview", title: "Open full size" },
+      h("img", { src: m.url, alt: m.caption || m.description || m.name, loading: "lazy" }))
+    : h("video", { class: "media-preview", src: m.url, controls: true, preload: "metadata" },
+      m.subtitles_url ? h("track", { kind: "subtitles", src: m.subtitles_url, default: true, label: "Subtitles" }) : null);
+  return h("li", { class: "media-card", "data-file": m.file },
+    preview,
+    h("div", { class: "media-body" },
+      h("p", { class: "media-name" }, m.name),
+      caption,
+      m.description ? h("details", { class: "media-seen" },
+        h("summary", {}, `What AI saw${m.described_by ? ` (${m.described_by})` : ""}`),
+        h("p", { dir: "auto" }, m.description)) : null,
+      m.kind === "video" ? h("p", { class: "hint" }, m.has_transcript
+        ? "Subtitles added: what is said in it is searchable."
+        : "Add its subtitles (.vtt or .srt, as uploaded to LinkedIn) to make what is said in it searchable.") : null,
+      h("div", { class: "media-actions" }, save, describe,
+        m.kind === "video" ? h("label", { class: "button", for: `subtitles-${m.file}` }, m.subtitles ? "Replace subtitles" : "Add subtitles") : null,
+        subtitlesPicker, remove),
+      message));
 }
 
 // ---------------------------------------------------------------------------- mentions
@@ -1505,8 +1690,11 @@ async function searchView(query, ask = false) {
     const list = found.results.length
       ? h("ul", { class: "results" }, found.results.map((r) => h("li", { class: "result" },
           h("h2", {}, h("a", { href: `#/article/${encodeURIComponent(r.id)}` }, r.title)),
-          r.passages.map((p) => h("p", { class: "passage" }, h("span", { class: "where" }, p.heading || "Introduction"), p.excerpt)))))
-      : h("p", { class: "lede" }, "Nothing matches in your articles, posts or comments. Try other words, or ask below.");
+          r.passages.map((p) => h("p", { class: "passage" },
+            p.media_url && p.kind === "image" ? h("a", { href: `#/article/${encodeURIComponent(r.id)}` },
+              h("img", { class: "result-media", src: p.media_url, alt: "", loading: "lazy" })) : null,
+            h("span", { class: "where" }, p.heading || "Introduction"), p.excerpt)))))
+      : h("p", { class: "lede" }, "Nothing matches in your articles, posts, comments, images or videos. Try other words, or ask below.");
     document.getElementById("search-results").replaceChildren(
       ...found.warnings.map((w) => notice("", w)), list,
       chatPanel("library", "Ask across your library", "Answers use only your articles, posts and comments, and what postloom knows about the people in them.", [], query, ask));
@@ -1928,7 +2116,7 @@ function usageSection(s) {
   api("/api/usage").then((usage) => {
     const money = (n) => n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
     const tokens = (n) => n.toLocaleString();
-    const labels = { ...TASK_LABELS, embeddings: "Search embeddings", test: "Connection tests" };
+    const labels = { ...TASK_LABELS, images: "Describing images", embeddings: "Search embeddings", test: "Connection tests" };
     const budgetInput = h("input", { id: "monthly_budget", type: "number", min: "0", step: "0.5", inputmode: "decimal",
       value: s.budget.monthly_usd ?? "", placeholder: "No limit" });
     const saveBudget = async (value) => {

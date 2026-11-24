@@ -500,10 +500,10 @@ textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 .prose .flash, .comment.flash { animation: flash 1.8s var(--ease); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--focus) 30%, transparent); } 100% { background: transparent; } }
 
-.post, .related, .discussion {
+.post, .related, .discussion, .media-section {
   margin-top: 2.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); max-width: 68ch;
 }
-.post h2, .related h2, .discussion-head h2 { font: 600 var(--h3)/1.3 var(--sans); margin: 0 0 0.6rem; letter-spacing: -0.015em; }
+.post h2, .related h2, .discussion-head h2, .media-section h2 { font: 600 var(--h3)/1.3 var(--sans); margin: 0 0 0.6rem; letter-spacing: -0.015em; }
 .post p { white-space: pre-wrap; margin: 0; font-size: var(--ui-md); color: var(--text-soft); }
 .post.standalone { border: 0; padding: 0; margin-top: 1.25rem; }
 .post.standalone p { font: 400 var(--read)/1.72 var(--serif); max-width: 68ch; color: var(--text); }
@@ -988,3 +988,37 @@ textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 .credits { padding-left: 1.1rem; display: grid; gap: 0.4rem; font-size: var(--ui); }
 .about-link { text-decoration: none; display: flex; }
 @media (max-width: 640px) { .about-facts { grid-template-columns: 1fr; gap: 0.1rem; } .about-facts dd { margin-bottom: 0.6rem; } }
+
+/* ---------------------------------------------------------------- images and videos */
+.media-grid { list-style: none; margin: 0 0 0.9rem; padding: 0; display: grid; gap: 0.9rem; }
+.media-card {
+  display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr); gap: 1rem;
+  padding: 0.8rem; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised);
+}
+.media-preview { display: block; align-self: start; width: 100%; border-radius: var(--r); background: var(--bg); overflow: hidden; }
+.media-preview img, video.media-preview { display: block; width: 100%; max-height: 13rem; object-fit: contain; }
+.media-body { display: grid; gap: 0.45rem; align-content: start; min-width: 0; }
+.media-name { margin: 0; font-size: var(--ui-sm); color: var(--muted); overflow-wrap: anywhere; }
+.media-body textarea { width: 100%; padding: 0.5rem 0.65rem; resize: vertical; }
+.media-seen summary { cursor: pointer; color: var(--text-soft); font-size: var(--ui-sm); }
+.media-seen p { margin: 0.35rem 0 0; font-size: var(--ui-sm); white-space: pre-wrap; color: var(--text-soft); }
+.media-body .hint { margin: 0; }
+.media-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.media-drop {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem 1rem; cursor: pointer;
+  border: 1.5px dashed var(--line-strong); border-radius: var(--r-lg); color: var(--text);
+}
+.media-drop:hover, .media-drop.dragging, .media-drop:focus-within { border-color: var(--accent); background: var(--accent-wash); }
+#media-files:focus-visible + .media-describe, .media-drop:has(+ #media-files:focus-visible) { outline: 2px solid var(--accent); }
+.media-describe { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: var(--text-soft); font-size: var(--ui-sm); }
+.media-status .notice { margin: 0.6rem 0 0; }
+.media-status .hint { margin: 0.6rem 0 0; }
+.result-media { display: block; width: 7rem; max-height: 5rem; object-fit: cover; border-radius: var(--r-sm); float: right; margin: 0 0 0.4rem 0.8rem; }
+@media (max-width: 640px) { .media-card { grid-template-columns: 1fr; } }
+.field input[type="file"] { padding: 0.45rem 0.6rem; cursor: pointer; color: var(--text-soft); }
+input[type="file"]::file-selector-button {
+  margin-right: 0.75rem; padding: 0.4rem 0.8rem; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: var(--raised); color: var(--text); font: 500 var(--ui-sm)/1.2 var(--sans); cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
+.sidebar-foot { box-shadow: 0 -10px 14px -12px rgb(0 0 0 / 0.45); }

@@ -243,3 +243,38 @@ THREADS_SCHEMA: JsonObject = {
     "required": ["messages"],
     "additionalProperties": False,
 }
+
+
+# -- images -----------------------------------------------------------------------------
+IMAGE_SYSTEM = """\
+You describe an image from a LinkedIn post or article so its author can find it again by
+searching. Write for search, not for art: say what the image is (a chart, a diagram, a
+slide, a screenshot, a photo of people at an event...) and what it shows, using the words
+of the post it belongs to. Name what you can read or see for certain; never guess who a
+person is. Copy any text written in the image word for word, in its original language.
+"""
+
+
+def image_prompt(context: str) -> str:
+    context = context.strip()[:3000]
+    return (
+        "The image belongs to this post or article:\n<post>\n"
+        f"{context}\n</post>\n\n"
+        "Describe the image in 1 to 3 sentences, then copy the text written in it."
+    )
+
+
+IMAGE_SCHEMA: JsonObject = {
+    "type": "object",
+    "properties": {
+        "description": {
+            "type": "string",
+            "description": "What the image is and shows, in 1 to 3 sentences.",
+        },
+        "text_in_image": {
+            "type": "string",
+            "description": "Every word written in the image, as written. Empty if none.",
+        },
+    },
+    "required": ["description", "text_in_image"],
+}

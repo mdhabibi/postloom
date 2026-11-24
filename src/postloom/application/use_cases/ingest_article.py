@@ -163,8 +163,12 @@ class IngestArticle:
             hashtags=tuple(extract_hashtags(command.post_text)),
             links=tuple(extract_urls(command.post_text)),
             banner_path=command.banner_path or (old_post.banner_path if old_post else None),
+            media=old_post.media if old_post else (),
         )
-        is_update = self._repository.get_article(article.id) is not None
+        stored = self._repository.get_article(article.id)
+        is_update = stored is not None
+        if stored is not None:  # pasting it again keeps its images and videos
+            article = replace(article, media=stored.media)
 
         if article.series is not None:
             self._repository.save_series(article.series)

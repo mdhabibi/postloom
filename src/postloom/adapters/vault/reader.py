@@ -40,6 +40,7 @@ from postloom.domain.discussion import OWNER, Comment
 from postloom.domain.entities import Category, Entity
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId, NodeKind, node_id
+from postloom.domain.media import Media, MediaKind, subtitle_text
 from postloom.domain.people import Person, ProfileObservation, ProfileUrl
 from postloom.domain.text import extract_hashtags, extract_urls
 
@@ -265,6 +266,7 @@ class _Reader:
             hashtags=tuple(_strings(meta, "hashtags")),
             entities=tuple(_strings(meta, "entities")),
             key=key,
+            media=self._media(meta),
         )
         topics = tuple(dict.fromkeys(self._topic_link(v) for v in _items(meta, "topics")))
         related: list[NodeId] = []
@@ -291,11 +293,43 @@ class _Reader:
             hashtags=tuple(_strings(meta, "hashtags") if has_lists else extract_hashtags(text)),
             links=tuple(_strings(meta, "links") if has_lists else extract_urls(text)),
             banner_path=banner,
+            media=self._media(meta),
         )
         target = link_target(meta.get("announces"))
         announces = node_id(NodeKind.ARTICLE, target.rsplit("/", 1)[-1]) if target else None
         topics = tuple(dict.fromkeys(self._topic_link(v) for v in _items(meta, "topics")))
         return PostNote(post, announces, () if announces else topics)
+
+    def _media(self, meta: Meta) -> tuple[Media, ...]:
+        found: list[Media] = []
+        for i, entry in enumerate(_items(meta, "media"), start=1):
+            if not isinstance(entry, dict):
+                raise NoteError(f"`media` entry {i} must have a `file` and a `kind`")
+            fields = {str(k): v for k, v in cast(dict[object, Any], entry).items()}
+            try:
+                kind = MediaKind(_text(fields, "kind"))
+                subtitles = _text(fields, "subtitles") or None
+                media = Media(
+                    file=_text(fields, "file"),
+                    kind=kind,
+                    caption=_text(fields, "caption"),
+                    description=_text(fields, "description"),
+                    described_by=_text(fields, "described_by") or None,
+                    subtitles=subtitles,
+                    transcript=self._transcript(subtitles),
+                )
+            except (ValueError, DomainError) as error:
+                raise NoteError(f"`media` entry {i} isn't valid: {error}") from error
+            found.append(media)
+        return tuple(found)
+
+    def _transcript(self, subtitles: str | None) -> str:
+        if not subtitles:
+            return ""
+        try:
+            return subtitle_text((self._root / subtitles).read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeDecodeError):
+            return ""  # the file was moved or deleted: the video stays, without its words
 
     # -- discussions ----------------------------------------------------------------
     def _discussion(self, meta: Meta, body: str) -> list[Comment]:

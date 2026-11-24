@@ -35,6 +35,7 @@ from postloom.application.use_cases.mentions import EntityDetail
 from postloom.application.use_cases.usage import UsageSummary
 from postloom.domain.content import Article, Post
 from postloom.domain.entities import Entity
+from postloom.domain.media import Media
 
 Json = dict[str, Any]
 
@@ -205,6 +206,20 @@ class EntityUpdate(_Request):
     name: str | None = Field(default=None, min_length=1, max_length=300)
     category: str | None = Field(default=None, max_length=40)
     url: str | None = Field(default=None, max_length=2000)
+
+
+class MediaRef(_Request):
+    id: str = Field(min_length=1, max_length=300)
+    """The article or stand-alone post."""
+    file: str = Field(min_length=1, max_length=400)
+
+
+class MediaCaption(MediaRef):
+    caption: str = Field(default="", max_length=5_000)
+
+
+class MediaMove(MediaRef):
+    position: int = Field(ge=0, le=10_000)
 
 
 class EntityMerge(_Request):
@@ -387,6 +402,23 @@ def article_detail(detail: ArticleDetail) -> Json:
         ],
         "discussion": discussion,
         "related": [related_link(link) for link in detail.related],
+        "media": [media_view(m) for m in item.media],
+    }
+
+
+def media_view(media: Media) -> Json:
+    return {
+        "file": media.file,
+        "url": f"/{media.file}",
+        "kind": media.kind.value,
+        "name": media.name,
+        "label": media.label(),
+        "caption": media.caption,
+        "description": media.description,
+        "described_by": media.described_by,
+        "subtitles": media.subtitles,
+        "subtitles_url": f"/{media.subtitles}" if media.subtitles else None,
+        "has_transcript": bool(media.transcript),
     }
 
 
@@ -571,6 +603,7 @@ def search_results(found: SearchResults) -> Json:
                     {
                         "heading": p.heading,
                         "kind": p.kind,
+                        "media_url": f"/{p.media_file}" if p.media_file else None,
                         "excerpt": p.excerpt,
                         "matched_by": sorted(p.matched_by),
                         "similarity": p.similarity,

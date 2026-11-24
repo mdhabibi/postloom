@@ -19,6 +19,7 @@ from tests.fakes import (
     FakeChat,
     FakeEmbedder,
     FakeExtractor,
+    FakeImageDescriber,
     FakeMentionFinder,
     FakePostClassifier,
     FakeThreadParser,
@@ -45,6 +46,7 @@ def open_home(
     min_similarity: float | None = None,
     post_classifier: FakePostClassifier | None = None,
     mention_finder: FakeMentionFinder | None = None,
+    image_describer: FakeImageDescriber | None = None,
     **extraction: Any,
 ) -> Container:
     return build_container(
@@ -55,6 +57,7 @@ def open_home(
         thread_parser=FakeThreadParser(),
         post_classifier=post_classifier or FakePostClassifier(),
         mention_finder=mention_finder,
+        image_describer=image_describer,
         clock=clock or FixedClock(),
     )
 

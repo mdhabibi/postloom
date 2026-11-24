@@ -129,6 +129,7 @@ def test_status_reports_features_without_leaking_the_key(
         "chat": True,
         "comments": True,
         "reply_drafts": True,
+        "describe_images": False,  # the fakes here include no image model
     }
     assert status["articles"] == 0
     assert "RAG" in status["topics"]
@@ -1089,3 +1090,69 @@ def test_confirming_refuses_bad_input(tmp_path: Path) -> None:
     sneaky = {"id": post, "accept": [{"name": "X", "category": "link", "url": "javascript:x"}]}
     assert client.post("/api/mentions/confirm", json_body=sneaky).status == 400
     assert client.post("/api/mentions/find", json_body={"id": "post:nope"}).status == 400
+
+
+# -- images and videos --------------------------------------------------------------
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def test_media_are_uploaded_served_and_shown_with_their_item(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    post = client.post("/api/posts", json_body={"text": "Shipping agents #AI"}).json["id"]
+    reply = client.post(
+        f"/api/media/upload?id={post}&name=Latency%20Chart.png&caption=p99%20latency",
+        raw_body=PNG,
+        headers={"content-type": "image/png"},
+    )
+    assert reply.status == 201, reply.text
+    image = reply.json
+    assert image["url"] == "/media/shipping-agents-ai/latency-chart.png"
+    assert image["caption"] == "p99 latency"
+
+    served = client.get(image["url"])
+    assert served.status == 200 and served.body == PNG
+    assert served.headers["content-type"] == "image/png"
+    detail = client.get(f"/api/article?id={post}").json
+    assert [m["file"] for m in detail["media"]] == [image["file"]]
+    hits = client.get("/api/search?q=p99+latency").json["results"][0]["passages"]
+    assert hits[0]["kind"] == "image" and hits[0]["media_url"] == image["url"]
+
+    updated = client.post(
+        "/api/media/update", json_body={"id": post, "file": image["file"], "caption": "New"}
+    )
+    assert updated.json["caption"] == "New"
+    removed = client.post("/api/media/remove", json_body={"id": post, "file": image["file"]})
+    assert removed.status == 200
+    assert client.get(image["url"]).status == 404
+
+
+def test_media_uploads_are_protected(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    post = client.post("/api/posts", json_body={"text": "Shipping agents #AI"}).json["id"]
+    (tmp_path / "vault" / "secret.png").write_bytes(PNG)
+    no_header = client.post(
+        f"/api/media/upload?id={post}&name=a.png", raw_body=PNG, headers={"x-postloom": ""}
+    )
+    assert no_header.status == 403
+    assert client.post(f"/api/media/upload?id={post}&name=a.html", raw_body=b"<b>").status == 400
+    too_big = client.post(
+        f"/api/media/upload?id={post}&name=a.mp4",
+        raw_body=b"",
+        headers={"content-length": str(2_000_000_000)},
+    )
+    assert too_big.status == 413
+    for path in ("/media/../secret.png", "/media/%2e%2e/secret.png", "/media/x/../../secret.png"):
+        assert client.get(path).status == 404, path
+    assert client.get("/media/../config.json").status == 404
+
+
+def test_videos_can_be_streamed_in_parts(tmp_path: Path) -> None:
+    """Browsers fetch a video in ranges to start playing and to seek."""
+    client = client_for(tmp_path)
+    post = client.post("/api/posts", json_body={"text": "A demo #AI"}).json["id"]
+    video = bytes(range(256)) * 8
+    url = client.post(f"/api/media/upload?id={post}&name=demo.mp4", raw_body=video).json["url"]
+    part = client.get(url, headers={"range": "bytes=100-199"})
+    assert part.status == 206
+    assert part.body == video[100:200]
+    assert part.headers["content-type"] == "video/mp4"

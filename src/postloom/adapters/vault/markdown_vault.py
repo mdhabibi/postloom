@@ -28,9 +28,11 @@ from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from postloom.adapters.vault.media_files import VaultMediaStore
 from postloom.adapters.vault.notes import (
     DATA_DIR,
     FOLDERS,
+    TRASH_DIR,
     TYPES,
     Meta,
     NoteError,
@@ -52,6 +54,7 @@ from postloom.domain.content import Article, Post, Topic
 from postloom.domain.discussion import Comment, conversation_depth, conversation_order
 from postloom.domain.entities import CATEGORY_NAMES, Entity
 from postloom.domain.graph import NodeId
+from postloom.domain.media import Media
 from postloom.domain.people import Person
 
 FORMAT_FILE = "vault.json"
@@ -59,9 +62,6 @@ FORMAT_FILE = "vault.json"
 
 class VaultPathError(ValueError):
     """A note path that would leave the vault."""
-
-
-TRASH_DIR = "trash"
 
 
 class MemoryNoteStamps:
@@ -117,6 +117,7 @@ class MarkdownVault:
             "hashtags": list(article.hashtags),
             "entities": list(article.entities),
             "summary": article.summary,
+            "media": media_meta(article.media),
         }
         self._write(article_path, article_meta, f"# {article.title}\n\n{article.body_markdown}")
 
@@ -129,6 +130,7 @@ class MarkdownVault:
             "hashtags": list(post.hashtags),
             "links": list(post.links),
             "banner": post.banner_path,
+            "media": media_meta(post.media),
         }
         post_body = post.text
         if post.banner_path:
@@ -147,6 +149,7 @@ class MarkdownVault:
             "hashtags": list(post.hashtags),
             "links": list(post.links),
             "banner": post.banner_path,
+            "media": media_meta(post.media),
         }
         body = post.text
         if post.banner_path:
@@ -273,13 +276,25 @@ class MarkdownVault:
     # ----------------------------------------------------------------- removing
     def remove_article(self, article: Article, post: Post | None) -> None:
         self._remove(self._article_path(article))
+        self._trash_media(article.media)
         if post is not None:
             self._remove(self._post_path(post))
             self._remove(self._discussion_path(post.key))
+            self._trash_media(post.media)
 
     def remove_post(self, post: Post) -> None:
         self._remove(self._post_path(post))
         self._remove(self._discussion_path(post.key))
+        self._trash_media(post.media)
+
+    def _trash_media(self, media: Sequence[Media]) -> None:
+        """An item's images and videos go to the trash with it: they are the user's own
+        files, so they are kept there rather than deleted."""
+        store = VaultMediaStore(self.root)
+        for m in media:
+            for path in (m.file, m.subtitles):
+                if path:
+                    store.trash(path)
 
     def remove_person(self, person: Person) -> None:
         with self._lock:
@@ -461,6 +476,24 @@ def _is_someone_elses(path: Path, person: NodeId) -> bool:
         return False
     meta = _meta_of(path)
     return meta is None or meta.get("id") != person
+
+
+def media_meta(media: Sequence[Media]) -> list[dict[str, str]]:
+    """Each file and the words that make it findable. A video's transcript isn't repeated
+    here: its subtitle file holds it."""
+    written: list[dict[str, str]] = []
+    for m in media:
+        entry = {"file": m.file, "kind": m.kind.value}
+        if m.caption:
+            entry["caption"] = m.caption
+        if m.description:
+            entry["description"] = m.description
+        if m.described_by:
+            entry["described_by"] = m.described_by
+        if m.subtitles:
+            entry["subtitles"] = m.subtitles
+        written.append(entry)
+    return written
 
 
 def _item_link(item: Article | Post) -> str:

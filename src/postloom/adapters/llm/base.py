@@ -9,6 +9,7 @@ provider therefore means writing one backend and registering it in ``providers.p
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -28,6 +29,18 @@ from postloom.application.errors import (
 
 Turn = tuple[Literal["user", "assistant"], str]
 """One conversation message: who said it and what they said."""
+
+
+@dataclass(frozen=True, slots=True)
+class Image:
+    """An image sent along with a prompt, for models that can see."""
+
+    mime: str
+    data: bytes
+
+    def base64(self) -> str:
+        return base64.b64encode(self.data).decode("ascii")
+
 
 Effort = Literal["low", "high"]
 """How hard a reasoning model should think: routine work, or the reply drafts."""
@@ -107,8 +120,10 @@ class LlmBackend(Protocol):
         temperature: float,
         max_output_tokens: int,
         effort: Effort = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
-        """Return a JSON object for ``schema`` (parsed, not validated)."""
+        """Return a JSON object for ``schema`` (parsed, not validated). ``images`` go with
+        the prompt; a model that can't see raises ``InvalidRequestError``."""
         ...
 
     def complete_text(

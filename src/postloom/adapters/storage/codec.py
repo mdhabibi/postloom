@@ -14,6 +14,7 @@ from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
 from postloom.domain.entities import Category, Entity
 from postloom.domain.graph import NodeId
+from postloom.domain.media import Media, MediaKind
 from postloom.domain.people import Person, ProfileObservation, ProfileUrl
 
 Json = dict[str, Any]
@@ -87,6 +88,7 @@ def article_to_json(article: Article) -> Json:
         "hashtags": list(article.hashtags),
         "entities": list(article.entities),
         "key": article.key,
+        "media": [media_to_json(m) for m in article.media],
     }
 
 
@@ -103,6 +105,7 @@ def article_from_json(data: Json) -> Article:
         hashtags=tuple(data.get("hashtags", ())),
         entities=tuple(data.get("entities", ())),
         key=data.get("key", ""),
+        media=tuple(media_from_json(m) for m in data.get("media", ())),
     )
 
 
@@ -116,6 +119,7 @@ def post_to_json(post: Post) -> Json:
         "hashtags": list(post.hashtags),
         "links": list(post.links),
         "banner_path": post.banner_path,
+        "media": [media_to_json(m) for m in post.media],
     }
 
 
@@ -128,6 +132,32 @@ def post_from_json(data: Json) -> Post:
         hashtags=tuple(data.get("hashtags", ())),
         links=tuple(data.get("links", ())),
         banner_path=data.get("banner_path"),
+        media=tuple(media_from_json(m) for m in data.get("media", ())),
+    )
+
+
+# -- media ---------------------------------------------------------------------
+def media_to_json(media: Media) -> Json:
+    return {
+        "file": media.file,
+        "kind": media.kind.value,
+        "caption": media.caption,
+        "description": media.description,
+        "described_by": media.described_by,
+        "subtitles": media.subtitles,
+        "transcript": media.transcript,
+    }
+
+
+def media_from_json(data: Json) -> Media:
+    return Media(
+        file=data["file"],
+        kind=MediaKind(data["kind"]),
+        caption=data.get("caption", ""),
+        description=data.get("description", ""),
+        described_by=data.get("described_by"),
+        subtitles=data.get("subtitles"),
+        transcript=data.get("transcript", ""),
     )
 
 

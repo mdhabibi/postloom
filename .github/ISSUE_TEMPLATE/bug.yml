@@ -1,0 +1,37 @@
+name: Something doesn't work
+description: postloom shows an error, crashes or does the wrong thing.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please don't paste API keys, or other people's names
+        and comments from your library.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `postloom doctor`
+      description: |
+        In a terminal, run `postloom doctor` and paste what it prints. It checks your
+        setup and never shows your key. If the app won't start on a Mac, also paste the
+        end of `~/Library/Logs/Postloom/launcher.log`.
+      render: text
+  - type: dropdown
+    id: system
+    attributes:
+      label: Computer
+      options: [Mac (Apple silicon), Mac (Intel), Windows, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Model provider
+      options: [Gemini, Claude, OpenAI, OpenRouter, Ollama, Other OpenAI-compatible, None]

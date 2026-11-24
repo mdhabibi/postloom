@@ -20,8 +20,9 @@ from postloom.application.errors import ProviderError
 from postloom.application.ports.embeddings import EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.search_index import ChunkHit, SearchIndex
-from postloom.application.use_cases.index_content import COMMENTS_HEADING
+from postloom.application.use_cases.index_content import COMMENTS_HEADING, MEDIA_HEADINGS
 from postloom.application.use_cases.relations import get_item, item_of_post
+from postloom.domain.content import Article, Post
 from postloom.domain.graph import NodeId
 from postloom.domain.text import excerpt, plain_letters
 
@@ -47,7 +48,9 @@ class Passage:
     keyword_score: float | None = None
     """BM25 relevance (keyword match), for explaining results."""
     kind: str = "article"
-    """Where the passage is from: "article", "post" or "comments"."""
+    """Where the passage is from: "article", "post", "comments", "image" or "video"."""
+    media_file: str | None = None
+    """For an image or a video: its file in the vault, to show it with the result."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +140,7 @@ class SearchContent:
                     similarity=raw[(hit.node, hit.index)].get(Method.SEMANTIC),
                     keyword_score=raw[(hit.node, hit.index)].get(Method.KEYWORD),
                     kind=passage_kind(hit),
+                    media_file=media_file(article, hit.heading),
                 )
                 for _, hit in top
             )
@@ -164,6 +168,18 @@ def article_for(repository: GraphRepository, node: NodeId) -> NodeId | None:
 
 
 def passage_kind(hit: ChunkHit) -> str:
+    for kind, heading in MEDIA_HEADINGS.items():
+        if hit.heading.startswith(heading):
+            return kind.value
     if not hit.node.startswith("post:"):
         return "article"
     return "comments" if hit.heading.startswith(COMMENTS_HEADING) else "post"
+
+
+def media_file(item: Article | Post | None, heading: str) -> str | None:
+    if item is None:
+        return None
+    for media in item.media:
+        if heading == f"{MEDIA_HEADINGS[media.kind]}{media.label()}":
+            return media.file
+    return None

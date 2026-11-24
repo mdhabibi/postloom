@@ -24,6 +24,7 @@ from postloom.domain.chunking import Chunk, chunk_markdown
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import Comment, thread_texts
 from postloom.domain.graph import NodeId
+from postloom.domain.media import Media, MediaKind
 from postloom.domain.text import plain_letters
 
 
@@ -124,15 +125,46 @@ class ReindexAll:
 
 
 def article_chunks(article: Article) -> list[Chunk]:
-    """The article's sections, preceded by its summary as a chunk of its own."""
+    """The article's sections, preceded by its summary as a chunk of its own, then its
+    images and videos."""
     body = chunk_markdown(article.id, article.title, article.body_markdown)
-    if not article.summary:
-        return body
-    summary = Chunk(article.id, 0, "Summary", article.summary, article.title)
-    return [
-        summary,
-        *(Chunk(c.node, c.index + 1, c.heading, c.text, c.title) for c in body),
-    ]
+    if article.summary:
+        summary = Chunk(article.id, 0, "Summary", article.summary, article.title)
+        body = [summary, *(Chunk(c.node, c.index + 1, c.heading, c.text, c.title) for c in body)]
+    return [*body, *media_chunks(article.id, article.title, article.media, start=len(body))]
+
+
+MEDIA_HEADINGS = {MediaKind.IMAGE: "Image: ", MediaKind.VIDEO: "Video: "}
+MAX_MEDIA_CHARS = 2400
+
+
+def media_chunks(node: NodeId, title: str, media: Sequence[Media], *, start: int) -> list[Chunk]:
+    """One chunk per image or video that has words to find it by (a long transcript is
+    split into several), headed "Image: <caption>" so a search result says where it is."""
+    chunks: list[Chunk] = []
+    for m in media:
+        text = m.text()
+        if not text:
+            continue
+        heading = f"{MEDIA_HEADINGS[m.kind]}{m.label()}"
+        for piece in _pieces(text, MAX_MEDIA_CHARS):
+            chunks.append(Chunk(node, start + len(chunks), heading, piece, title))
+    return chunks
+
+
+def _pieces(text: str, limit: int) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    pieces: list[str] = []
+    rest = text
+    while len(rest) > limit:
+        cut = rest.rfind(" ", 0, limit)
+        cut = cut if cut > limit // 2 else limit
+        pieces.append(rest[:cut].strip())
+        rest = rest[cut:]
+    if rest.strip():
+        pieces.append(rest.strip())
+    return pieces
 
 
 POST_HEADING = "Announcement post"
@@ -148,6 +180,8 @@ def discussion_chunks(item: Article | Post, post: Post, comments: Sequence[Comme
     title = item.title
     heading_of_post = POST_HEADING if isinstance(item, Article) else STANDALONE_HEADING
     chunks = [Chunk(post.id, 0, heading_of_post, post.text, title)]
+    if isinstance(item, Post):  # an article's images are indexed with the article
+        chunks += media_chunks(post.id, title, item.media, start=len(chunks))
     for thread in thread_texts(comments):
         heading = f"{COMMENTS_HEADING}{thread.starter}"
         piece: list[str] = []

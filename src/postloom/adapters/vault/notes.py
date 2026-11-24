@@ -14,6 +14,8 @@ FOLDERS = ("articles", "posts", "topics", "people", "discussions", "mentions")
 """Where postloom keeps its notes. Anything else in the vault belongs to the user."""
 TYPES = frozenset({"article", "post", "topic", "person", "discussion", "entity"})
 DATA_DIR = ".postloom"
+TRASH_DIR = "trash"
+"""Under DATA_DIR: notes and media files postloom no longer needs, never deleted."""
 """Hidden from Obsidian: the edge journal, the format marker and the trash."""
 
 Meta = dict[str, Any]

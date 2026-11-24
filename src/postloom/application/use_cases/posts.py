@@ -153,6 +153,7 @@ class IngestPost:
             hashtags=tuple(extract_hashtags(text)),
             links=tuple(extract_urls(text)),
             banner_path=previous.banner_path if previous else None,
+            media=previous.media if previous else (),
         )
         self._repository.save_post(post)
         now = self._clock.now()

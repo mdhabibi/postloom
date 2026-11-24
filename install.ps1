@@ -13,8 +13,14 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is much faster without it
 
+# The latest release from PyPI; before the first release, the newest code on GitHub.
 $Source = if ($env:POSTLOOM_SOURCE) { $env:POSTLOOM_SOURCE } else {
-    'https://github.com/mdhabibi/postloom/archive/refs/heads/main.zip'
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://pypi.org/pypi/postloom/json' | Out-Null
+        'postloom'
+    } catch {
+        'https://github.com/mdhabibi/postloom/archive/refs/heads/main.zip'
+    }
 }
 $PythonVersion = if ($env:POSTLOOM_PYTHON) { $env:POSTLOOM_PYTHON } else { '3.12' }
 

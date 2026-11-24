@@ -10,6 +10,7 @@ from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
     HttpApi,
+    Image,
     InvalidRequestError,
     JsonReply,
     OutputTruncatedError,
@@ -73,10 +74,22 @@ class GeminiBackend:
         temperature: float,
         max_output_tokens: int,
         effort: str = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
         payload: JsonObject = {
             "systemInstruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        *(
+                            {"inline_data": {"mime_type": i.mime, "data": i.base64()}}
+                            for i in images
+                        ),
+                        {"text": prompt},
+                    ],
+                }
+            ],
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": to_gemini_schema(schema),

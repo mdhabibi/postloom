@@ -35,3 +35,7 @@ class ExtractionError(ProviderError):
 
 class BudgetExceededError(ApplicationError):
     """The user's monthly budget is spent; no paid model calls until they raise it."""
+
+
+class MediaTooLargeError(ApplicationError):
+    """An uploaded image or video is bigger than postloom accepts."""
