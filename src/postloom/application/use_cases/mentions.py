@@ -61,6 +61,21 @@ def link_name(url: str) -> str:
     return shown.rstrip("/")
 
 
+def link_context(text: str, url: str) -> str:
+    """What the text says about a link: its line, or the line before when the link
+    stands alone ("Code and experiment notes:" then the URL on the next line)."""
+    lines = [line.strip() for line in text.splitlines()]
+    for number, line in enumerate(lines):
+        if url not in line and url.split("://", 1)[-1] not in line:
+            continue
+        rest = " ".join(line.replace(url, "").split()).strip(" :-|")
+        if any(ch.isalnum() for ch in rest):
+            return rest[:300]
+        earlier = [b for b in lines[:number] if b]
+        return earlier[-1][:300] if earlier else ""
+    return ""
+
+
 def _is_profile_or_tag(url: str) -> bool:
     lowered = url.lower()
     return "linkedin.com/in/" in lowered or "linkedin.com/feed/hashtag" in lowered
@@ -131,7 +146,7 @@ class FindMentions:
             topics = self._topics(item_id, result.topics, result.new_topics, taxonomy)
         for url in extract_urls(text):
             if not _is_profile_or_tag(url):
-                keep(Suggestion(link_name(url), Category.LINK.value, "", url=url))
+                keep(Suggestion(link_name(url), Category.LINK.value, link_context(text, url), url))
 
         review = Review(
             item=item_id,
@@ -175,7 +190,7 @@ class FindMentions:
         for entity in repo.list_entities():
             same = (
                 entity.url == suggestion.url
-                if suggestion.url
+                if suggestion.url or suggestion.category == Category.LINK.value
                 else entity.is_called(suggestion.name)
             )
             if same:
@@ -301,11 +316,13 @@ class ConfirmMentions:
         if choice.match is not None and kind_of(choice.match) is NodeKind.ENTITY:
             entity = repo.get_entity(choice.match)
         if entity is None:
+            # A link is the same link only by its address: "Code" in two posts is two links.
             entity = next(
                 (
                     e
                     for e in repo.list_entities()
-                    if (choice.url and e.url == choice.url) or e.is_called(name)
+                    if (choice.url and e.url == choice.url)
+                    or (category is not Category.LINK and e.is_called(name))
                 ),
                 None,
             )

@@ -1092,11 +1092,11 @@ function reviewPanel(item, review, canFind, done) {
     const name = h("input", { type: "text", value: s.name, dir: "auto", maxlength: 300, "aria-label": "Name" });
     const category = categorySelect(s.category, `${id}-category`);
     const same = s.match ? h("input", { type: "checkbox", checked: true, id: `${id}-same` }) : null;
-    const row = h("li", { class: "review-row" },
-      h("div", { class: "review-main" }, keep, name, category),
-      s.match ? h("label", { class: "review-match", for: `${id}-same` }, same,
+    const row = h("li", { class: "found-row" },
+      h("div", { class: "found-main" }, keep, name, category),
+      s.match ? h("label", { class: "found-match", for: `${id}-same` }, same,
         ` Same as ${s.match_name}`, s.match_note ? h("span", { class: "hint" }, ` (${s.match_note})`) : null) : null,
-      s.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, s.evidence) : null,
+      s.evidence ? h("blockquote", { class: "evidence-quote", dir: "auto" }, s.evidence) : null,
       s.url && s.url !== `https://${s.name}` ? h("p", { class: "hint" }, s.url) : null);
     keep.addEventListener("change", () => { row.classList.toggle("off", !keep.checked); count(); });
     return { s, row, keep, name, category, same };
@@ -1104,7 +1104,7 @@ function reviewPanel(item, review, canFind, done) {
   const topicRows = review.topics.map((t) => {
     const keep = h("input", { type: "checkbox", checked: t.exists, "aria-label": `Add the topic ${t.name}` });
     keep.addEventListener("change", count);
-    return { t, keep, row: h("li", { class: "review-row" }, h("label", { class: "review-main" }, keep, " ", t.name,
+    return { t, keep, row: h("li", { class: "found-row" }, h("label", { class: "found-main" }, keep, " ", t.name,
       t.exists ? null : h("span", { class: "badge" }, "new topic"))) };
   });
   const add = h("button", { class: "button button-primary", type: "button" });
@@ -1142,22 +1142,22 @@ function reviewPanel(item, review, canFind, done) {
   });
   count();
   const grouped = byCategory(rows, (r) => r.s.category);
-  return h("div", { class: "review", role: "group", "aria-label": `Found in this ${what}` },
+  return h("div", { class: "found", role: "group", "aria-label": `Found in this ${what}` },
     h("h3", {}, `Found in this ${what}`),
     h("p", { class: "hint" }, "Untick what doesn't belong, fix a name or its category, then add the rest. Nothing goes into your graph before you do."),
-    grouped.map(([, plural, group]) => h("div", { class: "review-group" }, h("h4", {}, plural),
+    grouped.map(([, plural, group]) => h("div", { class: "found-group" }, h("h4", {}, plural),
       h("ul", {}, group.map((r) => r.row)))),
-    topicRows.length ? h("div", { class: "review-group" }, h("h4", {}, "Topics"), h("ul", {}, topicRows.map((r) => r.row))) : null,
+    topicRows.length ? h("div", { class: "found-group" }, h("h4", {}, "Topics"), h("ul", {}, topicRows.map((r) => r.row))) : null,
     review.finder ? null : h("p", { class: "hint" }, canFind ? "" : "Only links were looked for: no model is connected."),
     h("div", { class: "editor-actions" }, add,
-      h("button", { class: "button", type: "button", onclick: (event) => { event.currentTarget.closest(".review").remove(); } }, "Decide later")));
+      h("button", { class: "button", type: "button", onclick: (event) => { event.currentTarget.closest(".found").remove(); } }, "Decide later")));
 }
 
 function mentionList(rows) {
   return pagedList(rows, (m) => h("li", {},
     h("a", { href: `#/article/${encodeURIComponent(m.id)}`, dir: "auto" }, m.title),
     h("span", { class: "hint" }, ` ${[m.kind === "post" ? "Post" : "Article", formatDate(m.published_on)].filter(Boolean).join(", ")}`),
-    m.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, m.evidence) : null),
+    m.evidence ? h("blockquote", { class: "evidence-quote", dir: "auto" }, m.evidence) : null),
   { pageSize: 20, listClass: "mention-list", what: "mentions" });
 }
 
@@ -1632,18 +1632,18 @@ function openReviewStep(article, container, preview, onClose) {
         h("option", { value: "", selected: d.reply_to === null }, "Starts a new thread"),
         drafts.slice(0, i).map((_, j) => h("option", { value: j, selected: d.reply_to === j }, `Replies to ${label(j)}`)));
       return h("li", { class: `review-item${d.is_own ? " own" : ""}${d.already_saved ? " saved" : ""}` },
-        h("div", { class: "review-row" },
+        h("div", { class: "found-row" },
           h("label", {}, "Name", h("input", { value: d.author_name, oninput: (e) => { d.author_name = e.target.value; } })),
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: d.is_own,
             onchange: (e) => { d.is_own = e.target.checked; render(); } }), "This is me")),
-        d.is_own ? null : h("div", { class: "review-row" },
+        d.is_own ? null : h("div", { class: "found-row" },
           h("label", {}, "Headline", h("input", { value: d.author_headline, oninput: (e) => { d.author_headline = e.target.value; } })),
           h("label", {}, d.known_person ? "Profile link (known)" : "Profile link (optional)",
             h("input", { type: "url", value: d.profile_url || "", placeholder: "https://www.linkedin.com/in/...",
               oninput: (e) => { d.profile_url = e.target.value; } }))),
         h("label", { class: "review-text" }, "Message",
           h("textarea", { rows: 3, dir: "auto", oninput: (e) => { d.text = e.target.value; } }, d.text)),
-        h("div", { class: "review-row" }, replySelect,
+        h("div", { class: "found-row" }, replySelect,
           d.already_saved ? h("span", { class: "saved-badge" }, "Already saved, will be skipped") : null));
     }));
   }

@@ -412,15 +412,15 @@ def test_found_mentions_are_reviewed_then_shown_and_edited(page: Page, home: Pat
     expect(page.locator("#add-result")).to_contain_text("Found 5 things to review")
     page.get_by_role("link", name="Open the post").click()
 
-    review = page.locator(".review")
+    review = page.locator(".found")
     expect(review).to_contain_text("Found in this post")
     expect(review).not_to_contain_text("Invented Org")
-    expect(review.locator(".review-group h4")).to_have_text(
+    expect(review.locator(".found-group h4")).to_have_text(
         ["People", "Organisations", "Events", "Links", "Topics"]
     )
-    event = review.locator(".review-row", has=page.locator("input[value='Example Hackathon 2026']"))
+    event = review.locator(".found-row", has=page.locator("input[value='Example Hackathon 2026']"))
     event.get_by_role("checkbox").uncheck()  # not wanted
-    lab = review.locator(".review-row", has=page.locator("input[value='Example Labs']"))
+    lab = review.locator(".found-row", has=page.locator("input[value='Example Labs']"))
     lab.get_by_role("textbox").fill("Example Research Labs")
     review.get_by_role("checkbox", name="Add the topic Time Series").check()
     review.get_by_role("button", name="Add 4 to your graph").click()
@@ -429,7 +429,7 @@ def test_found_mentions_are_reviewed_then_shown_and_edited(page: Page, home: Pat
     expect(mentions.locator(".mention-chips a")).to_have_text(
         ["Robin Sample", "Example Research Labs", "github.com/example/wavelens"]
     )
-    expect(page.locator(".review")).to_have_count(0)
+    expect(page.locator(".found")).to_have_count(0)
     expect(page.locator(".reader .tags")).to_contain_text("Time Series")
     assert note(home, "mentions/example-research-labs.md").is_file()
 

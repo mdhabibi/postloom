@@ -907,19 +907,19 @@ textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 .mention-chips .count { color: var(--muted); padding-inline-end: 0.4rem; }
 .chip-remove { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0.3rem; border-radius: 999px; }
 .chip-remove:hover { color: var(--text); background: var(--hover); }
-.review { margin: 1rem 0; padding: 1rem; border: 1px solid var(--accent); border-radius: var(--r); background: var(--panel, transparent); }
-.review h3 { margin: 0 0 0.25rem; font-size: var(--ui-md); }
-.review-group h4 { margin: 1rem 0 0.4rem; font-size: var(--ui); color: var(--text-soft); }
-.review-group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
-.review-row { padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
-.review-row.off { opacity: 0.55; }
-.review-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.review-main input[type="text"], .review-main select { font-size: var(--ui); padding: 0.35rem 0.55rem; width: auto; }
-.review-main input[type="text"] { flex: 1 1 10rem; min-width: 0; }
-.review-main select { flex: 0 1 11rem; min-width: 0; }
+.found { margin: 1rem 0; padding: 1rem; border: 1px solid var(--accent); border-radius: var(--r); background: var(--panel, transparent); }
+.found h3 { margin: 0 0 0.25rem; font-size: var(--ui-md); }
+.found-group h4 { margin: 1rem 0 0.4rem; font-size: var(--ui); color: var(--text-soft); }
+.found-group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+.found-row { display: block; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.found-row.off { opacity: 0.55; }
+.found-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.found-main input[type="text"], .found-main select { font-size: var(--ui); padding: 0.35rem 0.55rem; width: auto; }
+.found-main input[type="text"] { flex: 1 1 10rem; min-width: 0; }
+.found-main select { flex: 0 1 11rem; min-width: 0; }
 .editor select, .page select { padding: 0.55rem 0.7rem; }
-.review-match { display: block; margin-top: 0.35rem; font-size: var(--ui); }
-.review-evidence { margin: 0.4rem 0 0; padding-inline-start: 0.7rem; border-inline-start: 2px solid var(--line); color: var(--text-soft); font-size: var(--ui); }
+.found-match { display: block; margin-top: 0.35rem; font-size: var(--ui); }
+.evidence-quote { margin: 0.4rem 0 0; padding-inline-start: 0.7rem; border-inline-start: 2px solid var(--line); color: var(--text-soft); font-size: var(--ui); }
 .mention-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; }
 
 /* ---------------------------------------------------------------- long lists */
