@@ -1,12 +1,17 @@
 name: CI
 
-# Pushes to main run lint and Linux tests only. The full matrix (macOS minutes count 10x
-# and Windows 2x against a private repo's allowance) runs on pull requests, weekly, and
-# on demand from the Actions tab.
+# Minutes for a private repo are limited, and macOS minutes count 10x (Windows 2x), so:
+# - every pull request: lint, Linux tests on the oldest and newest Python, browser tests;
+# - macOS and Windows tests and the installers: when a pull request touches what differs
+#   between systems (installers, desktop launcher, CLI, dependencies) or is labelled
+#   `full-ci`;
+# - the real local embedding model: when embedding code or dependencies change;
+# - everything: weekly, and on demand from the Actions tab (run it before tagging a release).
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
@@ -15,6 +20,40 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      systems: ${{ steps.decide.outputs.systems }}
+      embeddings: ${{ steps.decide.outputs.embeddings }}
+      full: ${{ steps.decide.outputs.full }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: decide
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: |
+          full=false; systems=false; embeddings=false
+          if [ "$EVENT" = schedule ] || [ "$EVENT" = workflow_dispatch ] || [ "$FULL_LABEL" = true ]; then
+            full=true
+          elif [ "$EVENT" = pull_request ]; then
+            changed="$(git diff --name-only "$BASE" HEAD)"
+            echo "$changed"
+            if echo "$changed" | grep -qE '^(install\.(sh|ps1)|scripts/ci/|src/postloom/interfaces/(desktop|cli)/|src/postloom/__main__\.py|pyproject\.toml|uv\.lock|\.github/workflows/)'; then
+              systems=true
+            fi
+            if echo "$changed" | grep -qE '^(src/postloom/adapters/llm/(local_)?embeddings\.py|scripts/calibrate_embeddings\.py|tests/integration/|pyproject\.toml|uv\.lock)'; then
+              embeddings=true
+            fi
+          fi
+          [ "$full" = true ] && systems=true && embeddings=true
+          { echo "full=$full"; echo "systems=$systems"; echo "embeddings=$embeddings"; } >> "$GITHUB_OUTPUT"
+          echo "full=$full systems=$systems embeddings=$embeddings"
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -40,18 +79,12 @@ jobs:
           exit $status
 
   test:
-    runs-on: ${{ matrix.os }}
+    # Linux, oldest and newest Python: on every push and pull request.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
-        python-version: ${{ fromJSON(github.event_name == 'push' && '["3.11", "3.13"]' || '["3.11", "3.12", "3.13"]') }}
-        include:
-          # Intel Macs and the newest Python: the install must work there too.
-          - os: ${{ github.event_name == 'push' && 'ubuntu-latest' || 'macos-15-intel' }}
-            python-version: "3.12"
-          - os: ubuntu-latest
-            python-version: "3.14"
+        python-version: ${{ fromJSON(github.event_name == 'push' && '["3.12"]' || '["3.11", "3.14"]') }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -64,12 +97,40 @@ jobs:
         run: |
           set -o pipefail
           uv run pytest --cov=postloom --cov-report=term-missing -p no:cacheprovider 2>&1 | tee pytest.txt || {
-            echo "::error title=pytest ${{ matrix.os }} ${{ matrix.python-version }}::$(tail -n 60 pytest.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            echo "::error title=pytest ${{ runner.os }} ${{ matrix.python-version }}::$(tail -n 60 pytest.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            exit 1
+          }
+
+  test-systems:
+    # macOS (Apple silicon and Intel) and Windows, where paths, processes and wheels differ.
+    needs: scope
+    if: needs.scope.outputs.systems == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.scope.outputs.full == 'true' && '["macos-latest", "macos-15-intel", "windows-latest"]' || '["macos-latest", "windows-latest"]') }}
+        python-version: ${{ fromJSON(needs.scope.outputs.full == 'true' && '["3.11", "3.13"]' || '["3.12"]') }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev
+      # On failure, the end of the report becomes an annotation on the run summary.
+      - name: Tests
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest --cov=postloom --cov-report=term-missing -p no:cacheprovider 2>&1 | tee pytest.txt || {
+            echo "::error title=pytest ${{ runner.os }} ${{ matrix.python-version }}::$(tail -n 60 pytest.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
             exit 1
           }
 
   local-embeddings:
     # Downloads the real local model once, tests it and reports its score ranges.
+    needs: scope
+    if: needs.scope.outputs.embeddings == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -84,6 +145,7 @@ jobs:
 
   browser:
     # The app in a real browser: every screen, and the flows that change data.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -103,7 +165,8 @@ jobs:
 
   install:
     # The one-line installers on clean machines (no uv on PATH), as a user would run them.
-    if: github.event_name != 'push'
+    needs: scope
+    if: needs.scope.outputs.systems == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
