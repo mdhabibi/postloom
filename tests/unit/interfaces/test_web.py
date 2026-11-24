@@ -102,6 +102,16 @@ def test_index_page_is_served(tmp_path: Path) -> None:
     assert "postloom" in reply.text
 
 
+def test_about_names_the_author_license_and_repository(tmp_path: Path) -> None:
+    about = client_for(tmp_path).get("/api/about").json
+    assert about["author"] == "Mahdi Habibi"
+    assert about["license"] == "FSL-1.1-ALv2"
+    assert about["license_text"].startswith("# Functional Source License")
+    assert about["homepage"] == "https://github.com/mdhabibi/postloom"
+    assert about["issues"].endswith("/issues")
+    assert {"Geist", "Source Serif 4"} <= {c["name"] for c in about["credits"]}
+
+
 def test_status_reports_features_without_leaking_the_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

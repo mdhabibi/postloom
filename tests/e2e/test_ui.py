@@ -520,3 +520,16 @@ def test_forms_say_what_to_paste_and_text_can_be_made_larger(page: Page) -> None
     )
     page.get_by_role("button", name="Standard text size").click()
     assert page.evaluate(size) == "16px"
+
+
+def test_about_shows_the_author_license_and_source(page: Page) -> None:
+    visit(page, "#/")
+    page.get_by_role("link", name="About postloom").click()
+    expect(page.locator("h1")).to_have_text("postloom")
+    expect(page.get_by_role("link", name="Mahdi Habibi")).to_have_attribute(
+        "href", "https://github.com/mdhabibi"
+    )
+    expect(page.get_by_role("link", name="github.com/mdhabibi/postloom")).to_be_visible()
+    page.get_by_text("Read the full license").click()
+    expect(page.locator(".license-text")).to_contain_text("Functional Source License")
+    expect(page.locator(".credits")).to_contain_text("Geist")

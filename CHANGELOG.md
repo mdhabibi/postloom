@@ -7,6 +7,13 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+### Added
+- An **About postloom** page (bottom of the sidebar, and at the end of Settings): who made
+  it, the version and what's new, the source code on GitHub, where to report a problem,
+  the license in plain words and in full, what happens to your data, and the open
+  projects postloom is built with. `postloom --version` names the author, license and
+  repository too.
+
 ### Changed
 - Clearer screens. Adding an article is two numbered steps, "The article" and "The post
   that shared it", each saying above its box exactly what to copy from LinkedIn and how,

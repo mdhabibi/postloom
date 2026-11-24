@@ -45,6 +45,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from postloom import __version__, how_to_run
+from postloom.about import about
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.local_embeddings import DEFAULT_LOCAL_MODEL, MULTILINGUAL_LOCAL_MODEL
 from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backend, provider_spec
@@ -229,6 +230,27 @@ def create_app(
         # (on Windows, stopping at once aborted the connection before the answer arrived).
         timer = threading.Timer(QUIT_DELAY_SECONDS, shutdown)
         return JSONResponse({"stopping": True}, background=BackgroundTask(timer.start))
+
+    def about_page(request: Request) -> Response:
+        info = about()
+        return JSONResponse(
+            {
+                "name": info.name,
+                "version": info.version,
+                "description": info.description,
+                "author": info.author,
+                "license": info.license,
+                "license_summary": info.license_summary,
+                "license_text": info.license_text,
+                "homepage": info.homepage,
+                "issues": info.issues,
+                "changelog": info.changelog,
+                "credits": [
+                    {"name": c.name, "what": c.what, "license": c.license, "url": c.url}
+                    for c in info.credits
+                ],
+            }
+        )
 
     def status(request: Request) -> Response:
         container, settings = state.container, state.settings
@@ -710,6 +732,7 @@ def create_app(
         Route("/api/ping", ping),
         Route("/api/quit", api(quit_app, reads_vault=False), methods=["POST"]),
         Route("/api/status", api(status)),
+        Route("/api/about", api(about_page)),
         Route(
             "/api/settings",
             api(update_settings, schemas.SettingsUpdate, reads_vault=False),
