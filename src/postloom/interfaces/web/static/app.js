@@ -1650,7 +1650,7 @@ function vaultSection(s) {
     h("p", { class: "path" }, s.vault),
     h("p", { class: "hint" }, "Every article, post, comment and person is a Markdown note in this folder. Open it in Obsidian to browse it as a graph, and edit the notes there if you like: postloom reads your changes. If postloom's index is ever lost, it rebuilds itself from this folder, so backing up this folder backs up everything."),
     button, result,
-    h("p", { class: "hint" }, `postloom ${s.version}`));
+    h("p", { class: "hint" }, h("a", { href: "#/about" }, `About postloom ${s.version}`), " \u00b7 license, source code and credits"));
 }
 
 const TASK_LABELS = {
@@ -2620,6 +2620,7 @@ async function route() {
     if (path === "#/add") return addView();
     if (path === "#/add/post") return addPostView();
     if (path === "#/settings") return await settingsView();
+    if (path === "#/about") return await aboutView();
     const filters = Object.fromEntries(params);
     if (path === "#/library") return libraryView(filters);
     if (path === "#/people") return await peopleView(filters);
@@ -2766,6 +2767,36 @@ document.addEventListener("keydown", (event) => {
     openPalette();
   }
 });
+
+// ---------------------------------------------------------------------------- about
+async function aboutView() {
+  const a = await api("/api/about");
+  const external = (href, text) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
+  const licenseText = h("pre", { class: "license-text", tabindex: "0" }, a.license_text);
+  setMain(h("section", { class: "page about" },
+    h("img", { class: "about-mark", src: "/static/icon.svg", alt: "", width: 56, height: 56 }),
+    h("h1", {}, "postloom"),
+    h("p", { class: "lede" }, a.description),
+    h("dl", { class: "about-facts" },
+      h("dt", {}, "Version"), h("dd", {}, a.version, " \u00b7 ", external(a.changelog, "What's new")),
+      h("dt", {}, "Made by"), h("dd", {}, external(a.homepage.split("/").slice(0, 4).join("/"), a.author)),
+      h("dt", {}, "Source code"), h("dd", {}, external(a.homepage, a.homepage.replace("https://", ""))),
+      h("dt", {}, "Problems and ideas"), h("dd", {}, external(a.issues, "Open an issue on GitHub")),
+      h("dt", {}, "License"), h("dd", {}, `Functional Source License 1.1 (${a.license})`)),
+    h("section", { class: "settings-section" },
+      h("h2", { class: "settings-heading" }, "License"),
+      h("p", {}, a.license_summary),
+      a.license_text ? h("details", { class: "license" }, h("summary", {}, "Read the full license"), licenseText) : null),
+    h("section", { class: "settings-section" },
+      h("h2", { class: "settings-heading" }, "Your data"),
+      h("p", {}, "Everything you add stays on this computer, in your vault folder. postloom sends text only to the model provider you choose in Settings, only when you use a feature that needs it, and never posts to LinkedIn or reads it for you.")),
+    h("section", { class: "settings-section" },
+      h("h2", { class: "settings-heading" }, "Built with"),
+      h("p", { class: "hint" }, "postloom stands on these open projects, thank you to their authors."),
+      h("ul", { class: "credits" }, a.credits.map((c) => h("li", {},
+        external(c.url, c.name), ` \u2014 ${c.what}. `, h("span", { class: "hint" }, c.license))))),
+    h("p", { class: "hint" }, `\u00a9 ${new Date().getFullYear() > 2026 ? `2026\u2013${new Date().getFullYear()}` : 2026} ${a.author}. The postloom name and logo are not covered by the license.`)));
+}
 
 // ---------------------------------------------------------------------------- theme and menu
 function renderThemeToggle() {

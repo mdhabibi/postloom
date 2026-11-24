@@ -974,3 +974,17 @@ textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 }
 .text-size button:hover { background: var(--hover); color: var(--text); }
 .text-size button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+
+/* ---------------------------------------------------------------- about */
+.about-mark { display: block; margin-bottom: 0.75rem; }
+.about-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.55rem 1.5rem; margin: 1.5rem 0 0.5rem; font-size: var(--ui); }
+.about-facts dt { color: var(--muted); }
+.about-facts dd { margin: 0; overflow-wrap: anywhere; }
+.license summary { cursor: pointer; color: var(--accent); font-size: var(--ui); margin: 0.5rem 0; }
+.license-text {
+  max-height: 24rem; overflow: auto; white-space: pre-wrap; padding: 1rem 1.1rem; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--raised); font: 400 var(--ui-sm)/1.55 var(--code);
+}
+.credits { padding-left: 1.1rem; display: grid; gap: 0.4rem; font-size: var(--ui); }
+.about-link { text-decoration: none; display: flex; }
+@media (max-width: 640px) { .about-facts { grid-template-columns: 1fr; gap: 0.1rem; } .about-facts dd { margin-bottom: 0.6rem; } }

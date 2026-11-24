@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from postloom import __version__, how_to_run
+from postloom.about import about
 from postloom.application.defaults import DEFAULT_TOPICS
 from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
 from postloom.application.use_cases import (
@@ -98,7 +99,12 @@ def _parser() -> argparse.ArgumentParser:
         description="Local-first knowledge graph and chat for your LinkedIn writing.",
     )
     home_help = "Data folder (default: ~/Postloom, or $POSTLOOM_HOME)."
-    parser.add_argument("--version", action="version", version=f"postloom {__version__}")
+    info = about()
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"postloom {__version__} by {info.author}, {info.license} license. {info.homepage}",
+    )
     parser.add_argument("--home", type=Path, help=home_help)
 
     # Accept --home after the command too ("postloom init --home X"). SUPPRESS keeps a
