@@ -22,16 +22,21 @@ OTHER_SYSTEMS = pytest.mark.skipif(
 @OTHER_SYSTEMS
 def test_the_mac_app_runs_postloom_open_for_the_data_folder(tmp_path: Path) -> None:
     # No usable system Applications folder: the user's own one is used.
-    shortcuts = Shortcuts("Darwin", tmp_path, PYTHON, system_apps=tmp_path / "missing")
+    shortcuts = Shortcuts(
+        "Darwin", tmp_path, PYTHON, system_apps=tmp_path / "missing", arch="arm64"
+    )
     [app] = shortcuts.create(HOME)
     assert app == tmp_path / "Applications" / "Postloom.app"
     with (app / "Contents" / "Info.plist").open("rb") as file:
         info = plistlib.load(file)
     assert info["CFBundleExecutable"] == "Postloom" and info["CFBundleIconFile"] == "postloom.icns"
+    assert info["LSArchitecturePriority"] == ["arm64", "x86_64"]
+    assert info["LSRequiresNativeExecution"] is True
     script = app / "Contents" / "MacOS" / "Postloom"
     assert script.stat().st_mode & 0o111
     assert script.read_text() == (
-        "#!/bin/sh\nexec '/opt/tools/post loom/bin/python' '-m' 'postloom' '--home' "
+        "#!/bin/sh\nexec '/usr/bin/arch' '-arm64' '/opt/tools/post loom/bin/python' "
+        "'-m' 'postloom' '--home' "
         "'/data/My Postloom'\\''s $folder' 'open'\n"
     )
     assert (app / "Contents" / "Resources" / "postloom.icns").stat().st_size > 10_000

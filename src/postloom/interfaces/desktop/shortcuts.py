@@ -21,7 +21,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
@@ -42,6 +42,8 @@ class Shortcuts:
     user_home: Path
     python: Path
     system_apps: Path = Path("/Applications")
+    arch: str = field(default_factory=platform.machine)
+    """The processor architecture postloom was installed for ("arm64" or "x86_64")."""
     """Where Finder's Applications folder is; the icon goes there when this user may write it."""
     """The interpreter of the installed postloom; on Windows the one without a window."""
 
@@ -110,11 +112,16 @@ class Shortcuts:
             "CFBundleShortVersionString": __version__,
             "CFBundleVersion": __version__,
             "LSUIElement": True,  # no Dock icon for the moment it takes to open the browser
+            # A script has no architecture of its own, and macOS ran it as Intel (Rosetta)
+            # on Apple silicon, where postloom's compiled parts are Apple-silicon only.
+            "LSArchitecturePriority": [self.arch, "x86_64" if self.arch == "arm64" else "arm64"],
+            "LSRequiresNativeExecution": True,
         }
         with (contents / "Info.plist").open("wb") as file:
             plistlib.dump(info, file)
         script = contents / "MacOS" / APP_NAME
-        command = " ".join(_sh_quote(part) for part in self.command(home))
+        native = ["/usr/bin/arch", f"-{self.arch}"]  # run Python as it was installed
+        command = " ".join(_sh_quote(part) for part in [*native, *self.command(home)])
         script.write_text(f"#!/bin/sh\nexec {command}\n", encoding="utf-8")
         script.chmod(0o755)
         shutil.copyfile(_icon("postloom.icns"), contents / "Resources" / "postloom.icns")

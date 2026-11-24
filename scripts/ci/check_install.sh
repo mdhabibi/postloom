@@ -34,7 +34,15 @@ test "$(ls "$HOME/Postloom")" != ""
 
 "$POSTLOOM" stop
 stopped
-sh "$LAUNCH"  # what clicking the icon runs
+if [ "$(uname)" = Darwin ]; then
+    # Exactly as Launchpad starts it, so macOS chooses how the app runs (it once ran the
+    # launcher as Intel on Apple silicon, which only showed when started this way).
+    open -W --stderr "$RUNNER_TEMP/icon.err" "$ICON" || true
+    cat "$RUNNER_TEMP/icon.err" || true
+    ping
+    "$POSTLOOM" stop
+fi
+sh "$LAUNCH" # what clicking the icon runs
 ping
 
 sh install.sh  # updating while postloom runs
