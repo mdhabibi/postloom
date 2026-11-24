@@ -8,6 +8,11 @@ name: CI
 # - the real local embedding model: when embedding code or dependencies change;
 # - everything: weekly, and on demand from the Actions tab (run it before tagging a release).
 # `sh scripts/check.sh --browser` runs the Linux checks locally, for free.
+#
+# Self-hosted: set the repository variable RUNNER (Settings -> Secrets and variables ->
+# Actions -> Variables) to `self-hosted` and the everyday jobs run on your own registered
+# machine instead, using no GitHub minutes. The macOS/Windows matrix and the installer
+# jobs need GitHub's machines and are skipped then. Only for a private repository.
 on:
   push:
     branches: [main]
@@ -22,7 +27,7 @@ permissions:
 
 jobs:
   scope:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     outputs:
       systems: ${{ steps.decide.outputs.systems }}
       embeddings: ${{ steps.decide.outputs.embeddings }}
@@ -56,7 +61,7 @@ jobs:
           echo "full=$full systems=$systems embeddings=$embeddings"
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -81,7 +86,7 @@ jobs:
 
   test:
     # Linux, oldest and newest Python: on every push and pull request.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +110,7 @@ jobs:
   test-systems:
     # macOS (Apple silicon and Intel) and Windows, where paths, processes and wheels differ.
     needs: scope
-    if: needs.scope.outputs.systems == 'true'
+    if: needs.scope.outputs.systems == 'true' && !vars.RUNNER
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -132,7 +137,7 @@ jobs:
     # Downloads the real local model once, tests it and reports its score ranges.
     needs: scope
     if: needs.scope.outputs.embeddings == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -147,7 +152,7 @@ jobs:
   browser:
     # The app in a real browser: every screen, and the flows that change data.
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -166,8 +171,10 @@ jobs:
 
   install:
     # The one-line installers on clean machines (no uv on PATH), as a user would run them.
+    # Never on a self-hosted runner: it installs and uninstalls postloom for the current
+    # user, which on your own computer would remove your own installation.
     needs: scope
-    if: needs.scope.outputs.systems == 'true'
+    if: needs.scope.outputs.systems == 'true' && !vars.RUNNER
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
