@@ -453,8 +453,8 @@ def test_the_icon_explains_a_data_folder_it_may_not_read(
 
     monkeypatch.setattr("postloom.interfaces.cli.main.tell", tell)
     monkeypatch.setattr("postloom.interfaces.cli.main.open_privacy_settings", lambda: None)
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "state"))
+    log = tmp_path / "state" / "launcher.log"
+    monkeypatch.setattr("postloom.interfaces.desktop.shortcuts.launcher_log", lambda: log)
 
     def refused(path: Path) -> list[Path]:
         raise PermissionError(1, "Operation not permitted", str(path))
@@ -464,5 +464,4 @@ def test_the_icon_explains_a_data_folder_it_may_not_read(
     [(title, message)] = told
     assert title == "postloom can't open your data folder"
     assert str(tmp_path / "data") in message
-    logs = list((tmp_path / "state").rglob("launcher.log"))
-    assert logs and "Operation not permitted" in logs[0].read_text()
+    assert "Operation not permitted" in log.read_text()
