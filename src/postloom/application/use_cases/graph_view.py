@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.use_cases.relations import comments_by, item_of_post, list_items
@@ -33,6 +34,8 @@ class GraphNode:
     weight: int
     """Topics and series: articles; articles: messages; people: messages and mentions;
     mentioned things: the articles and posts that mention them."""
+    published_on: date | None = None
+    """Articles and posts: when they were published, so the graph can show a period."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +108,10 @@ class GraphOverview:
                 if per_group[t.id]
             ),
             *(GraphNode(sid, "series", name, per_group[sid]) for sid, name in series.items()),
-            *(GraphNode(a.id, _kind(a), a.title, messages_on[a.id]) for a in articles.values()),
+            *(
+                GraphNode(a.id, _kind(a), a.title, messages_on[a.id], a.published_on)
+                for a in articles.values()
+            ),
             *people,
             *(
                 GraphNode(e.id, e.category.value, e.name, mentioned[e.id])

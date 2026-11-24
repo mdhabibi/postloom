@@ -6,6 +6,8 @@ const state = {
   status: null,
   articles: [],
   topicFilter: null,
+  allTopics: false,
+  libraryVersion: null,
   chats: new Map(), // article id (or "library") -> [{role, text, sources}]
 };
 
@@ -30,10 +32,14 @@ async function api(path, options = {}) {
 }
 
 async function refresh() {
-  [state.status, { articles: state.articles }] = await Promise.all([
-    api("/api/status"),
-    api("/api/articles"),
-  ]);
+  // The article list is the biggest answer; fetch it again only once the library changed.
+  const status = await api("/api/status");
+  const version = status.library_version;
+  if (version === null || version === undefined || version !== state.libraryVersion) {
+    ({ articles: state.articles } = await api("/api/articles"));
+    state.libraryVersion = version;
+  }
+  state.status = status;
   renderSidebar();
 }
 
@@ -111,6 +117,58 @@ function toast(message) {
 function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many || `${one}s`}`;
 }
+
+// ---------------------------------------------------------------------------- long lists
+// A library grows to hundreds of articles and thousands of people. Lists show a page at a
+// time and grow on request, so a screen stays quick and readable at any size.
+const PAGE_SIZE = 50;
+
+function pagedList(items, renderItem, { pageSize = PAGE_SIZE, listClass = "", tag = "ul", what = "more" } = {}) {
+  const list = h(tag, { class: listClass });
+  const more = h("button", { class: "button show-more", type: "button" });
+  let shown = 0;
+  function grow() {
+    const next = items.slice(shown, shown + pageSize);
+    list.append(...next.map(renderItem));
+    shown += next.length;
+    const left = items.length - shown;
+    more.hidden = left <= 0;
+    more.textContent = `Show ${Math.min(pageSize, left)} more ${what}`;
+    more.setAttribute("aria-label", `Show more ${what}: ${left} not shown yet`);
+  }
+  more.addEventListener("click", () => { grow(); more.blur(); });
+  grow();
+  return h("div", { class: "paged" }, list, items.length > pageSize ? h("p", { class: "paged-foot" },
+    more, h("span", { class: "hint" }, ` ${items.length} in all`)) : null);
+}
+
+// Search box and choices above a list. ``choices`` are [name, label, [[value, text]...]];
+// ``onChange`` receives {query, name: value...} and the URL keeps them for Back and reload.
+function listControls(label, choices, onChange, initial = {}) {
+  const values = { query: initial.query || "" };
+  const search = h("input", { type: "search", value: values.query, placeholder: label, "aria-label": label });
+  const selects = choices.map(([name, text, options]) => {
+    values[name] = initial[name] || options[0][0];
+    const select = h("select", { "aria-label": text },
+      options.map(([value, optionText]) => h("option", { value, selected: value === values[name] }, optionText)));
+    select.addEventListener("change", () => { values[name] = select.value; changed(); });
+    return h("label", { class: "list-choice" }, h("span", { class: "visually-hidden" }, text), select);
+  });
+  let timer;
+  search.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { values.query = search.value.trim(); changed(); }, 120);
+  });
+  function changed() {
+    onChange({ ...values });
+    const [path] = location.hash.split("?");
+    const params = new URLSearchParams(Object.entries(values).filter(([, v]) => v));
+    history.replaceState(null, "", `${path}${params.toString() ? `?${params}` : ""}`);
+  }
+  return { node: h("div", { class: "list-controls", role: "search" }, search, selects), values };
+}
+
+const matches = (query, ...texts) => !query || texts.some((t) => t && t.toLowerCase().includes(query.toLowerCase()));
 
 // A destructive action asks once more, in place: no browser dialogs.
 function confirmBox(label, question, confirmLabel, action) {
@@ -323,14 +381,24 @@ function renderSidebar() {
   for (const article of state.articles) {
     for (const t of article.topics) counts.set(t.name, (counts.get(t.name) || 0) + 1);
   }
-  const threadList = document.getElementById("thread-list");
-  threadList.replaceChildren(...state.status.topics.map((name) =>
+  // The busiest threads first; the rest one click away, so the sidebar stays short.
+  const topics = [...state.status.topics].sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+  let shownTopics = topics;
+  if (!state.allTopics && topics.length > SIDEBAR_TOPICS) {
+    shownTopics = topics.slice(0, SIDEBAR_TOPICS);
+    if (state.topicFilter && !shownTopics.includes(state.topicFilter)) shownTopics.push(state.topicFilter);
+  }
+  fill(document.getElementById("thread-list"), shownTopics.map((name) =>
     h("li", {}, h("button", {
       type: "button",
       "aria-pressed": String(state.topicFilter === name),
       onclick: () => { state.topicFilter = state.topicFilter === name ? null : name; renderSidebar(); },
     }, h("span", { class: "swatch", vars: { "--thread": topicColor(name) } }), name,
-    h("span", { class: "count" }, counts.get(name) || 0)))));
+    h("span", { class: "count" }, counts.get(name) || 0)))),
+  topics.length > SIDEBAR_TOPICS ? h("li", { class: "see-all" }, h("button", {
+    type: "button", "aria-expanded": String(Boolean(state.allTopics)),
+    onclick: () => { state.allTopics = !state.allTopics; renderSidebar(); },
+  }, state.allTopics ? "Show fewer topics" : `Show all ${topics.length} topics`)) : null);
 
   const visible = state.articles.filter((a) =>
     !state.topicFilter || a.topics.some((t) => t.name === state.topicFilter));
@@ -338,18 +406,30 @@ function renderSidebar() {
 
   const list = document.getElementById("article-list");
   const current = currentArticleId();
-  list.replaceChildren(...(visible.length ? visible.map((a) => h("li", {},
+  // The newest few, and the article open now if it's older; the Library page has the rest.
+  const recent = visible.slice(0, SIDEBAR_ITEMS);
+  const open = visible.find((a) => a.id === current);
+  if (open && !recent.includes(open)) recent.push(open);
+  const allHref = `#/library${state.topicFilter ? `?topic=${encodeURIComponent(state.topicFilter)}` : ""}`;
+  const seeAll = visible.length > recent.length || state.articles.length > SIDEBAR_ITEMS
+    ? h("li", { class: "see-all" }, h("a", { href: allHref },
+      state.topicFilter ? `All ${visible.length} in ${state.topicFilter}` : `All writing (${visible.length})`)) : null;
+  fill(list, (recent.length ? recent.map((a) => h("li", {},
     h("a", { href: `#/article/${encodeURIComponent(a.id)}`, "aria-current": a.id === current ? "page" : null },
       warp(a.topics),
       h("span", {}, h("span", { class: "title", dir: "auto" }, a.title), h("span", { class: "meta" },
         [a.kind === "post" ? "Post" : null, formatDate(a.published_on),
           a.series && `${a.series}${a.series_part ? `, part ${a.series_part}` : ""}`]
           .filter(Boolean).join(", ") || "Undated")))))
-    : [h("li", { class: "empty" }, state.topicFilter ? "Nothing in this thread yet." : "No articles or posts yet.")]));
+    : [h("li", { class: "empty" }, state.topicFilter ? "Nothing in this thread yet." : "No articles or posts yet.")]), seeAll);
 }
+
+const SIDEBAR_TOPICS = 12;
+const SIDEBAR_ITEMS = 25;
 
 const NAV = {
   home: { icon: "home", label: "Home", active: (hash) => hash === "#/" || hash === "" },
+  library: { icon: "article", label: "Library", active: (hash) => hash.startsWith("#/library") || hash.startsWith("#/article/") },
   add: { icon: "plus", label: "Add", active: (hash) => hash.startsWith("#/add") },
   graph: { icon: "graph", label: "Graph", active: (hash) => hash === "#/graph" },
   people: { icon: "people", label: "People", active: (hash) => hash.startsWith("#/people") || hash.startsWith("#/person/") },
@@ -434,11 +514,9 @@ async function homeView() {
         h("section", { class: "dash-section", id: "waiting", "aria-labelledby": "waiting-heading" },
           h("h2", { id: "waiting-heading" }, "Waiting for your reply"), waiting),
         h("section", { class: "dash-section", "aria-labelledby": "articles-heading" },
-          h("h2", { id: "articles-heading" }, "Your writing", h("a", { href: "#/add" }, "Add")),
-          h("ul", { class: "article-rows" }, state.articles.slice(0, 8).map((a) => h("li", {},
-            h("a", { class: "article-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
-              h("div", {}, h("h3", { dir: "auto" }, a.title), h("p", { dir: "auto" },
-                a.summary || [a.kind === "post" ? "Post" : null, formatDate(a.published_on)].filter(Boolean).join(", "))))))))),
+          h("h2", { id: "articles-heading" }, "Your writing",
+            state.articles.length > HOME_ITEMS ? h("a", { href: "#/library" }, `See all ${state.articles.length}`) : h("a", { href: "#/add" }, "Add")),
+          h("ul", { class: "article-rows" }, state.articles.slice(0, HOME_ITEMS).map(articleRow)))),
       h("aside", {},
         h("section", { class: "dash-section", "aria-labelledby": "people-heading" },
           h("h2", { id: "people-heading" }, "Most engaged", overview.top_people.length ? h("a", { href: "#/people" }, "Everyone") : null),
@@ -452,6 +530,47 @@ async function homeView() {
     event.preventDefault();
     anchor.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+}
+
+const HOME_ITEMS = 8;
+
+function articleRow(a) {
+  return h("li", {},
+    h("a", { class: "article-row", href: `#/article/${encodeURIComponent(a.id)}` }, warp(a.topics),
+      h("div", {}, h("h3", { dir: "auto" }, a.title), a.summary ? h("p", { dir: "auto" }, a.summary) : null,
+        h("p", { class: "row-meta" }, [a.kind === "post" ? "Post" : "Article", formatDate(a.published_on),
+          a.topics.map((t) => t.name).join(", ")].filter(Boolean).join(" \u00b7 ")))));
+}
+
+// Everything written, findable: search, narrow by kind and topic, sort, a page at a time.
+function libraryView(initial) {
+  const topics = [...new Set(state.articles.flatMap((a) => a.topics.map((t) => t.name)))]
+    .sort((a, b) => a.localeCompare(b));
+  const results = h("div", { class: "library-results" });
+  const summary = h("p", { class: "hint", role: "status" });
+  const controls = listControls("Search titles and summaries", [
+    ["kind", "Kind", [["", "Articles and posts"], ["article", "Articles"], ["post", "Posts"]]],
+    ["topic", "Topic", [["", "Every topic"], ...topics.map((t) => [t, t])]],
+    ["sort", "Sort", [["", "Newest first"], ["oldest", "Oldest first"], ["title", "By title"]]],
+  ], draw, initial);
+  function draw({ query, kind, topic, sort }) {
+    let shown = state.articles.filter((a) => (!kind || (a.kind || "article") === kind)
+      && (!topic || a.topics.some((t) => t.name === topic))
+      && matches(query, a.title, a.summary, a.series));
+    if (sort === "oldest") shown = [...shown].reverse();
+    if (sort === "title") shown = [...shown].sort((a, b) => a.title.localeCompare(b.title));
+    summary.textContent = shown.length === state.articles.length ? `${plural(shown.length, "item")}`
+      : `${shown.length} of ${state.articles.length}`;
+    fill(results, shown.length
+      ? pagedList(shown, articleRow, { listClass: "article-rows", what: "items" })
+      : h("p", { class: "hint" }, state.articles.length ? "Nothing matches. Try fewer words or another topic." : "Nothing here yet."));
+  }
+  draw(controls.values);
+  setMain(h("section", { class: "page library-page" },
+    h("div", { class: "section-head" }, h("h1", {}, "Library"),
+      h("a", { class: "button", href: "#/add" }, icon("plus"), "Add")),
+    h("p", { class: "lede" }, "Every article and post you saved."),
+    controls.node, summary, results));
 }
 
 function weaveAll() {
@@ -816,40 +935,57 @@ function reviewPanel(item, review, canFind, done) {
 }
 
 function mentionList(rows) {
-  return h("ul", { class: "mention-list" }, rows.map((m) => h("li", {},
+  return pagedList(rows, (m) => h("li", {},
     h("a", { href: `#/article/${encodeURIComponent(m.id)}`, dir: "auto" }, m.title),
     h("span", { class: "hint" }, ` ${[m.kind === "post" ? "Post" : "Article", formatDate(m.published_on)].filter(Boolean).join(", ")}`),
-    m.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, m.evidence) : null)));
+    m.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, m.evidence) : null),
+  { pageSize: 20, listClass: "mention-list", what: "mentions" });
 }
 
-async function mentionsView() {
-  const [{ entities, pending }] = await Promise.all([api("/api/entities"), refresh()]);
-  const filter = h("input", { type: "search", placeholder: "Filter by name", "aria-label": "Filter mentions" });
+const GROUP_CHIPS = 24;
+
+async function mentionsView(initial = {}) {
+  const { entities, pending } = await api("/api/entities");
+  const present = CATEGORIES.filter(([key]) => entities.some((e) => e.category === key));
   const list = h("div", {});
-  function draw() {
-    const wanted = filter.value.trim().toLowerCase();
-    const shown = entities.filter((e) => !wanted || [e.name, ...e.aliases].some((n) => n.toLowerCase().includes(wanted)));
+  const controls = listControls("Search names", [
+    ["category", "Category", [["", "Every category"], ...present.map(([key, many]) => [key, many])]],
+    ["sort", "Sort", [["", "Most mentioned"], ["name", "By name"]]],
+  ], draw, initial);
+  function draw({ query, category, sort }) {
+    const shown = entities.filter((e) => (!category || e.category === category) && matches(query, e.name, ...e.aliases))
+      .sort(sort === "name" ? (a, b) => a.name.localeCompare(b.name) : (a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    // A category shows its most mentioned names first; the rest open on request.
+    const folded = !query && !category;
     fill(list, shown.length
-      ? byCategory(shown, (e) => e.category).map(([, plural, group]) => h("section", { class: "mention-group" },
-        h("h2", {}, `${plural} (${group.length})`),
-        h("ul", { class: "mention-chips" }, group.map((e) => h("li", {},
-          h("a", { href: `#/entity/${encodeURIComponent(e.id)}`, dir: "auto" }, e.name,
-            h("span", { class: "count" }, ` ${e.count}`)))))))
+      ? byCategory(shown, (e) => e.category).map(([key, many, group]) => {
+        const chips = h("ul", { class: "mention-chips" });
+        const chip = (e) => h("li", {}, h("a", { href: `#/entity/${encodeURIComponent(e.id)}`, dir: "auto" }, e.name,
+          h("span", { class: "count" }, ` ${e.count}`)));
+        const first = folded ? group.slice(0, GROUP_CHIPS) : group;
+        chips.append(...first.map(chip));
+        const rest = group.length - first.length;
+        const more = rest > 0 ? h("button", { class: "link-button", type: "button", onclick: () => {
+          chips.append(...group.slice(first.length).map(chip));
+          more.remove();
+        } }, `Show all ${group.length}`) : null;
+        return h("section", { class: "mention-group", "data-category": key },
+          h("h2", {}, `${many} (${group.length})`), chips, more);
+      })
       : h("p", { class: "hint" }, entities.length ? "Nothing matches." : "Nothing yet. Open an article or post and choose Find people, organisations and more, or add a new one: postloom looks right after adding it."));
   }
-  filter.addEventListener("input", draw);
-  draw();
+  draw(controls.values);
+  const filter = controls.node;
   setMain(h("section", { class: "page" },
     h("h1", {}, "Mentions"),
     h("p", { class: "lede" }, "The organisations, places, events, projects, datasets, methods and links your writing mentions, as you confirmed them. People are on the People page."),
     pending.length ? h("div", { class: "notice" },
       h("p", {}, h("strong", {}, `Waiting for your review (${pending.length})`)),
-      h("ul", {}, pending.map((p) => h("li", {},
+      pagedList(pending, (p) => h("li", {},
         h("a", { href: `#/article/${encodeURIComponent(p.id)}`, dir: "auto" }, p.title),
-        ` ${plural(p.count, "suggestion")}`)))) : null,
+        ` ${plural(p.count, "suggestion")}`), { pageSize: 10, what: "to review" })) : null,
     entities.length > 8 ? filter : null,
     list));
-  renderSidebar();
 }
 
 async function entityView(id) {
@@ -1821,23 +1957,52 @@ function avatar(name) {
     initials(name));
 }
 
-async function peopleView() {
-  const [{ people }] = await Promise.all([api("/api/people"), refresh()]);
+function personRow(p) {
+  return h("li", {},
+    h("a", { class: "person-row", href: `#/person/${encodeURIComponent(p.id)}` }, avatar(p.name),
+      h("div", {}, h("h2", {}, p.name, p.profile_url ? null : h("span", { class: "badge" }, "no profile link")),
+        p.headline ? h("p", {}, p.headline) : null),
+      h("span", { class: "count" }, `${p.messages} ${p.messages === 1 ? "message" : "messages"}`,
+        h("br"), p.messages ? `${p.articles} ${p.articles === 1 ? "article" : "articles"}` : `mentioned in ${p.mentioned}`)));
+}
+
+const PEOPLE_SORTS = {
+  "": (a, b) => b.messages - a.messages || b.articles - a.articles || a.name.localeCompare(b.name),
+  mentioned: (a, b) => b.mentioned - a.mentioned || b.messages - a.messages || a.name.localeCompare(b.name),
+  name: (a, b) => a.name.localeCompare(b.name),
+};
+const PEOPLE_FILTERS = {
+  "": () => true,
+  commented: (p) => p.messages > 0,
+  mentioned: (p) => p.mentioned > 0,
+  nolink: (p) => !p.profile_url,
+};
+
+async function peopleView(initial = {}) {
+  const { people } = await api("/api/people");
   const page = h("section", { class: "page" },
     h("h1", {}, "People"),
     h("p", { class: "lede" }, people.length
       ? "Everyone who has commented on your posts, most engaged first, and the people you mention."
       : "No one yet. Open an article and add its comments to see who engages with your writing."));
   if (people.length) {
-    page.append(h("ul", { class: "people-list" }, people.map((p) => h("li", {},
-      h("a", { class: "person-row", href: `#/person/${encodeURIComponent(p.id)}` }, avatar(p.name),
-        h("div", {}, h("h2", {}, p.name, p.profile_url ? null : h("span", { class: "badge" }, "no profile link")),
-          p.headline ? h("p", {}, p.headline) : null),
-        h("span", { class: "count" }, `${p.messages} ${p.messages === 1 ? "message" : "messages"}`,
-          h("br"), p.messages ? `${p.articles} ${p.articles === 1 ? "article" : "articles"}` : `mentioned in ${p.mentioned}`))))));
+    const results = h("div", {});
+    const summary = h("p", { class: "hint", role: "status" });
+    const controls = listControls("Search names and headlines", [
+      ["show", "Show", [["", "Everyone"], ["commented", "Commented"], ["mentioned", "You mention"], ["nolink", "No profile link"]]],
+      ["sort", "Sort", [["", "Most engaged"], ["mentioned", "Most mentioned"], ["name", "By name"]]],
+    ], draw, initial);
+    function draw({ query, show, sort }) {
+      const shown = people.filter((p) => (PEOPLE_FILTERS[show] || PEOPLE_FILTERS[""])(p) && matches(query, p.name, p.headline))
+        .sort(PEOPLE_SORTS[sort] || PEOPLE_SORTS[""]);
+      summary.textContent = shown.length === people.length ? plural(people.length, "person", "people") : `${shown.length} of ${people.length}`;
+      fill(results, shown.length ? pagedList(shown, personRow, { listClass: "people-list", what: "people" })
+        : h("p", { class: "hint" }, "No one matches."));
+    }
+    draw(controls.values);
+    page.append(controls.node, summary, results);
   }
   setMain(page);
-  renderSidebar();
 }
 
 async function personView(id) {
@@ -1896,10 +2061,11 @@ async function personView(id) {
       h("p", { class: "hint" }, `${firstName} hasn't commented on anything you saved.`)),
     h("div", { class: "person-section" },
       person.conversations.length ? h("h2", {}, "Conversations") : null,
-      person.conversations.map((c) => h("div", {},
+      pagedList(person.conversations, (c) => h("div", { class: "conversation" },
         h("h3", {}, h("a", { href: `#/article/${encodeURIComponent(c.article_id)}` }, c.article_title)),
         threadsOf(c.messages).map((thread) => h("ol", { class: "thread" },
-          thread.map((m) => commentRow(m, c.messages))))))),
+          thread.map((m) => commentRow(m, c.messages))))),
+      { pageSize: 10, tag: "div", what: "conversations" })),
 
     h("div", { class: "person-section danger-zone" },
       h("h2", {}, "Delete this person"),
@@ -2052,26 +2218,110 @@ function svgEl(tag, attrs = {}, ...children) {
   return node;
 }
 
-async function graphView() {
+const GRAPH_BUDGET = 160;
+const GRAPH_NEAR = 60;
+const GRAPH_LABELS = 40;
+const GRAPH_PERIODS = [["", "All time"], ["365", "Last 12 months"], ["90", "Last 3 months"]];
+const isItem = (n) => n.kind === "article" || n.kind === "post";
+
+function graphKindName(n) {
+  if (isEntity(n)) return categoryName(n.kind);
+  return { topic: "Topic", series: "Series", article: "Article", post: "Post", person: "Person" }[n.kind] || n.kind;
+}
+
+function graphHref(n) {
+  if (isItem(n)) return `#/article/${encodeURIComponent(n.id)}`;
+  if (n.kind === "person") return `#/person/${encodeURIComponent(n.id)}`;
+  if (isEntity(n)) return `#/entity/${encodeURIComponent(n.id)}`;
+  if (n.kind === "topic") return `#/library?topic=${encodeURIComponent(n.label)}`;
+  return null;
+}
+
+async function graphView(initial = {}) {
   let graph;
   try {
-    [graph] = await Promise.all([api("/api/graph"), refresh()]);
+    graph = await api("/api/graph");
   } catch (error) {
     return setMain(h("section", { class: "page" }, h("h1", {}, "Graph"), notice("error", error.message)));
   }
-  const options = { people: true, mentions: true, suggested: true };
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const options = {
+    people: initial.people !== "0", mentions: initial.mentions !== "0", suggested: initial.suggested !== "0",
+    period: GRAPH_PERIODS.some(([v]) => v === initial.period) ? initial.period : "",
+    focus: byId.has(initial.focus) ? initial.focus : null,
+  };
   const canvas = h("div", { class: "graph-canvas" });
+  const card = h("div", { class: "graph-card", hidden: true, role: "region", "aria-label": "Selected node" });
+  const note = h("p", { class: "graph-note", role: "status" });
+  const remember = () => {
+    const params = new URLSearchParams();
+    if (options.focus) params.set("focus", options.focus);
+    if (options.period) params.set("period", options.period);
+    for (const key of ["people", "mentions", "suggested"]) if (!options[key]) params.set(key, "0");
+    history.replaceState(null, "", `#/graph${params.toString() ? `?${params}` : ""}`);
+  };
   const toggle = (key, label) => h("label", { class: "check" },
-    h("input", { type: "checkbox", checked: true, onchange: (e) => { options[key] = e.target.checked; draw(); } }), label);
-  const draw = () => canvas.replaceChildren(graphSvg(graph, options));
+    h("input", { type: "checkbox", checked: options[key], onchange: (e) => { options[key] = e.target.checked; draw(); } }), label);
 
-  const articles = graph.nodes.filter((n) => n.kind === "article" || n.kind === "post");
+  // Find a node by name: articles, topics, people and everything mentioned.
+  const names = new Map();
+  for (const n of graph.nodes) names.set(`${n.label} (${graphKindName(n)})`, n.id);
+  const choices = h("datalist", { id: "graph-names" }, [...names.keys()].sort((a, b) => a.localeCompare(b)).map((v) => h("option", { value: v })));
+  const finder = h("input", { type: "search", list: "graph-names", placeholder: "Focus on an article, topic, person...",
+    "aria-label": "Focus on", value: options.focus ? `${byId.get(options.focus).label} (${graphKindName(byId.get(options.focus))})` : "" });
+  finder.addEventListener("change", () => {
+    const id = names.get(finder.value) || [...names.entries()].find(([k]) => k.toLowerCase().startsWith(finder.value.trim().toLowerCase()))?.[1];
+    if (finder.value.trim() && id) setFocus(id);
+    else if (!finder.value.trim()) setFocus(null);
+  });
+  const period = h("select", { "aria-label": "Period", onchange: () => { options.period = period.value; draw(); } },
+    GRAPH_PERIODS.map(([v, text]) => h("option", { value: v, selected: v === options.period }, text)));
+  const clear = h("button", { class: "button", type: "button", onclick: () => setFocus(null) }, "Clear focus");
+
+  function setFocus(id) {
+    options.focus = id;
+    finder.value = id ? `${byId.get(id).label} (${graphKindName(byId.get(id))})` : "";
+    draw();
+  }
+
+  function select(n) {
+    if (!n) { card.hidden = true; return; }
+    const href = graphHref(n);
+    fill(card,
+      h("p", { class: "eyebrow" }, graphKindName(n)),
+      h("h2", { dir: "auto" }, n.label),
+      h("p", { class: "hint" }, [nodeTitle(n).replace(`${n.label}: `, ""), n.date ? formatDate(n.date) : null].filter(Boolean).join(", ")),
+      h("div", { class: "graph-card-actions" },
+        href ? h("a", { class: "button button-primary", href }, "Open") : null,
+        options.focus === n.id ? null : h("button", { class: "button", type: "button", onclick: () => setFocus(n.id) }, "Focus here"),
+        h("button", { class: "icon-button", type: "button", "aria-label": "Close", onclick: () => select(null) }, icon("close"))));
+    card.hidden = false;
+  }
+
+  function draw() {
+    remember();
+    const shown = selectGraph(graph, options);
+    clear.hidden = !options.focus;
+    const total = shown.total;
+    const focusName = options.focus ? byId.get(options.focus).label : "";
+    note.textContent = !shown.nodes.length ? ""
+      : options.focus
+        ? `${focusName} and ${shown.nodes.length < total ? `the ${shown.nodes.length - 1} closest of ${total - 1}` : `all ${total - 1}`} connections around it.`
+        : shown.nodes.length < total
+          ? `Showing the ${shown.nodes.length} most connected of ${total}. Focus on an article, topic or person, or choose a shorter period, to see the rest.`
+          : `Showing all ${total}.`;
+    select(options.focus ? byId.get(options.focus) : null);
+    canvas.replaceChildren(graphSvg(shown, options.focus, select));
+  }
+
+  const articles = graph.nodes.filter(isItem);
   setMain(h("section", { class: "graph-page" },
     h("h1", {}, "Graph"),
     h("p", { class: "lede" }, articles.length
-      ? "Your articles and posts, their topics and series, the people who discussed them and what you mention. Drag to move around, scroll to zoom, select a node to open it."
+      ? "Your articles and posts, their topics and series, the people who discussed them and what you mention. Drag to move around, scroll to zoom, select a node to see it or focus on it."
       : "Add an article or a post and its topics, links and commenters will appear here."),
     h("div", { class: "graph-controls" },
+      h("div", { class: "list-controls graph-find" }, finder, choices, period, clear),
       toggle("people", "People"), toggle("mentions", "Mentions"), toggle("suggested", "Suggested links"),
       h("ul", { class: "graph-legend", "aria-label": "Legend" },
         h("li", {}, h("span", { class: "key key-topic" }), "Topic"),
@@ -2081,9 +2331,51 @@ async function graphView() {
         h("li", {}, h("span", { class: "key key-entity" }), "Mentioned"),
         h("li", {}, h("span", { class: "key key-linked" }), "Linked"),
         h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
-    canvas,
+    note,
+    h("div", { class: "graph-stage" }, canvas, card),
     suggestionList(graph)));
   draw();
+}
+
+// What the graph shows: never more than GRAPH_BUDGET nodes, so it stays readable and quick
+// however large the library grows. Without a focus, the most connected nodes; with one,
+// that node, its neighbours and then theirs.
+function selectGraph(graph, o) {
+  const cutoff = o.period ? Date.now() - Number(o.period) * 86400000 : null;
+  let nodes = graph.nodes.filter((n) => (o.people || n.kind !== "person") && (o.mentions || !isEntity(n))
+    && (!cutoff || !isItem(n) || (n.date && Date.parse(n.date) >= cutoff)));
+  let ids = new Set(nodes.map((n) => n.id));
+  let links = graph.links.filter((l) => ids.has(l.source) && ids.has(l.target)
+    && (o.suggested || l.grade !== "asserted" || l.kind !== "related_to"));
+  const near = new Map(nodes.map((n) => [n.id, new Set()]));
+  for (const l of links) { near.get(l.source).add(l.target); near.get(l.target).add(l.source); }
+  // A topic, person or mention with nothing left to connect to (outside the period) goes.
+  nodes = nodes.filter((n) => isItem(n) || near.get(n.id).size || n.id === o.focus);
+  const degree = (n) => near.get(n.id).size;
+  const rank = (list) => list.sort((a, b) => (b.kind === "topic") - (a.kind === "topic") || degree(b) - degree(a)
+    || b.weight - a.weight || a.label.localeCompare(b.label));
+
+  let chosen, total;
+  if (o.focus && near.has(o.focus)) {
+    // Its neighbours, then theirs while the picture stays small enough to read.
+    const focus = graph.nodes.find((n) => n.id === o.focus);
+    const ring1 = rank(nodes.filter((n) => near.get(o.focus).has(n.id) && n.id !== o.focus));
+    const inner = new Set([o.focus, ...ring1.map((n) => n.id)]);
+    const ring2 = rank(nodes.filter((n) => !inner.has(n.id) && [...near.get(n.id)].some((m) => inner.has(m))));
+    chosen = [focus, ...ring1.slice(0, GRAPH_BUDGET - 1)];
+    if (chosen.length < GRAPH_NEAR) chosen.push(...ring2.slice(0, GRAPH_NEAR - chosen.length));
+    total = 1 + ring1.length + ring2.length;
+  } else {
+    total = nodes.length;
+    chosen = nodes.length <= GRAPH_BUDGET ? nodes : rank([...nodes]).slice(0, GRAPH_BUDGET);
+  }
+  ids = new Set(chosen.map((n) => n.id));
+  links = links.filter((l) => ids.has(l.source) && ids.has(l.target));
+  // Names on the busiest nodes only; the others show theirs on hover or selection.
+  const labelled = new Set([o.focus, ...rank([...chosen]).slice(0, GRAPH_LABELS).map((n) => n.id),
+    ...chosen.filter((n) => n.kind === "topic" || n.kind === "series").map((n) => n.id)]);
+  if (o.focus) for (const id of near.get(o.focus) || []) labelled.add(id);
+  return { nodes: chosen, links, total, labelled: chosen.length <= GRAPH_LABELS * 2 ? null : labelled };
 }
 
 function suggestionList(graph) {
@@ -2094,7 +2386,7 @@ function suggestionList(graph) {
     button.disabled = true;
     try {
       await api("/api/links", { method: "POST", body: { article_id: link.source, other_id: link.target, decision } });
-      await graphView();
+      await graphView(Object.fromEntries(new URLSearchParams(location.hash.split("?")[1] || "")));
     } catch (error) {
       button.disabled = false;
       toast(error.message);
@@ -2103,7 +2395,7 @@ function suggestionList(graph) {
   return h("section", { class: "link-review", "aria-label": "Suggested links" },
     h("h2", {}, `${pending.length} suggested ${pending.length === 1 ? "link" : "links"} to review`),
     h("p", { class: "hint" }, "Accepted links are added to both articles' notes in your vault. Dismissed ones are never suggested again."),
-    h("ul", { class: "related-list" }, pending.map((link) => h("li", { class: "related-item suggested" },
+    pagedList(pending, (link) => h("li", { class: "related-item suggested" },
       h("div", {},
         h("a", { href: `#/article/${encodeURIComponent(link.source)}` }, titles.get(link.source)),
         h("span", { class: "pair-sep" }, " and "),
@@ -2111,20 +2403,16 @@ function suggestionList(graph) {
         h("p", { class: "hint" }, link.weight ? `${Math.round(link.weight * 100)}% similar` : "Suggested")),
       h("div", { class: "related-actions" },
         h("button", { class: "button", type: "button", onclick: (e) => decide(link, "accept", e.currentTarget) }, "Accept"),
-        h("button", { class: "button", type: "button", onclick: (e) => decide(link, "reject", e.currentTarget) }, "Dismiss"))))));
+        h("button", { class: "button", type: "button", onclick: (e) => decide(link, "reject", e.currentTarget) }, "Dismiss"))),
+    { pageSize: 10, listClass: "related-list", what: "suggestions" }));
 }
 
-function graphSvg(graph, options) {
-  const nodes = graph.nodes
-    .filter((n) => options.people || n.kind !== "person")
-    .filter((n) => options.mentions || !isEntity(n))
-    .map((n) => ({ ...n, r: nodeRadius(n) }));
+function graphSvg(shown, focus, onSelect) {
+  const nodes = shown.nodes.map((n) => ({ ...n, r: nodeRadius(n) * (n.id === focus ? 1.3 : 1) }));
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const links = graph.links.filter((l) => byId.has(l.source) && byId.has(l.target)
-    && (options.suggested || l.grade !== "asserted" || l.kind !== "related_to")
-    && (options.mentions || l.kind !== "mentions"));
-  if (!nodes.length) return h("p", { class: "hint graph-empty" }, "Nothing to show yet.");
-  layout(nodes, links, byId);
+  const links = shown.links;
+  if (!nodes.length) return h("p", { class: "hint graph-empty" }, "Nothing to show for this choice.");
+  layout(nodes, links, byId, focus);
 
   const neighbours = new Map(nodes.map((n) => [n.id, new Set([n.id])]));
   for (const l of links) { neighbours.get(l.source).add(l.target); neighbours.get(l.target).add(l.source); }
@@ -2146,17 +2434,21 @@ function graphSvg(graph, options) {
       css: topic ? { stroke: topicColor(topic.label) } : null });
   }));
   const nodeLayer = svgEl("g", { class: "nodes" }, nodes.map((n) => {
-    const href = n.kind === "article" || n.kind === "post" ? `#/article/${encodeURIComponent(n.id)}`
-      : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}`
-      : isEntity(n) ? `#/entity/${encodeURIComponent(n.id)}` : null;
     const shape = n.kind === "person"
       ? personGlyph(n.r, { transform: `translate(${n.x} ${n.y})` })
       : svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${isEntity(n) ? `entity node-${n.kind}` : n.kind}`,
           css: n.kind === "topic" ? { fill: topicColor(n.label) } : null });
-    const label = svgEl("text", { x: n.x, y: n.y + n.r + 12, class: `label label-${n.kind}` },
+    const quiet = shown.labelled && !shown.labelled.has(n.id) ? " quiet" : "";
+    const label = svgEl("text", { x: n.x, y: n.y + n.r + 12, class: `label label-${n.kind}${quiet}` },
       clip(n.label, n.kind === "person" ? 22 : 30));
-    const group = svgEl(href ? "a" : "g", { class: "graph-node", "data-id": n.id, href,
-      onclick: n.kind === "topic" ? () => { state.topicFilter = n.label; location.hash = "#/"; } : null,
+    const choose = () => {
+      for (const g of svg.querySelectorAll(".graph-node.selected")) g.classList.remove("selected");
+      group.classList.add("selected");
+      onSelect(n);
+    };
+    const group = svgEl("g", { class: `graph-node${n.id === focus ? " selected focus" : ""}`, "data-id": n.id,
+      tabindex: "0", role: "button", "aria-label": `${graphKindName(n)}: ${nodeTitle(n)}`,
+      onclick: choose, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } },
       onmouseenter: () => focusNode(svg, n.id, neighbours), onmouseleave: () => focusNode(svg, null),
       onfocus: () => focusNode(svg, n.id, neighbours), onblur: () => focusNode(svg, null) },
       svgEl("title", {}, nodeTitle(n)), shape, label);
@@ -2211,7 +2503,7 @@ function focusNode(svg, id, neighbours) {
   }
 }
 
-function layout(nodes, links, byId) {
+function layout(nodes, links, byId, pinned = null) {
   // A small force simulation, run to completion before drawing. Starting positions come
   // from each id's hash, so the same library always gets the same picture.
   nodes.forEach((n, i) => {
@@ -2247,6 +2539,7 @@ function layout(nodes, links, byId) {
       n.vx -= n.x * 0.025; n.vy -= n.y * 0.025; // gravity keeps separate clusters close
       n.vx *= 0.82; n.vy *= 0.82;
       n.x += Math.max(-30, Math.min(30, n.vx)); n.y += Math.max(-30, Math.min(30, n.vy));
+      if (n.id === pinned) { n.x = 0; n.y = 0; } // the focus stays in the middle
     }
   }
 }
@@ -2283,9 +2576,7 @@ async function route() {
   const [path, queryString] = hash.split("?");
   const params = new URLSearchParams(queryString || "");
   try {
-    if (!state.status) await refresh();
-    else state.status = await api("/api/status");  // notes may have been edited meanwhile
-    renderNav();
+    await refresh();  // notes may have been edited meanwhile
     if (path.startsWith("#/article/")) {
       return await articleView(decodeURIComponent(path.slice(10)),
         { comment: params.get("comment"), reply: params.get("reply") === "1" });
@@ -2294,12 +2585,13 @@ async function route() {
     if (path === "#/add") return addView();
     if (path === "#/add/post") return addPostView();
     if (path === "#/settings") return await settingsView();
-    if (path === "#/people") return await peopleView();
-    if (path === "#/mentions") return await mentionsView();
+    const filters = Object.fromEntries(params);
+    if (path === "#/library") return libraryView(filters);
+    if (path === "#/people") return await peopleView(filters);
+    if (path === "#/mentions") return await mentionsView(filters);
     if (path.startsWith("#/entity/")) return await entityView(decodeURIComponent(path.slice(9)));
-    if (path === "#/graph") return await graphView();
+    if (path === "#/graph") return await graphView(filters);
     if (path.startsWith("#/person/")) return await personView(decodeURIComponent(path.slice(9)));
-    renderSidebar();
     return await homeView();
   } catch (error) {
     setMain(h("section", { class: "page" }, h("h1", {}, "Something went wrong"), notice("error", error.message)));

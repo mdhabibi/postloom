@@ -272,6 +272,7 @@ def create_app(
                 "ollama_context": settings.ollama_context,
                 "locked": sorted(settings.locked),
                 "articles": articles,
+                "library_version": container.library_version,
                 "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
                 "vault_changes": container.vault.changes().count,

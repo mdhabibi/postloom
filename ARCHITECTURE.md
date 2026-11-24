@@ -235,6 +235,12 @@ possible:
   is linked to what; they can't say that a link was suggested by a model, accepted by the
   author on a certain day, or dismissed. Every edge write is appended to the journal by
   `JournaledRepository`, a decorator around the repository, so no use case can forget it.
+  Around it, `CachedRepository` answers the reads of a screen (a GET request, inside
+  `Container.reading()`) from an in-memory snapshot loaded in a few bulk queries. Any
+  write through it drops the snapshot, and so does a write by another process (SQLite's
+  `data_version`), so a screen never shows stale data; outside `reading()` every call goes
+  straight through. `tests/integration/test_scale.py` checks that a screen asks the
+  database a bounded number of questions, not one per article, person or comment.
   It is plain JSON Lines: it travels with the vault and diffs cleanly.
 - **Notes postloom didn't write are not its business.** A file without postloom's `type`
   and `id` properties is never read, overwritten or moved.

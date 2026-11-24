@@ -224,8 +224,23 @@ the article note), so Obsidian's graph shows your decisions, not a model's guess
 
 **Graph** (in the sidebar) shows your articles, topics, series and the people who
 discussed them. Suggested links are dashed until you review them; the list under the
-graph lets you go through them all at once. Hover a node to see its neighbours, click to
-open it, drag to pan and scroll to zoom.
+graph lets you go through them all at once. Hover a node to see its neighbours, click it
+to see what it is and **Open** it or **Focus here**, drag to pan and scroll to zoom.
+
+A large library would make one unreadable ball, so the graph shows at most 160 nodes at
+a time: the most connected ones, or, once you focus on an article, topic, person or
+anything you mention (type its name in **Focus on**), that node and its connections. The
+period choice (last 3 or 12 months) narrows it further, and the address keeps the focus,
+so you can bookmark it.
+
+### A large library
+
+Every list is built to stay tidy at hundreds of articles and thousands of people. The
+sidebar keeps the busiest topics and your newest writing; **Library** has everything,
+with search, kind, topic and sort. **People** and **Mentions** can be searched, filtered
+and sorted, and long lists grow 50 at a time with **Show more**. Screens are answered from
+a snapshot of the library kept in memory until something changes, so they open in a
+fraction of a second.
 
 ### Your vault
 
