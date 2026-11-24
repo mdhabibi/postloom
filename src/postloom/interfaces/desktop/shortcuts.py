@@ -2,7 +2,8 @@
 
 The installers run ``postloom shortcut`` once. It creates, for the current user only:
 
-- macOS: ``~/Applications/Postloom.app`` (Launchpad, Spotlight, the Dock);
+- macOS: ``/Applications/Postloom.app`` (Launchpad, Spotlight, Finder's Applications), or
+  ``~/Applications/Postloom.app`` when this user may not write ``/Applications``;
 - Windows: ``Postloom`` in the Start menu and on the desktop;
 - Linux: ``postloom.desktop`` in the applications menu.
 
@@ -13,13 +14,14 @@ process ends right away, so clicking it again always does something visible.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import plistlib
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
@@ -39,6 +41,10 @@ class Shortcuts:
     system: str  # platform.system(): "Darwin", "Windows" or "Linux"
     user_home: Path
     python: Path
+    system_apps: Path = Path("/Applications")
+    arch: str = field(default_factory=platform.machine)
+    """The processor architecture postloom was installed for ("arm64" or "x86_64")."""
+    """Where Finder's Applications folder is; the icon goes there when this user may write it."""
     """The interpreter of the installed postloom; on Windows the one without a window."""
 
     @classmethod
@@ -61,7 +67,10 @@ class Shortcuts:
         removed: list[Path] = []
         if self.system == "Windows":
             return self._windows_links(None, remove=True)
-        for path in self._paths():
+        paths = self._paths()
+        if self.system == "Darwin":  # it may be in either Applications folder
+            paths = [self.system_apps / f"{APP_NAME}.app", *self._user_apps()]
+        for path in paths:
             if path.is_dir():
                 shutil.rmtree(path)
                 removed.append(path)
@@ -73,15 +82,23 @@ class Shortcuts:
     # -- macOS -----------------------------------------------------------------------------
     def _paths(self) -> list[Path]:
         if self.system == "Darwin":
-            return [self.user_home / "Applications" / f"{APP_NAME}.app"]
+            if os.access(self.system_apps, os.W_OK):
+                return [self.system_apps / f"{APP_NAME}.app"]
+            return self._user_apps()
         share = self.user_home / ".local" / "share"
         return [
             share / "applications" / "postloom.desktop",
             share / "icons" / "hicolor" / "512x512" / "apps" / "postloom.png",
         ]
 
+    def _user_apps(self) -> list[Path]:
+        return [self.user_home / "Applications" / f"{APP_NAME}.app"]
+
     def _mac_app(self, home: Path) -> Path:
         app = self._paths()[0]
+        for old in self._user_apps():  # earlier installs put it here
+            if old != app and old.is_dir():
+                shutil.rmtree(old)
         contents = app / "Contents"
         (contents / "MacOS").mkdir(parents=True, exist_ok=True)
         (contents / "Resources").mkdir(parents=True, exist_ok=True)
@@ -95,11 +112,16 @@ class Shortcuts:
             "CFBundleShortVersionString": __version__,
             "CFBundleVersion": __version__,
             "LSUIElement": True,  # no Dock icon for the moment it takes to open the browser
+            # A script has no architecture of its own, and macOS ran it as Intel (Rosetta)
+            # on Apple silicon, where postloom's compiled parts are Apple-silicon only.
+            "LSArchitecturePriority": [self.arch, "x86_64" if self.arch == "arm64" else "arm64"],
+            "LSRequiresNativeExecution": True,
         }
         with (contents / "Info.plist").open("wb") as file:
             plistlib.dump(info, file)
         script = contents / "MacOS" / APP_NAME
-        command = " ".join(_sh_quote(part) for part in self.command(home))
+        native = ["/usr/bin/arch", f"-{self.arch}"]  # run Python as it was installed
+        command = " ".join(_sh_quote(part) for part in [*native, *self.command(home)])
         script.write_text(f"#!/bin/sh\nexec {command}\n", encoding="utf-8")
         script.chmod(0o755)
         shutil.copyfile(_icon("postloom.icns"), contents / "Resources" / "postloom.icns")
@@ -245,6 +267,49 @@ def open_in_browser(url: str) -> bool:
         return webbrowser.open(url)
     except webbrowser.Error:
         return False
+
+
+def launcher_log() -> Path:
+    """Where the icon's launcher writes what went wrong: always somewhere it may write."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Logs" / "Postloom" / "launcher.log"
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "Postloom" / "launcher.log"
+    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(state) / "postloom" / "launcher.log"
+
+
+def record_failure(details: str) -> Path:
+    log = launcher_log()
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as file:
+            file.write(details.rstrip() + "\n\n")
+    except OSError:
+        pass
+    return log
+
+
+def blocked_message(folder: Path, log: Path) -> str:
+    if sys.platform == "darwin":
+        return (
+            f"macOS doesn't let Postloom read {folder}. This happens when your data is on "
+            "another drive, or in Documents, Desktop or Downloads.\n\n"
+            "In System Settings, open Privacy & Security, then Full Disk Access. Click +, "
+            "choose Postloom in Applications and turn it on. "
+            f"Then open Postloom again.\n\nDetails: {log}"
+        )
+    return f"Postloom isn't allowed to read {folder}. Check that folder's permissions.\n\n{log}"
+
+
+def open_privacy_settings() -> None:
+    """On macOS, open the setting that lets Postloom read the data folder."""
+    if sys.platform != "darwin":
+        return
+    pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run(["open", pane], capture_output=True, check=False, timeout=30)
 
 
 def log_to_file(home: Path) -> Path:

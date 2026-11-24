@@ -26,9 +26,12 @@ from postloom.interfaces.cli import doctor
 from postloom.interfaces.desktop.shortcuts import (
     LOG_FILE,
     Shortcuts,
+    blocked_message,
     last_lines,
     log_to_file,
     open_in_browser,
+    open_privacy_settings,
+    record_failure,
     start_in_background,
     tell,
 )
@@ -45,6 +48,8 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
     parser = _parser()
     args = parser.parse_args(argv)
     home: Path | None = args.home
+    if args.command == "open":
+        return _open_from_icon(home)
     settings = Settings.load(home)
 
     def opened(settings: Settings) -> Container:
@@ -507,6 +512,28 @@ STARTUP_SECONDS = 90
 """How long `open` waits for a background start (a first start may upgrade the vault)."""
 
 
+def _open_from_icon(home: Path | None) -> int:
+    """`open` as the icon runs it: no terminal, so every failure becomes a dialog."""
+    import traceback
+
+    folder = home or Path("~/Postloom")
+    try:
+        settings = Settings.load(home)
+        folder = settings.home
+        folder.mkdir(parents=True, exist_ok=True)
+        next(folder.iterdir(), None)  # macOS refuses here when the app may not read the drive
+        return _open(settings)
+    except PermissionError:
+        log = record_failure(traceback.format_exc())
+        tell("postloom can't open your data folder", blocked_message(folder, log))
+        open_privacy_settings()
+        return 1
+    except Exception:
+        log = record_failure(traceback.format_exc())
+        tell("postloom could not start", f"The details are in {log}.")
+        return 1
+
+
 def _open(settings: Settings) -> int:
     import time
 
@@ -578,7 +605,7 @@ def _shortcut(args: argparse.Namespace, settings: Settings) -> int:
     for path in changed:
         print(f"Added {path}")
     where = {
-        "Darwin": "in Launchpad, Spotlight and ~/Applications",
+        "Darwin": "in Launchpad, Spotlight and Applications",
         "Windows": "in the Start menu and on your desktop",
     }.get(shortcuts.system, "in your applications menu")
     print(f"Open postloom any time from the Postloom icon {where}.")
