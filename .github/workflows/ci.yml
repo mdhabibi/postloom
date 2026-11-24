@@ -7,6 +7,7 @@ name: CI
 #   `full-ci`;
 # - the real local embedding model: when embedding code or dependencies change;
 # - everything: weekly, and on demand from the Actions tab (run it before tagging a release).
+# `sh scripts/check.sh --browser` runs the Linux checks locally, for free.
 on:
   push:
     branches: [main]
