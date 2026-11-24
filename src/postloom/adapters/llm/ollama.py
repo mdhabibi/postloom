@@ -17,6 +17,8 @@ from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
     HttpApi,
+    Image,
+    InvalidRequestError,
     JsonReply,
     OutputTruncatedError,
     ProviderText,
@@ -43,6 +45,10 @@ TEXT = ProviderText(
     unreachable_help="Is Ollama running? Open the Ollama app, or run `ollama serve`.",
     missing_model_help="Download it with `ollama pull <model>`, or pick an installed one.",
 )
+
+
+TOKENS_PER_IMAGE = 1_600
+"""Room left in the context for each image; vision models use up to about this many."""
 
 
 class OllamaBackend:
@@ -84,9 +90,15 @@ class OllamaBackend:
         temperature: float,
         max_output_tokens: int,
         effort: str = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
         turns: list[Turn] = [("user", prompt)]
-        payload = self._payload(model, system, turns, temperature, max_output_tokens, json=True)
+        payload = self._payload(
+            model, system, turns, temperature, max_output_tokens, json=True, images=len(images)
+        )
+        if images:
+            self._check_vision(model)
+            payload["messages"][-1]["images"] = [i.base64() for i in images]
         payload["format"] = schema
         body = self._api.post("api/chat", payload)
         text = _content(body)
@@ -127,6 +139,16 @@ class OllamaBackend:
             raise ProviderError("Ollama returned an embedding without values.")
         return EmbeddingReply(vectors, Usage(input_tokens=as_int(body.get("prompt_eval_count"))))
 
+    def _check_vision(self, model: str) -> None:
+        """Ollama quietly drops images a model can't see, and the model then makes up a
+        description; refuse instead. Older Ollama versions don't list capabilities."""
+        body = self._api.post("api/show", {"model": model})
+        capabilities = body.get("capabilities")
+        if isinstance(capabilities, list) and "vision" not in capabilities:
+            raise InvalidRequestError(
+                f"{model} can't see images.", f"{model} has no vision capability"
+            )
+
     def list_models(self) -> list[str]:
         body = self._api.get("api/tags")
         models = body.get("models")
@@ -143,8 +165,10 @@ class OllamaBackend:
         max_output_tokens: int,
         *,
         json: bool,
+        images: int = 0,
     ) -> JsonObject:
         input_tokens = (len(system) + sum(len(text) for _, text in turns)) // CHARS_PER_TOKEN + 64
+        input_tokens += images * TOKENS_PER_IMAGE
         # A restored article is about as long as the pasted one; chat answers are short.
         output = (
             min(max_output_tokens, max(2_048, input_tokens + input_tokens // 5 + 512))

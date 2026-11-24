@@ -18,6 +18,7 @@ from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.chat import LlmChat
 from postloom.adapters.llm.content import (
     LlmContentExtractor,
+    LlmImageDescriber,
     LlmMentionFinder,
     LlmPostClassifier,
     LlmThreadParser,
@@ -40,6 +41,7 @@ from postloom.adapters.storage.stamps import SqliteNoteStamps
 from postloom.adapters.storage.usage import SqliteUsageLedger
 from postloom.adapters.vault.journal import FileEdgeJournal
 from postloom.adapters.vault.markdown_vault import MarkdownVault
+from postloom.adapters.vault.media_files import VaultMediaStore
 from postloom.application.errors import NotConfiguredError
 from postloom.application.ports import (
     ChatModel,
@@ -53,6 +55,7 @@ from postloom.application.ports import (
     Vault,
 )
 from postloom.application.ports.extraction import MentionFinder, PostClassifier
+from postloom.application.ports.media import ImageDescriber, MediaStore
 from postloom.application.ports.reviews import ReviewStore
 from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.ports.usage import Task
@@ -82,6 +85,7 @@ from postloom.application.use_cases import (
     UpdateArticle,
     UpdatePerson,
 )
+from postloom.application.use_cases.media import ManageMedia
 from postloom.application.use_cases.mentions import ConfirmMentions, FindMentions, ManageEntities
 from postloom.application.use_cases.posts import DeletePost, IngestPost, UpdatePost
 from postloom.application.use_cases.usage import BudgetPolicy, PriceBook, UsageReport
@@ -132,6 +136,10 @@ class Container:
     """Proposes the people, organisations and more a text names; links need no model."""
     reviews: ReviewStore = field(default_factory=InMemoryReviewStore)
     """Found mentions waiting for the user to confirm them."""
+    media_store: MediaStore | None = None
+    """Image and video files in the vault."""
+    image_describer: ImageDescriber | None = None
+    """Says what an image shows, so it can be searched; needs a model."""
     min_similarity: float = 0.0
     related_similarity: float = 0.75
     monthly_budget_usd: float | None = None
@@ -207,6 +215,17 @@ class Container:
 
     def entities(self) -> ManageEntities:
         return ManageEntities(self.repository, self.vault, self.reviews, self.clock)
+
+    def media(self) -> ManageMedia:
+        if self.media_store is None:
+            raise NotConfiguredError("This postloom has no vault folder for images and videos.")
+        return ManageMedia(
+            self.repository,
+            self.vault,
+            self.media_store,
+            lambda item: self.index_article().execute(item),
+            self.image_describer,
+        )
 
     def update_post(self) -> UpdatePost:
         return UpdatePost(self.repository, self.vault, self.clock)
@@ -335,6 +354,7 @@ def build_container(
     reply_chat: ChatModel | None = None,
     post_classifier: PostClassifier | None = None,
     mention_finder: MentionFinder | None = None,
+    image_describer: ImageDescriber | None = None,
     clock: Clock | None = None,
 ) -> Container:
     """Wire the app from settings. Anything passed explicitly wins (tests, embedding apps).
@@ -378,6 +398,9 @@ def build_container(
         mention_finder = mention_finder or LlmMentionFinder(
             gateway, settings.model("extraction"), reading
         )
+        image_describer = image_describer or LlmImageDescriber(
+            gateway, settings.model("extraction"), reading
+        )
         chat = chat or LlmChat(gateway, settings.model("chat"), fallbacks=fallbacks)
         reply_chat = reply_chat or LlmChat(
             gateway,
@@ -414,6 +437,8 @@ def build_container(
         post_classifier=post_classifier,
         mention_finder=mention_finder,
         reviews=SqliteReviewStore(database),
+        media_store=VaultMediaStore(settings.vault_dir),
+        image_describer=image_describer,
         min_similarity=cutoffs.search,
         related_similarity=cutoffs.related,
         monthly_budget_usd=settings.monthly_budget_usd,

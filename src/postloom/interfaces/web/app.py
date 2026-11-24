@@ -26,8 +26,9 @@ import logging
 import mimetypes
 import os
 import subprocess
+import tempfile
 import threading
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,7 @@ from postloom.adapters.llm.providers import PROVIDERS, ProviderSpec, build_backe
 from postloom.application.errors import (
     ApplicationError,
     BudgetExceededError,
+    MediaTooLargeError,
     NotConfiguredError,
     ProviderAuthError,
     ProviderError,
@@ -70,6 +72,7 @@ from postloom.bootstrap import Container, Settings
 from postloom.config import read_config
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId
+from postloom.domain.media import media_type
 from postloom.domain.text import canonical_url, web_url
 from postloom.interfaces.desktop import ollama
 from postloom.interfaces.web import schemas
@@ -307,6 +310,7 @@ def create_app(
                     "chat": container.chat is not None,
                     "comments": container.thread_parser is not None,
                     "reply_drafts": (container.reply_chat or container.chat) is not None,
+                    "describe_images": container.image_describer is not None,
                 },
             }
         )
@@ -558,6 +562,69 @@ def create_app(
         state.container.entities().remove_mention(NodeId(item), NodeId(target))
         return JSONResponse({"removed": target})
 
+    # -- images and videos -------------------------------------------------------------
+    async def media_upload(request: Request) -> Response:
+        """The file is the request body, so a large video never sits in memory: it goes to
+        a temporary file, then into the vault."""
+        params = request.query_params
+        item, name = params.get("id", ""), params.get("name", "")
+        caption, video = params.get("caption", ""), params.get("video", "")
+        if not item or not name:
+            return _error(400, "Missing id or name.")
+        if _content_length(request) > MAX_UPLOAD_BYTES:
+            return _error(413, UPLOAD_TOO_LARGE)
+        handle, spooled = tempfile.mkstemp(prefix="postloom-upload-")
+        try:
+            size = 0
+            with os.fdopen(handle, "wb") as out:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        return _error(413, UPLOAD_TOO_LARGE)
+                    out.write(chunk)
+
+            def add() -> Response:
+                with state.request():
+                    state.sync_if_changed()
+                    media = state.container.media()
+                    data = _chunks_of(Path(spooled))
+                    if video:
+                        added = media.add_subtitles(NodeId(item), video, name, data)
+                    else:
+                        added = media.add(NodeId(item), name, data, caption)
+                    return JSONResponse(schemas.media_view(added), status_code=201)
+
+            return await _guarded(request, add)
+        finally:
+            Path(spooled).unlink(missing_ok=True)
+
+    def media_update(request: Request, body: schemas.MediaCaption) -> Response:
+        media = state.container.media().update(NodeId(body.id), body.file, body.caption)
+        return JSONResponse(schemas.media_view(media))
+
+    def media_describe(request: Request, body: schemas.MediaRef) -> Response:
+        media = state.container.media().describe(NodeId(body.id), body.file)
+        return JSONResponse(schemas.media_view(media))
+
+    def media_remove(request: Request, body: schemas.MediaRef) -> Response:
+        state.container.media().remove(NodeId(body.id), body.file)
+        return JSONResponse({"removed": body.file})
+
+    def media_move(request: Request, body: schemas.MediaMove) -> Response:
+        moved = state.container.media().move(NodeId(body.id), body.file, body.position)
+        return JSONResponse({"media": [schemas.media_view(m) for m in moved]})
+
+    def media_file(request: Request) -> Response:
+        with state.request():
+            store = state.container.media_store
+            try:
+                path = store.locate(f"media/{request.path_params['path']}") if store else None
+            except (ValueError, DomainError):
+                path = None
+        if path is None or not path.is_file():
+            return _error(404, "No such image or video.")
+        return FileResponse(path, media_type=media_type(path.name) or "application/octet-stream")
+
     def entities_list(request: Request) -> Response:
         manage = state.container.entities()
         return JSONResponse(
@@ -773,6 +840,12 @@ def create_app(
         ),
         Route("/api/mention", api(mention_remove), methods=["DELETE"]),
         Route("/api/entities", api(entities_list)),
+        Route("/api/media/upload", media_upload, methods=["POST"]),
+        Route("/api/media/update", api(media_update, schemas.MediaCaption), methods=["POST"]),
+        Route("/api/media/describe", api(media_describe, schemas.MediaRef), methods=["POST"]),
+        Route("/api/media/remove", api(media_remove, schemas.MediaRef), methods=["POST"]),
+        Route("/api/media/move", api(media_move, schemas.MediaMove), methods=["POST"]),
+        Route("/media/{path:path}", media_file),
         Route("/api/entity", api(entity_get)),
         Route("/api/entity", api(entity_update, schemas.EntityUpdate), methods=["PUT"]),
         Route("/api/entity", api(entity_delete), methods=["DELETE"]),
@@ -876,31 +949,46 @@ def _json(
                 return _error(422, _describe(error))
             except ValueError:
                 return _error(400, "The request body must be JSON.")
-        try:
-            return await run_in_threadpool(run, request, args)
-        except NotConfiguredError as error:
-            return _error(409, str(error))
-        except BudgetExceededError as error:
-            return _error(402, str(error))
-        except ProviderAuthError as error:
-            return _error(401, str(error))
-        except ProviderError as error:
-            return _error(502, str(error))
-        except (ApplicationError, DomainError, ValueError) as error:
-            return _error(400, str(error))
-        except Exception:
-            # A bug, not something the user did. Say so plainly and keep the details in
-            # the terminal, where they can be copied into a report.
-            log.exception("Unexpected error in %s %s", request.method, request.url.path)
-            return _error(
-                500,
-                "Something went wrong inside postloom. The terminal it runs in has the details.",
-            )
+        return await _guarded(request, lambda: run(request, args))
 
     return endpoint
 
 
+async def _guarded(request: Request, work: Callable[[], Response]) -> Response:
+    """Run ``work`` in a thread and turn what can go wrong into a message for the user."""
+    try:
+        return await run_in_threadpool(work)
+    except MediaTooLargeError as error:
+        return _error(413, str(error))
+    except NotConfiguredError as error:
+        return _error(409, str(error))
+    except BudgetExceededError as error:
+        return _error(402, str(error))
+    except ProviderAuthError as error:
+        return _error(401, str(error))
+    except ProviderError as error:
+        return _error(502, str(error))
+    except (ApplicationError, DomainError, ValueError) as error:
+        return _error(400, str(error))
+    except Exception:
+        # A bug, not something the user did. Say so plainly and keep the details in
+        # the terminal, where they can be copied into a report.
+        log.exception("Unexpected error in %s %s", request.method, request.url.path)
+        return _error(
+            500,
+            "Something went wrong inside postloom. The terminal it runs in has the details.",
+        )
+
+
 TOO_LARGE = "That is too much text for one request."
+MAX_UPLOAD_BYTES = 1_000_000_000
+UPLOAD_TOO_LARGE = "That file is larger than 1 GB, the most postloom accepts."
+
+
+def _chunks_of(path: Path, size: int = 1 << 20) -> Iterator[bytes]:
+    with path.open("rb") as source:
+        while chunk := source.read(size):
+            yield chunk
 
 
 class _TooLarge(Exception):

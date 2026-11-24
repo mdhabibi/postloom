@@ -8,43 +8,19 @@ data is stored; postloom upgrades your data folder itself when it starts.
 ## [Unreleased]
 
 ### Added
+- **Images and videos.** Add the pictures, slides and videos of a post or an article, when
+  adding it or later on its page. They are kept in the vault (`vault/media/`) and made
+  searchable by what you write about them, by what a model sees in an image (including
+  the text written in it, on request: **Describe with AI**), and by a video's subtitles
+  (.vtt or .srt). Search shows the picture with the result; chat answers from them too.
+  Every provider can describe images; on Ollama, postloom checks that the model can see.
+- The installers install the latest release from PyPI once there is one.
+- SECURITY.md and issue forms.
 - An **About postloom** page (bottom of the sidebar, and at the end of Settings): who made
   it, the version and what's new, the source code on GitHub, where to report a problem,
   the license in plain words and in full, what happens to your data, and the open
   projects postloom is built with. `postloom --version` names the author, license and
   repository too.
-
-### Changed
-- Clearer screens. Adding an article is two numbered steps, "The article" and "The post
-  that shared it", each saying above its box exactly what to copy from LinkedIn and how,
-  with an example; links and date are grouped under an optional Details box, and the
-  button says what happens next. The post and comment forms explain the same way, and
-  article sections say what they are for. In the sidebar, "Threads" is now "Topics" (as
-  in Settings) and the list under it "Recent writing".
-- Larger text throughout (16px interface, 19px reading), and a Text size control at the
-  bottom of the sidebar (Standard, Large, Larger) that scales the whole app and is
-  remembered.
-
-### Fixed
-- When Gemini's small model is overloaded ("high demand"), reading an article, a post,
-  comments or mentions now switches to Gemini Flash instead of failing, as chat already
-  did. The same applies through OpenRouter.
-- Words written with LinkedIn "fancy text" converters (bold, italic, script, double-struck,
-  monospace, small capitals, circled, fullwidth, struck-through) are found by search and
-  chat, matched as hashtags and names, and read correctly by the model. Posts keep the
-  letters exactly as written; the same post from another converter is recognised.
-- An edited note could make postloom write a Markdown file outside the vault. Ids from
-  notes are now validated and such a note is reported as unreadable.
-- Commenters whose names are written in Persian, Arabic, Chinese, Cyrillic, Hindi and
-  similar scripts all became one person. They now get ids of their own (Latin ids are
-  unchanged).
-- Keyword search and chat found nothing in Chinese, Japanese or Thai text.
-- Right-to-left text (Persian, Arabic, Hebrew) was shown left to right.
-- A `javascript:` link could be saved as an article's LinkedIn link; only web links are
-  accepted now. Citation numbers inside a link no longer break it.
-- Request bodies without a declared length weren't size-limited.
-
-### Added
 - A large library stays quick and tidy. With 500 articles, 1000 people and 5000 comments
   every screen opens in well under a second (the graph took over 5 seconds, lists over a
   second): screens are answered from an in-memory snapshot of the library that any change
@@ -81,7 +57,36 @@ data is stored; postloom upgrades your data folder itself when it starts.
   hint.
 
 ### Changed
+- Clearer screens. Adding an article is two numbered steps, "The article" and "The post
+  that shared it", each saying above its box exactly what to copy from LinkedIn and how,
+  with an example; links and date are grouped under an optional Details box, and the
+  button says what happens next. The post and comment forms explain the same way, and
+  article sections say what they are for. In the sidebar, "Threads" is now "Topics" (as
+  in Settings) and the list under it "Recent writing".
+- Larger text throughout (16px interface, 19px reading), and a Text size control at the
+  bottom of the sidebar (Standard, Large, Larger) that scales the whole app and is
+  remembered.
+- CI never runs on the self-hosted machine once the repository is public.
 - Reply drafts and chat treat comments as material, never as instructions to follow.
+
+### Fixed
+- When Gemini's small model is overloaded ("high demand"), reading an article, a post,
+  comments or mentions now switches to Gemini Flash instead of failing, as chat already
+  did. The same applies through OpenRouter.
+- Words written with LinkedIn "fancy text" converters (bold, italic, script, double-struck,
+  monospace, small capitals, circled, fullwidth, struck-through) are found by search and
+  chat, matched as hashtags and names, and read correctly by the model. Posts keep the
+  letters exactly as written; the same post from another converter is recognised.
+- An edited note could make postloom write a Markdown file outside the vault. Ids from
+  notes are now validated and such a note is reported as unreadable.
+- Commenters whose names are written in Persian, Arabic, Chinese, Cyrillic, Hindi and
+  similar scripts all became one person. They now get ids of their own (Latin ids are
+  unchanged).
+- Keyword search and chat found nothing in Chinese, Japanese or Thai text.
+- Right-to-left text (Persian, Arabic, Hebrew) was shown left to right.
+- A `javascript:` link could be saved as an article's LinkedIn link; only web links are
+  accepted now. Citation numbers inside a link no longer break it.
+- Request bodies without a declared length weren't size-limited.
 
 ## [0.1.0] - 2026-11-16
 

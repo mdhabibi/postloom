@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from pydantic import BaseModel
+
 from postloom.adapters.llm import prompts
+from postloom.adapters.llm.base import Image, InvalidRequestError
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.structured import structured
+from postloom.application.errors import ProviderError
 from postloom.application.ports.extraction import (
     ExtractedContent,
     ExtractionRequest,
     FoundMentions,
     PostTopics,
 )
+from postloom.application.ports.media import ImageDescription
 from postloom.application.ports.thread_parser import ParsedThread
 from postloom.application.ports.usage import Task
 
@@ -130,3 +135,49 @@ class LlmThreadParser:
             failure="The model couldn't split these comments reliably.",
             fallbacks=self._fallbacks,
         )
+
+
+IMAGE_MAX_OUTPUT = 1_500
+
+
+class _SeenImage(BaseModel):
+    description: str
+    text_in_image: str = ""
+
+
+class LlmImageDescriber:
+    """Describes an image with the reading model, so it can be found by search."""
+
+    def __init__(self, gateway: LlmGateway, model: str, fallbacks: Sequence[str] = ()) -> None:
+        self._gateway = gateway
+        self._model = model
+        self._fallbacks = tuple(fallbacks)
+
+    def describe(self, image: bytes, mime: str, context: str) -> ImageDescription:
+        try:
+            seen = structured(
+                self._gateway,
+                Task.IMAGES,
+                self._model,
+                _SeenImage,
+                system=prompts.IMAGE_SYSTEM,
+                prompt=prompts.image_prompt(context),
+                schema=prompts.IMAGE_SCHEMA,
+                schema_name="image",
+                temperature=0.0,
+                max_output_tokens=IMAGE_MAX_OUTPUT,
+                failure="The model couldn't describe this image.",
+                fallbacks=self._fallbacks,
+                images=[Image(mime, image)],
+            )
+        except InvalidRequestError as error:
+            raise ProviderError(
+                f"{self._model} refused the image ({error.detail}). It may not be able to see "
+                "images: choose a model that can (most current Gemini, Claude and GPT models "
+                "can; on Ollama, a vision model such as gemma3) under Models in "
+                "Settings, or write a caption yourself."
+            ) from error
+        text = seen.description.strip()
+        if seen.text_in_image.strip():
+            text += f"\n\nText in the image: {seen.text_in_image.strip()}"
+        return ImageDescription(text, self._model)

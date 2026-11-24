@@ -13,6 +13,7 @@ from pathlib import Path
 from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
+    Image,
     JsonReply,
     TextReply,
     Turn,
@@ -27,6 +28,7 @@ from postloom.application.ports.extraction import (
     FoundMentions,
     PostTopics,
 )
+from postloom.application.ports.media import ImageDescription
 from postloom.application.ports.thread_parser import ParsedMessage, ParsedThread
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -77,6 +79,18 @@ class FakePostClassifier:
     def classify(self, post_text: str, allowed_topics: tuple[str, ...]) -> PostTopics:
         self.requests.append(post_text)
         return PostTopics(topics=tuple(t for t in self.topics if t in allowed_topics))
+
+
+@dataclass
+class FakeImageDescriber:
+    """Says the same thing about every image, and records what it was shown."""
+
+    description: str = "A line chart of cache hit rate falling as traffic drifts."
+    seen: list[tuple[bytes, str, str]] = field(default_factory=list[tuple[bytes, str, str]])
+
+    def describe(self, image: bytes, mime: str, context: str) -> ImageDescription:
+        self.seen.append((image, mime, context))
+        return ImageDescription(self.description, "fake-vision")
 
 
 @dataclass
@@ -244,6 +258,8 @@ class FakeBackend:
     models: list[str] = field(default_factory=lambda: ["fake-chat", "fake-small"])
     calls: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     """(kind, model) for every call: "json", "text" or "embed"."""
+    images: list[Image] = field(default_factory=list[Image])
+    """Every image sent with a prompt."""
 
     def complete_json(
         self,
@@ -256,8 +272,10 @@ class FakeBackend:
         temperature: float,
         max_output_tokens: int,
         effort: str = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
         self.calls.append(("json", model))
+        self.images.extend(images)
         return JsonReply(dict(self.json_replies[schema_name]), self._usage())
 
     def complete_text(

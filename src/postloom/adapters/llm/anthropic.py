@@ -15,6 +15,7 @@ from postloom.adapters.llm.base import (
     EmbeddingKind,
     EmbeddingReply,
     HttpApi,
+    Image,
     InvalidOutputError,
     InvalidRequestError,
     JsonReply,
@@ -76,8 +77,20 @@ class AnthropicBackend:
         temperature: float,
         max_output_tokens: int,
         effort: str = "low",
+        images: Sequence[Image] = (),
     ) -> JsonReply:
         payload = self._payload(model, system, [("user", prompt)], temperature, max_output_tokens)
+        if images:
+            payload["messages"][0]["content"] = [
+                *(
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": i.mime, "data": i.base64()},
+                    }
+                    for i in images
+                ),
+                {"type": "text", "text": prompt},
+            ]
         payload["tools"] = [
             {
                 "name": schema_name,

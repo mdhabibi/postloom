@@ -187,6 +187,23 @@ kept, so it's recognised next time), change its category, add a link, merge it i
 another entry, or delete it. Chat uses them too: "Where did I mention Example Labs?",
 "Which companies have I written about?", "Who did I thank?".
 
+### Images and videos
+
+Add the pictures, slides and videos you posted, when you add a post or an article or
+later on its page (drop them on **Images and videos**). They are copied into your vault,
+under `vault/media/`, so they travel with it and Obsidian shows them.
+
+What makes them findable is words: write a caption saying what each one shows, and with a
+model connected, **Describe with AI** has it look at an image and write down what it
+shows and every word written in it (a chart's numbers, a slide's text). For a video, add
+its subtitle file (`.vtt` or `.srt`, the one you uploaded to LinkedIn), and what is said in
+it becomes searchable. Search then finds "the slide with the latency numbers", shows the
+picture with the result, and chat can answer from it.
+
+Describing an image costs a fraction of a cent with a hosted model. On Ollama it needs a
+model that can see (gemma3, for example); postloom says so instead of letting a text-only
+model guess. Images up to 25 MB and videos up to 1 GB are accepted.
+
 ### Asking questions
 
 Press `Ctrl K` (or `/`) and ask. postloom answers only from your library and cites its
@@ -341,7 +358,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 - [ ] **Milestone 3:** graph and links
   - [x] Related-article suggestions you accept or dismiss, or link by hand
   - [x] Graph view of articles, topics, series and people
-  - [ ] Banner images in the graph and search
+  - [x] Images and videos on posts and articles, searchable by caption, what a model sees
+        in them and subtitles
 - [x] **Providers:** Gemini, Claude, OpenAI, OpenRouter, Ollama and any OpenAI-compatible
       server; free local embeddings; usage page and monthly budget
 - [x] **Own your data:** the vault is read back (rebuild, Obsidian edits), stable article
@@ -365,7 +383,8 @@ to be removed, **Delete this person** erases them from the app, its history, the
 index and your vault.
 
 When you use a hosted model, the text a feature needs (the article you add, the comments
-you paste, the passages behind an answer) is sent to that provider under its terms. Check
+you paste, the passages behind an answer, an image you ask it to describe) is sent to that
+provider under its terms. Check
 them: free tiers may use your data for training. Search embeddings run on your computer by
 default, and with Ollama nothing leaves your computer at all.
 

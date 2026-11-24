@@ -8,6 +8,7 @@ from datetime import date
 
 from postloom.domain.errors import EmptyContentError, InvalidKeyError
 from postloom.domain.graph import NodeId, NodeKind, node_id
+from postloom.domain.media import Media
 from postloom.domain.text import slugify
 
 KEY = re.compile(r"^[^\x00-\x2f\x3a-\x60\x7b-\x7f\s]+(?:-[^\x00-\x2f\x3a-\x60\x7b-\x7f\s]+)*$")
@@ -65,6 +66,8 @@ class Article:
     """Stable identity, fixed when the article is first saved, so retitling it never
     changes its id, its file name or the comments attached to it. Empty on records
     written before keys existed: their identity is the slug of their title."""
+    media: tuple[Media, ...] = ()
+    """Its images and videos, in the order shown."""
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -96,6 +99,9 @@ class Post:
     links: tuple[str, ...] = ()
     banner_path: str | None = None
     """Path of the banner image inside the vault, relative to the vault root."""
+    media: tuple[Media, ...] = ()
+    """Its images and videos, in the order shown. For a post that announces an article,
+    they are kept on the article."""
 
     def __post_init__(self) -> None:
         if not self.text.strip():

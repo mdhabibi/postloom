@@ -19,6 +19,8 @@ class Task(StrEnum):
     CHAT = "chat"
     REPLY = "reply"
     """Reply drafts."""
+    IMAGES = "images"
+    """Describing images so they can be searched."""
     EMBEDDINGS = "embeddings"
     TEST = "test"
     """Connection checks from setup."""

@@ -13,7 +13,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from postloom.adapters.llm.base import Effort, InvalidOutputError
+from postloom.adapters.llm.base import Effort, Image, InvalidOutputError
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.http import JsonObject
 from postloom.application.errors import ExtractionError, ProviderUnavailableError
@@ -37,6 +37,7 @@ def structured(
     failure: str,
     effort: Effort = "low",
     fallbacks: Sequence[str] = (),
+    images: Sequence[Image] = (),
 ) -> T:
     """Ask for ``schema`` and return it validated as ``result``; raise ``failure`` if not.
 
@@ -61,6 +62,7 @@ def structured(
                 max_output_tokens=max_output_tokens,
                 failure=failure,
                 effort=effort,
+                images=images,
             )
         except ProviderUnavailableError as error:
             busy.append(current)
@@ -87,6 +89,7 @@ def _ask(
     max_output_tokens: int,
     failure: str,
     effort: Effort,
+    images: Sequence[Image] = (),
 ) -> T:
     request = prompt
     problem = ""
@@ -102,6 +105,7 @@ def _ask(
                 temperature=temperature,
                 max_output_tokens=max_output_tokens,
                 effort=effort,
+                images=images,
             )
             return result.model_validate(raw)
         except InvalidOutputError as error:

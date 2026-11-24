@@ -41,6 +41,7 @@ from tests.fakes import (
     FakeChat,
     FakeEmbedder,
     FakeExtractor,
+    FakeImageDescriber,
     FakeMentionFinder,
     FakeThreadParser,
     part3_extraction,
@@ -104,6 +105,7 @@ def app_url(home: Path) -> Iterator[str]:
             chat=FakeChat(reply=ANSWER),
             thread_parser=FakeThreadParser(),
             mention_finder=FakeMentionFinder(MENTIONS),
+            image_describer=FakeImageDescriber(),
         )
 
     app = create_app(lambda: replace(Settings.load(home), min_similarity=0.0), make)
@@ -533,3 +535,49 @@ def test_about_shows_the_author_license_and_source(page: Page) -> None:
     page.get_by_text("Read the full license").click()
     expect(page.locator(".license-text")).to_contain_text("Functional Source License")
     expect(page.locator(".credits")).to_contain_text("Geist")
+
+
+# -- images and videos --------------------------------------------------------------
+PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00"
+    b"\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05"
+    b"\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_an_image_is_added_described_captioned_and_found(page: Page, home: Path) -> None:
+    visit(page, CACHING)
+    section = page.locator(".media-section")
+    expect(section.get_by_text("Describe new images with AI")).to_be_visible()
+    section.locator("#media-files").set_input_files(
+        files=[{"name": "Latency chart.png", "mimeType": "image/png", "buffer": PNG}]
+    )
+    card = section.locator(".media-card")
+    expect(card).to_have_count(1)
+    expect(card.locator("img")).to_have_attribute("src", "/media/caching-basics/latency-chart.png")
+    expect(card.locator(".media-seen summary")).to_contain_text("What AI saw (fake-vision)")
+    assert (home / "vault/media/caching-basics/latency-chart.png").read_bytes() == PNG
+
+    card.get_by_role("textbox").fill("p99 latency before and after the semantic cache")
+    card.get_by_role("button", name="Save").click()
+    expect(page.locator(".toast")).to_contain_text("Saved")
+
+    visit(page, "#/search?q=semantic%20cache%20latency")
+    expect(page.locator(".passage .where").first).to_contain_text("Image: p99 latency")
+    expect(page.locator(".result-media")).to_have_count(1)
+
+    visit(page, CACHING)
+    page.locator(".media-card").get_by_role("button", name="Remove").click()
+    expect(page.locator(".media-card")).to_have_count(0)
+    assert not (home / "vault/media/caching-basics/latency-chart.png").exists()
+
+
+def test_a_post_can_be_added_with_its_image(page: Page, home: Path) -> None:
+    visit(page, "#/add/post")
+    page.fill("#text", "Our architecture, in one picture\n\n#RAG")
+    page.locator("#media_files").set_input_files(
+        files=[{"name": "architecture.png", "mimeType": "image/png", "buffer": PNG}]
+    )
+    page.get_by_role("button", name="Add post").click()
+    expect(page.locator("#add-result")).to_contain_text("1 image or video added and described")
+    assert list((home / "vault/media").rglob("architecture.png"))
