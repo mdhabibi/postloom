@@ -1,12 +1,21 @@
+# ruff: noqa: RUF001, RUF003  (look-alike characters are what these tests are about)
+from collections.abc import Callable
+
 import pytest
 
 from postloom.domain.text import (
+    containment,
     content_size,
     detect_series_part,
     extract_hashtags,
     extract_urls,
+    mentions,
+    plain_letters,
+    significant_terms,
     slugify,
+    term_coverage,
 )
+from tests import fancy
 from tests.fakes import fixture_text
 
 
@@ -190,3 +199,82 @@ def test_english_is_told_apart_from_other_languages() -> None:
     )
     assert not looks_english("语义缓存可以重复使用大语言模型的答案")
     assert looks_english("")
+
+
+# -- fancy letters ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        (fancy.bold, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.italic, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.sans_bold, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.sans_italic, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.bold_script, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.monospace, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.double_struck, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.fullwidth, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.circled, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.negative_squared, "BEATLENS OPENTSLM-SP 2026"),
+        (fancy.struck, "BeatLens OpenTSLM-SP 2026"),
+        (fancy.underlined, "BeatLens OpenTSLM-SP 2026"),
+    ],
+)
+def test_fancy_letters_read_as_ordinary_ones(style: Callable[[str], str], expected: str) -> None:
+    assert plain_letters(style("BeatLens OpenTSLM-SP 2026")) == expected
+
+
+def test_small_capitals_and_invisible_characters() -> None:
+    assert plain_letters(fancy.small_caps("time series")) == "time series"
+    assert plain_letters("Beat​Lens post­loom") == "BeatLens postloom"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Plain English with café, naïve, Zürich, ½, x², ™, ℃, … and ❤️ 🚀 #AI",
+        "می‌خواهم مقاله",  # Persian, ZWNJ
+        "الذكاء الاصطناعي",
+        "缓存是什么？使用向量检索。",  # fullwidth ？ kept
+        "キャッシュは重要です",
+        "한국어 텍스트",
+        "नमस्ते दुनिया",
+        "Ελληνικά Привет",
+        "**Markdown bold** and _italic_ stay as typed",
+    ],
+)
+def test_ordinary_text_in_any_language_is_unchanged(text: str) -> None:
+    assert plain_letters(text) == text
+
+
+def test_no_ordinary_letter_outside_the_look_alike_blocks_changes() -> None:
+    import unicodedata
+
+    changed = [
+        hex(code)
+        for code in range(0x80, 0x30000)
+        if unicodedata.category(chr(code))[0] in "LMN"
+        and not (0x1D400 <= code <= 0x1D7FF or 0xFF10 <= code <= 0xFF5A)
+        and not (0x2100 <= code <= 0x214F or 0x1D2C <= code <= 0x1DBF)
+        and not (0x02B0 <= code <= 0x02B8 or 0x2070 <= code <= 0x209C)
+        and not (0x249C <= code <= 0x24E9 or 0x1F110 <= code <= 0x1F189)
+        and plain_letters(chr(code)) != chr(code)
+    ]
+    # Only the small capitals table and the decorating marks are allowed to change.
+    assert set(changed) <= {hex(ord(c)) for c in fancy.SMALL_CAPS if c != "x"} | {
+        hex(c) for c in (0x0305, 0x0332, 0x0333, 0x0334, 0x0335, 0x0336, 0x0337, 0x0338, 0x20E5)
+    }
+
+
+def test_fancy_hashtags_names_and_questions_match() -> None:
+    post = f"Built with {fancy.bold('Sadjad Sadeghi')}. {fancy.bold('#TimeSeries')} #ECG"
+    assert extract_hashtags(post) == ["TimeSeries", "ECG"]
+    assert mentions(post, "Sadjad Sadeghi")
+    assert term_coverage(significant_terms(fancy.bold("BeatLens timing")), post + " BeatLens") > 0
+    assert (
+        containment(
+            fancy.bold("one two three four five"), fancy.sans_bold("one two three four five")
+        )
+        == 1.0
+    )

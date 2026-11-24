@@ -24,6 +24,7 @@ from postloom.domain.chunking import Chunk, chunk_markdown
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import Comment, thread_texts
 from postloom.domain.graph import NodeId
+from postloom.domain.text import plain_letters
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +83,7 @@ class IndexArticle:
         if missing:
             try:
                 fresh = self._embedder.embed_documents(
-                    [DocumentText(c.title, _embedding_text(c)) for c in missing]
+                    [DocumentText(plain_letters(c.title), _embedding_text(c)) for c in missing]
                 )
             except (ProviderError, BudgetExceededError):
                 # Keep the text findable by keywords, then report why meaning search
@@ -160,4 +161,5 @@ def discussion_chunks(item: Article | Post, post: Post, comments: Sequence[Comme
 
 
 def _embedding_text(chunk: Chunk) -> str:
-    return f"{chunk.heading}\n\n{chunk.text}" if chunk.heading else chunk.text
+    text = f"{chunk.heading}\n\n{chunk.text}" if chunk.heading else chunk.text
+    return plain_letters(text)

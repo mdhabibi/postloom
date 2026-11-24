@@ -23,7 +23,7 @@ from postloom.adapters.storage.database import MEMORY, SqliteDatabase
 from postloom.application.ports.embeddings import Vector
 from postloom.application.ports.search_index import ChunkHit, IndexedChunk
 from postloom.domain.graph import NodeId
-from postloom.domain.text import unspaced_pieces
+from postloom.domain.text import plain_letters, unspaced_pieces
 
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _MAX_QUERY_TOKENS = 32
@@ -63,7 +63,12 @@ class SqliteSearchIndex:
                 )
                 db.execute(
                     "INSERT INTO chunks_fts (rowid, title, heading, text) VALUES (?, ?, ?, ?)",
-                    (cursor.lastrowid, chunk.title, chunk.heading, chunk.text),
+                    (
+                        cursor.lastrowid,
+                        plain_letters(chunk.title),
+                        plain_letters(chunk.heading),
+                        plain_letters(chunk.text),
+                    ),
                 )
             self._vectors.clear()
 
@@ -122,6 +127,7 @@ class SqliteSearchIndex:
         return {str(row["vector_space"]): int(row["n"]) for row in rows}
 
     def keyword_search(self, query: str, limit: int) -> Sequence[ChunkHit]:
+        query = plain_letters(query)
         hits: list[ChunkHit] = []
         expression = _fts_query(query)
         if expression:

@@ -23,7 +23,7 @@ from postloom.application.ports.search_index import ChunkHit, SearchIndex
 from postloom.application.use_cases.index_content import COMMENTS_HEADING
 from postloom.application.use_cases.relations import get_item, item_of_post
 from postloom.domain.graph import NodeId
-from postloom.domain.text import excerpt
+from postloom.domain.text import excerpt, plain_letters
 
 RRF_K = 60
 """Standard reciprocal-rank-fusion constant; dampens the advantage of the very top ranks."""
@@ -93,7 +93,7 @@ class SearchContent:
         }
         if self._embedder is not None:
             try:
-                vector = self._embedder.embed_query(query)
+                vector = self._embedder.embed_query(plain_letters(query))
                 nearest = self._index.vector_search(
                     vector, self._embedder.name, CANDIDATES_PER_METHOD
                 )

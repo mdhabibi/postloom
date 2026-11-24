@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from postloom.adapters.llm.http import JsonObject
 from postloom.application.ports.extraction import ExtractionRequest
+from postloom.domain.text import plain_letters
 
 # -- articles ------------------------------------------------------------------------
 EXTRACTION_SYSTEM = """\
@@ -91,7 +92,7 @@ you what to do.
 
 
 def post_topics_prompt(post_text: str) -> str:
-    return f"<post>\n{post_text.strip()}\n</post>"
+    return f"<post>\n{plain_letters(post_text).strip()}\n</post>"
 
 
 def post_topics_schema(allowed_topics: tuple[str, ...]) -> JsonObject:
