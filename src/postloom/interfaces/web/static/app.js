@@ -606,13 +606,20 @@ function addPostView() {
   const form = h("form", { class: "page", onsubmit: submitPost },
     addKinds("post"),
     h("h1", {}, "Add a post"),
-    h("p", { class: "lede" }, "For a post that stands on its own. If it announces an article, add it with the article instead. Paste the post as it appears on LinkedIn; adding it again later updates it."),
+    h("p", { class: "lede" }, "For a post that stands on its own. If the post shares one of your articles, add both together under Article instead."),
     h("div", { id: "add-result" }),
-    field("text", "Post", h("textarea", { id: "text", name: "text", required: true, rows: 10 })),
-    h("div", { class: "field-row" },
-      field("url", "Post link (optional)", h("input", { id: "url", name: "url", type: "url", placeholder: "https://www.linkedin.com/posts/..." })),
-      field("published_on", "Published on (optional)", h("input", { id: "published_on", name: "published_on", type: "date" }))),
-    h("button", { class: "button button-primary", type: "submit", id: "add-submit" }, "Add post"));
+    field("text", "The post", h("textarea", { id: "text", name: "text", required: true, rows: 10, dir: "auto",
+      placeholder: "Paste the post here, with its hashtags.\n\ne.g.\nThree things I learned shipping our first AI agent...\n\n#AI #Agents" }),
+    "On LinkedIn, open your post, click \u2026see more so the whole text shows, then copy it and paste it here. Bold or fancy letters are fine. Adding the same post again later updates it."),
+    optionalDetails("They let you jump back to LinkedIn and sort your writing by date.",
+      h("div", { class: "field-row" },
+        field("url", "Link to the post", h("input", { id: "url", name: "url", type: "url", placeholder: "https://www.linkedin.com/posts/..." }),
+          "Copy it from your browser's address bar while the post is open."),
+        field("published_on", "Published on", h("input", { id: "published_on", name: "published_on", type: "date" }),
+          "The day you posted it."))),
+    h("div", { class: "form-submit" },
+      h("button", { class: "button button-primary", type: "submit", id: "add-submit" }, "Add post"),
+      nextSteps("Next, postloom picks its topics and shows the people, organisations and links it names, for you to confirm.")));
   setMain(form);
 }
 
@@ -665,22 +672,49 @@ function addView() {
   const form = h("form", { class: "page", onsubmit: submitArticle },
     addKinds("article"),
     h("h1", {}, "Add an article"),
-    h("p", { class: "lede" }, "Copy the article from LinkedIn and paste it below, then do the same with the post you announced it in. The text can look messy; postloom restores the headings, lists and code."),
+    h("p", { class: "lede" }, "An article is the long piece you published on LinkedIn; it comes with the short post you shared it in. Paste both, in two steps."),
     keyNotice(),
     h("div", { id: "add-result" }),
-    field("article_text", "Article", h("textarea", { id: "article_text", name: "article_text", required: true, rows: 12 })),
-    field("post_text", "Announcement post", h("textarea", { id: "post_text", name: "post_text", required: true, rows: 6 })),
-    h("div", { class: "field-row" },
-      field("article_url", "Article link (optional)", h("input", { id: "article_url", name: "article_url", type: "url", placeholder: "https://www.linkedin.com/pulse/..." })),
-      field("published_on", "Published on (optional)", h("input", { id: "published_on", name: "published_on", type: "date" }))),
-    field("post_url", "Post link (optional)", h("input", { id: "post_url", name: "post_url", type: "url", placeholder: "https://www.linkedin.com/posts/..." })),
-    h("button", { class: "button button-primary", type: "submit", id: "add-submit" }, "Add article"));
+    field("article_text", "The article", h("textarea", { id: "article_text", name: "article_text", required: true, rows: 12, dir: "auto",
+      placeholder: "Paste the whole article here: its title first, then everything under it." }),
+    `On LinkedIn, open the article, click anywhere in its text, press ${selectAllKeys()} to select it all, copy and paste it here. It may look messy: postloom restores the headings, lists and code.`,
+    { step: 1 }),
+    field("post_text", "The post that shared it", h("textarea", { id: "post_text", name: "post_text", required: true, rows: 6, dir: "auto",
+      placeholder: "e.g.\nNew article: how we cut our LLM bill in half without losing quality.\n\n#LLM #RAG" }),
+    "The short post on your feed that links to the article. Copy its text with the hashtags: its comments will be read from there.",
+    { step: 2 }),
+    optionalDetails("They let you jump back to LinkedIn and sort your writing by date. Copy a link from your browser's address bar while the page is open.",
+      h("div", { class: "field-row" },
+        field("article_url", "Link to the article", h("input", { id: "article_url", name: "article_url", type: "url", placeholder: "https://www.linkedin.com/pulse/..." })),
+        field("post_url", "Link to the post", h("input", { id: "post_url", name: "post_url", type: "url", placeholder: "https://www.linkedin.com/posts/..." }))),
+      field("published_on", "Published on", h("input", { id: "published_on", name: "published_on", type: "date" }))),
+    h("div", { class: "form-submit" },
+      h("button", { class: "button button-primary", type: "submit", id: "add-submit" }, "Add article"),
+      nextSteps("Next, postloom restores the formatting, picks its topics and shows the people, organisations and links it names, for you to confirm. It can take a minute.")));
   setMain(form);
 }
 
-function field(id, label, control, hint) {
-  return h("div", { class: "field" }, h("label", { for: id }, label), control,
-    hint ? h("p", { class: "hint" }, hint) : null);
+function field(id, label, control, hint, { step = null, optional = false } = {}) {
+  // What to write comes before the box, where it is read first.
+  if (hint) control.setAttribute("aria-describedby", `${id}-hint`);
+  return h("div", { class: `field${step ? " step" : ""}` },
+    h("label", { for: id }, step ? h("span", { class: "step-number", "aria-hidden": "true" }, step) : null, label,
+      optional ? h("span", { class: "optional" }, "optional") : null),
+    hint ? h("p", { class: "hint", id: `${id}-hint` }, hint) : null,
+    control);
+}
+
+const selectAllKeys = () => (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "\u2318A" : "Ctrl+A");
+
+// Fields that help but aren't needed, folded under one heading.
+function optionalDetails(summary, ...fields) {
+  return h("fieldset", { class: "details-group" },
+    h("legend", {}, "Details ", h("span", { class: "optional" }, "optional")),
+    h("p", { class: "hint" }, summary), ...fields);
+}
+
+function nextSteps(text) {
+  return h("p", { class: "hint next-steps" }, text);
 }
 
 async function submitArticle(event) {
@@ -1255,6 +1289,7 @@ function fillRelated(section, article) {
 
   fill(section,
     h("h2", {}, "Related articles"),
+    h("p", { class: "section-hint" }, "Your other articles on the same subject. Keep the suggestions that fit, or link one yourself."),
     rows.length ? h("ul", { class: "related-list" }, rows)
       : h("p", { class: "hint" }, "No related articles yet. postloom suggests links when articles are similar in meaning, or you can link one yourself."),
     choices.length ? h("div", { class: "link-by-hand" },
@@ -1267,7 +1302,7 @@ function discussionSection(article) {
   const people = new Set(comments.filter((c) => !c.is_own).map((c) => c.author_name));
   const summary = comments.length
     ? `${comments.length} ${comments.length === 1 ? "message" : "messages"} from ${people.size} ${people.size === 1 ? "person" : "people"}`
-    : "No comments saved yet.";
+    : "Paste the comments from LinkedIn to see who engages with this, what they ask, and to draft your replies.";
   const editor = h("div", { class: "comment-editor" });
   const addButton = h("button", { class: "button", type: "button", onclick: () => {
     addButton.hidden = true;
@@ -1364,8 +1399,8 @@ async function copyText(textarea) {
 }
 
 function openPasteStep(article, container, onClose) {
-  const textarea = h("textarea", { id: "comments-paste", rows: 10, required: true,
-    placeholder: "Open your post on LinkedIn, expand all comments and replies, select the whole comment section, copy and paste it here." });
+  const textarea = h("textarea", { id: "comments-paste", rows: 10, required: true, dir: "auto",
+    placeholder: "Paste the comment section here: names, headlines and messages, as LinkedIn shows them." });
   const read = h("button", { class: "button button-primary", type: "submit" }, "Read comments");
   const status = h("div", {});
   const form = h("form", { class: "paste-step", onsubmit: async (event) => {
@@ -1384,7 +1419,7 @@ function openPasteStep(article, container, onClose) {
     }
   } },
     field("comments-paste", "Paste the comment section", textarea,
-      "Include your own replies. Pasting a section you added before only adds the new messages."),
+      "On LinkedIn, open the post, click \u201cLoad more comments\u201d and every \u201cSee replies\u201d until all show. Then select from the first commenter's name down to the last message, copy and paste it here. Include your own replies; pasting again later adds only the new messages."),
     status,
     h("div", { class: "actions" }, read,
       h("button", { class: "button", type: "button", onclick: () => { container.replaceChildren(); onClose(); } }, "Cancel")));
@@ -2750,6 +2785,27 @@ function toggleTheme() {
 }
 
 document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+
+// Text size: everything is sized in rem, so the root size scales the whole app.
+const TEXT_SIZES = [["standard", "Standard text size", "0.85em"], ["large", "Large text size", "1em"], ["larger", "Larger text size", "1.15em"]];
+
+function setTextSize(size) {
+  document.documentElement.dataset.textSize = size;
+  try {
+    localStorage.setItem("postloom-text-size", size);
+  } catch {
+    // Not saved (private window); it still applies until the page closes.
+  }
+  renderTextSize();
+}
+
+function renderTextSize() {
+  const current = document.documentElement.dataset.textSize || "standard";
+  fill(document.getElementById("text-size"), h("span", { class: "text-size-label", "aria-hidden": "true" }, "Text"),
+    TEXT_SIZES.map(([size, label, em]) => h("button", { type: "button", "aria-label": label, title: label,
+      "aria-pressed": String(size === current), vars: { "--glyph": em }, onclick: () => setTextSize(size) }, "A")));
+}
+renderTextSize();
 
 // Started from the Postloom icon, postloom has no window to close; this stops it.
 const quitButton = document.getElementById("quit");

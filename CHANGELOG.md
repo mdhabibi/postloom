@@ -7,6 +7,17 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+### Changed
+- Clearer screens. Adding an article is two numbered steps, "The article" and "The post
+  that shared it", each saying above its box exactly what to copy from LinkedIn and how,
+  with an example; links and date are grouped under an optional Details box, and the
+  button says what happens next. The post and comment forms explain the same way, and
+  article sections say what they are for. In the sidebar, "Threads" is now "Topics" (as
+  in Settings) and the list under it "Recent writing".
+- Larger text throughout (16px interface, 19px reading), and a Text size control at the
+  bottom of the sidebar (Standard, Large, Larger) that scales the whole app and is
+  remembered.
+
 ### Fixed
 - When Gemini's small model is overloaded ("high demand"), reading an article, a post,
   comments or mentions now switches to Gemini Flash instead of failing, as chat already

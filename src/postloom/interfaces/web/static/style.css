@@ -105,12 +105,13 @@
   --serif: "Source Serif", Charter, Georgia, serif;
   --code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Interface scale (14px base) and reading scale (18px base) */
-  --ui-xs: 0.75rem;
-  --ui-sm: 0.8125rem;
-  --ui: 0.875rem;
-  --ui-md: 0.9375rem;
-  --read: 1.125rem;
+  /* Interface scale (16px base) and reading scale (19px base). Every size is in rem, so
+     the Text size setting (the root font size) scales the whole app. */
+  --ui-xs: 0.8125rem;
+  --ui-sm: 0.9rem;
+  --ui: 1rem;
+  --ui-md: 1.0625rem;
+  --read: 1.1875rem;
   --h3: 1.25rem;
   --h2: 1.5rem;
   --h1: 2.125rem;
@@ -227,7 +228,10 @@ main:focus { outline: none; }
 }
 .library .empty { color: var(--muted); font-size: var(--ui-sm); padding: 0.25rem 0.55rem; }
 
-.sidebar-foot { margin-top: auto; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+.sidebar-foot {
+  margin-top: auto; padding-top: 0.5rem; border-top: 1px solid var(--line);
+  position: sticky; bottom: -0.85rem; background: var(--surface); padding-bottom: 0.85rem;
+}
 .theme-toggle {
   display: flex; align-items: center; gap: 0.55rem; width: 100%;
   padding: 0.42rem 0.55rem; border: 0; border-radius: var(--r-sm); background: none;
@@ -299,8 +303,27 @@ input:focus, textarea:focus, select:focus {
 input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 
 .field { display: grid; gap: 0.4rem; margin-bottom: 1.1rem; min-width: 0; }
-.field label { font-weight: 500; font-size: var(--ui); color: var(--text); }
-.field .hint { color: var(--muted); font-size: var(--ui-sm); margin: 0; }
+.field label { font-weight: 600; font-size: var(--ui-md); color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+.field .hint { color: var(--text-soft); font-size: var(--ui-sm); margin: 0 0 0.15rem; max-width: 44rem; line-height: 1.5; }
+.field.step { margin-bottom: 1.6rem; }
+.step-number {
+  display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; flex: none;
+  border-radius: 999px; background: var(--accent-wash); color: var(--accent); font: 700 var(--ui-sm)/1 var(--sans);
+}
+.optional {
+  font: 500 var(--ui-xs)/1 var(--sans); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.2rem 0.5rem;
+}
+.details-group {
+  border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0.9rem 1.1rem 0.2rem; margin: 0 0 1.4rem;
+}
+.details-group legend { font: 600 var(--ui-md)/1 var(--sans); padding: 0 0.4rem; display: flex; align-items: center; gap: 0.5rem; }
+.details-group > .hint { margin: 0 0 0.9rem; }
+.details-group .field label { font-size: var(--ui); font-weight: 500; }
+.form-submit { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.form-submit .next-steps { margin: 0; max-width: 34rem; }
+.section-hint { color: var(--text-soft); font-size: var(--ui-sm); margin: -0.35rem 0 0.9rem; }
+textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 .field input, .field textarea { width: 100%; min-width: 0; padding: 0.55rem 0.75rem; }
 .field textarea { min-height: 9rem; resize: vertical; line-height: 1.5; }
 .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0 1rem; }
@@ -939,3 +962,15 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .graph .label.quiet { opacity: 0; transition: opacity 120ms var(--ease); }
 .graph-node:hover .label.quiet, .graph-node:focus-visible .label.quiet, .graph-node.selected .label.quiet,
 .graph.focused .graph-node.near .label.quiet { opacity: 1; }
+
+/* ---------------------------------------------------------------- text size */
+:root[data-text-size="large"] { font-size: 112.5%; }
+:root[data-text-size="larger"] { font-size: 125%; }
+.text-size { display: flex; align-items: center; gap: 0.25rem; padding: 0.35rem 0.55rem; }
+.text-size-label { color: var(--muted); font-size: var(--ui-sm); margin-right: auto; }
+.text-size button {
+  width: 2rem; height: 2rem; border: 1px solid transparent; border-radius: var(--r-sm); background: none;
+  color: var(--text-soft); font: 600 var(--glyph, 1em)/1 var(--sans); cursor: pointer;
+}
+.text-size button:hover { background: var(--hover); color: var(--text); }
+.text-size button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
