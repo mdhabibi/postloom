@@ -441,3 +441,28 @@ def test_open_says_why_postloom_could_not_start(
     assert main(["--home", str(tmp_path), "open"], make_container=no_key_container) == 1
     out = capsys.readouterr().out
     assert "postloom could not start" in out and "the vault is locked" in out
+
+
+def test_the_icon_explains_a_data_folder_it_may_not_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    told: list[tuple[str, str]] = []
+
+    def tell(title: str, message: str) -> None:
+        told.append((title, message))
+
+    monkeypatch.setattr("postloom.interfaces.cli.main.tell", tell)
+    monkeypatch.setattr("postloom.interfaces.cli.main.open_privacy_settings", lambda: None)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "state"))
+
+    def refused(path: Path) -> list[Path]:
+        raise PermissionError(1, "Operation not permitted", str(path))
+
+    monkeypatch.setattr(Path, "iterdir", refused)
+    assert main(["--home", str(tmp_path / "data"), "open"]) == 1
+    [(title, message)] = told
+    assert title == "postloom can't open your data folder"
+    assert str(tmp_path / "data") in message
+    logs = list((tmp_path / "state").rglob("launcher.log"))
+    assert logs and "Operation not permitted" in logs[0].read_text()

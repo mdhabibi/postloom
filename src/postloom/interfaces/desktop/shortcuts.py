@@ -13,6 +13,7 @@ process ends right away, so clicking it again always does something visible.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import plistlib
@@ -245,6 +246,49 @@ def open_in_browser(url: str) -> bool:
         return webbrowser.open(url)
     except webbrowser.Error:
         return False
+
+
+def launcher_log() -> Path:
+    """Where the icon's launcher writes what went wrong: always somewhere it may write."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Logs" / "Postloom" / "launcher.log"
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "Postloom" / "launcher.log"
+    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(state) / "postloom" / "launcher.log"
+
+
+def record_failure(details: str) -> Path:
+    log = launcher_log()
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as file:
+            file.write(details.rstrip() + "\n\n")
+    except OSError:
+        pass
+    return log
+
+
+def blocked_message(folder: Path, log: Path) -> str:
+    if sys.platform == "darwin":
+        return (
+            f"macOS doesn't let Postloom read {folder}. This happens when your data is on "
+            "another drive, or in Documents, Desktop or Downloads.\n\n"
+            "In System Settings, open Privacy & Security, then Full Disk Access. Click +, "
+            "open your home folder, then Applications, choose Postloom and turn it on. "
+            f"Then open Postloom again.\n\nDetails: {log}"
+        )
+    return f"Postloom isn't allowed to read {folder}. Check that folder's permissions.\n\n{log}"
+
+
+def open_privacy_settings() -> None:
+    """On macOS, open the setting that lets Postloom read the data folder."""
+    if sys.platform != "darwin":
+        return
+    pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run(["open", pane], capture_output=True, check=False, timeout=30)
 
 
 def log_to_file(home: Path) -> Path:
