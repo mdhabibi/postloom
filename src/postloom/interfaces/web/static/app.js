@@ -1075,7 +1075,7 @@ function mentionsSection(item) {
               } }, "\u00d7"))))))
       : review ? null : h("p", { class: "hint" }, `People, organisations, places, events, datasets and links named in this ${what} appear here once you confirm them.`);
     fill(section,
-      h("div", { class: "section-head" }, h("h2", { id: "mentions-heading" }, "Mentioned"), review ? null : find),
+      h("div", { class: "section-head" }, h("h2", { id: "mentions-heading" }, "Mentioned"), find),
       review ? reviewPanel(item, review, data.can_find, load) : null,
       confirmed,
       !data.can_find && !review ? h("p", { class: "hint" }, "Without a model, postloom finds links only. Connect one in Settings to find people and organisations too.") : null);
