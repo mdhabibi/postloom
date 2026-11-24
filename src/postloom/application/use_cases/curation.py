@@ -22,11 +22,13 @@ from postloom.application.use_cases.index_content import IndexArticle
 from postloom.application.use_cases.links import related_edges
 from postloom.application.use_cases.relations import (
     item_of_post,
+    mention_edges,
     post_of,
     set_series,
     set_topics,
     write_article_note,
     write_discussion_note,
+    write_mentioned_notes,
     write_mentions,
     write_person_note,
 )
@@ -157,6 +159,7 @@ class DeleteArticle:
             for edge in related_edges(repo, article_id)
         }
         authors = list(dict.fromkeys(c.author for c in comments if not c.is_own))
+        mentioned = [e.target for e in mention_edges(repo, article_id)]
 
         gone: list[NodeId] = [article_id, *(c.id for c in comments)]
         if post is not None:
@@ -176,6 +179,7 @@ class DeleteArticle:
             write_article_note(repo, self._vault, other)
         for author in authors:
             write_person_note(repo, self._vault, author)
+        write_mentioned_notes(repo, self._vault, mentioned)
         return article
 
 

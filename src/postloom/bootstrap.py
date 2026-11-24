@@ -80,7 +80,7 @@ from postloom.application.use_cases import (
     UpdateArticle,
     UpdatePerson,
 )
-from postloom.application.use_cases.mentions import ConfirmMentions, FindMentions
+from postloom.application.use_cases.mentions import ConfirmMentions, FindMentions, ManageEntities
 from postloom.application.use_cases.posts import DeletePost, IngestPost, UpdatePost
 from postloom.application.use_cases.usage import BudgetPolicy, PriceBook, UsageReport
 from postloom.settings import Settings
@@ -189,6 +189,9 @@ class Container:
 
     def confirm_mentions(self) -> ConfirmMentions:
         return ConfirmMentions(self.repository, self.vault, self.reviews, self.clock)
+
+    def entities(self) -> ManageEntities:
+        return ManageEntities(self.repository, self.vault, self.reviews, self.clock)
 
     def update_post(self) -> UpdatePost:
         return UpdatePost(self.repository, self.vault, self.clock)

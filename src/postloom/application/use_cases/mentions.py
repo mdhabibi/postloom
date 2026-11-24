@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 
 from postloom.application.errors import ApplicationError
 from postloom.application.ports.clock import Clock
@@ -21,6 +22,7 @@ from postloom.application.ports.extraction import MentionFinder
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.reviews import Review, ReviewStore, Suggestion, TopicSuggestion
 from postloom.application.ports.vault import Vault
+from postloom.application.use_cases.curation import UNSET, Unset
 from postloom.application.use_cases.relations import (
     Item,
     current_topics,
@@ -30,6 +32,7 @@ from postloom.application.use_cases.relations import (
     mention_edges,
     mentioned_in,
     set_topics,
+    write_entity_note,
     write_item_note,
     write_mentioned_notes,
 )
@@ -38,7 +41,7 @@ from postloom.domain.entities import PERSON, Category, Entity, same_name
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind, kind_of
 from postloom.domain.people import Person, ProfileUrl
 from postloom.domain.provenance import Grade, Origin, Provenance
-from postloom.domain.text import extract_urls, mentions, sentence_with, slugify
+from postloom.domain.text import extract_urls, mentions, sentence_with, slugify, web_url
 
 CATEGORIES = (PERSON, *(c.value for c in Category))
 _TITLES = frozenset({"dr", "dr.", "prof", "prof.", "mr", "mr.", "ms", "ms.", "mrs", "mrs."})
@@ -358,6 +361,148 @@ class ConfirmMentions:
         return review
 
 
+@dataclass(frozen=True, slots=True)
+class MentionOf:
+    item: Item
+    evidence: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class EntitySummary:
+    entity: Entity
+    count: int
+    """How many articles and posts mention it."""
+
+
+@dataclass(frozen=True, slots=True)
+class EntityDetail:
+    entity: Entity
+    mentions: tuple[MentionOf, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PendingItem:
+    item: Item
+    review: Review
+
+
+class ManageEntities:
+    """Look through, correct, merge and remove what the user's writing mentions.
+
+    The id never changes, so renaming or recategorising keeps every link; a merge moves
+    links and keeps every name as an alias; history is superseded, not deleted, except
+    when the user deletes an entity outright (erasure, like deleting a person).
+    """
+
+    def __init__(
+        self, repository: GraphRepository, vault: Vault, reviews: ReviewStore, clock: Clock
+    ) -> None:
+        self._repository = repository
+        self._vault = vault
+        self._reviews = reviews
+        self._clock = clock
+
+    def summaries(self) -> list[EntitySummary]:
+        repo = self._repository
+        found = [EntitySummary(e, len(mentioned_in(repo, e.id))) for e in repo.list_entities()]
+        return sorted(found, key=lambda s: (s.entity.category, -s.count, same_name(s.entity.name)))
+
+    def get(self, entity_id: NodeId) -> EntityDetail:
+        entity = self._entity(entity_id)
+        found: list[MentionOf] = []
+        for edge in self._repository.edges_to(entity_id):
+            if edge.kind is not EdgeKind.MENTIONS or not edge.is_current:
+                continue
+            item = get_item(self._repository, edge.source)
+            if item is not None:
+                found.append(MentionOf(item, edge.provenance.evidence))
+        found.sort(key=lambda m: m.item.published_on or date.min, reverse=True)
+        return EntityDetail(entity, tuple(found))
+
+    def update(
+        self,
+        entity_id: NodeId,
+        *,
+        name: str | None = None,
+        category: str | None = None,
+        url: str | Unset | None = UNSET,
+    ) -> Entity:
+        entity = self._entity(entity_id)
+        if name is not None:
+            name = clean_name(name)
+            if not name:
+                raise ApplicationError("A name can't be empty.")
+            entity = entity.renamed(name)
+        if category is not None:
+            if category not in {c.value for c in Category}:
+                raise ApplicationError(f"Unknown category: {category}")
+            entity = replace(entity, category=Category(category))
+        if not isinstance(url, Unset):
+            entity = replace(entity, url=web_url(url) if url else None)
+        self._repository.save_entity(entity)
+        write_entity_note(self._repository, self._vault, entity.id)
+        return entity
+
+    def merge(self, source_id: NodeId, into_id: NodeId) -> Entity:
+        """Make ``source`` part of ``into``: its mentions move, its names become aliases."""
+        if source_id == into_id:
+            raise ApplicationError("Choose two different entries to merge.")
+        repo = self._repository
+        source, into = self._entity(source_id), self._entity(into_id)
+        now = self._clock.now()
+        for edge in list(repo.edges_to(source_id)):
+            if edge.kind is not EdgeKind.MENTIONS:
+                continue
+            repo.supersede_edge(edge.supersede(now))
+            moved = Edge(edge.source, into_id, EdgeKind.MENTIONS, edge.provenance)
+            existing = [e for e in repo.edges_from(edge.source) if e.key == moved.key]
+            if not existing or (not existing[0].is_current and edge.is_current):
+                repo.save_edge(moved)
+        into = into.absorbing(source)
+        repo.save_entity(into)
+        repo.remove_node(source_id)
+        self._vault.remove_entity(source)
+        write_entity_note(repo, self._vault, into_id)
+        return into
+
+    def remove_mention(self, item_id: NodeId, target: NodeId) -> None:
+        """Take one mention off one article or post; it won't be suggested there again."""
+        repo = self._repository
+        live = [
+            e
+            for e in repo.edges_from(item_id)
+            if e.kind is EdgeKind.MENTIONS and e.target == target and e.is_current
+        ]
+        if not live:
+            raise ApplicationError("That isn't mentioned there.")
+        repo.save_edge(live[0].reject(self._clock.now()))
+        write_mentioned_notes(repo, self._vault, [target])
+
+    def delete(self, entity_id: NodeId) -> Entity:
+        """Erase an entity and every mention of it (the user's choice, so no history)."""
+        entity = self._entity(entity_id)
+        self._repository.erase_nodes([entity_id])
+        self._vault.remove_entity(entity)
+        return entity
+
+    def pending(self) -> list[PendingItem]:
+        """Articles and posts with found mentions still waiting for a decision."""
+        out: list[PendingItem] = []
+        for review in self._reviews.pending():
+            item = get_item(self._repository, review.item)
+            if item is None:
+                self._reviews.remove(review.item)  # the item was deleted
+            else:
+                out.append(PendingItem(item, review))
+        return out
+
+    def _entity(self, entity_id: NodeId) -> Entity:
+        entity = self._repository.get_entity(entity_id) if entity_id.startswith("entity:") else None
+        if entity is None:
+            raise ApplicationError(f"Unknown entry: {entity_id}")
+        return entity
+
+
 def _free_key(repository: GraphRepository, key: str) -> str:
     key = key[:60].strip("-") or "entity"
     candidate, number = key, 2
@@ -396,7 +541,12 @@ __all__ = [
     "Accepted",
     "ConfirmMentions",
     "Confirmed",
+    "EntityDetail",
+    "EntitySummary",
     "FindMentions",
+    "ManageEntities",
+    "MentionOf",
+    "PendingItem",
     "item_text",
     "mentions_of",
 ]

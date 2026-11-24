@@ -16,6 +16,7 @@ from postloom.application.ports.extraction import FoundMention, FoundMentions
 from postloom.application.use_cases import IngestPostCommand
 from postloom.application.use_cases.mentions import Accepted, is_owner, mentions_of
 from postloom.domain.entities import Category
+from postloom.domain.errors import DomainError
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.provenance import Grade
 from tests import fancy
@@ -249,3 +250,88 @@ def test_the_owner_is_recognised_with_or_without_a_title() -> None:
     assert not is_owner("Robin Sample", OWNER)
     assert not is_owner("Alex Author", None)
     assert Category("dataset") is Category.DATASET
+
+
+# -- editing later -----------------------------------------------------------------------
+def confirmed_post(home: Path) -> tuple[NodeId, NodeId]:
+    post = add_post(home)
+    with open_home(home, mention_finder=GOOD) as c:
+        c.find_mentions().execute(post, OWNER)
+        c.confirm_mentions().execute(
+            post,
+            [
+                Accepted("Example Labs", "organisation", "Thanks to Example Labs."),
+                Accepted("Example Hackathon 2026", "event"),
+                Accepted("Robin Sample", "person"),
+            ],
+        )
+        lab = next(e for e in c.repository.list_entities() if e.name == "Example Labs")
+    return post, lab.id
+
+
+def test_renaming_and_recategorising_keep_every_link(tmp_path: Path) -> None:
+    post, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path) as c:
+        entity = c.entities().update(
+            lab, name="Example Research Labs", category="project", url="example.org"
+        )
+        detail = c.entities().get(lab)
+        with pytest.raises(ApplicationError, match="category"):
+            c.entities().update(lab, category="spaceship")
+        with pytest.raises(DomainError):
+            c.entities().update(lab, url="javascript:alert(1)")
+    assert entity.id == lab and entity.aliases == ("Example Labs",)
+    assert (entity.category, entity.url) == ("project", "https://example.org")
+    assert [m.item.id for m in detail.mentions] == [post]
+    assert detail.mentions[0].evidence == "Thanks to Example Labs."
+    note = (tmp_path / "vault" / "mentions" / "example-labs.md").read_text("utf-8")
+    assert "name: Example Research Labs" in note and "category: project" in note
+
+
+def test_merging_moves_mentions_and_keeps_the_names(tmp_path: Path) -> None:
+    post, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path) as c:
+        hackathon = next(e for e in c.repository.list_entities() if e.category == "event")
+        merged = c.entities().merge(hackathon.id, lab)
+        assert c.repository.get_entity(hackathon.id) is None
+        assert {n for _, n, _ in mentions_of(c.repository, post)} == {
+            "Example Labs",
+            "Robin Sample",
+        }
+        history = c.repository.edges_from(post, include_history=True)
+        with pytest.raises(ApplicationError, match="different"):
+            c.entities().merge(lab, lab)
+    assert merged.aliases == ("Example Hackathon 2026",)
+    assert any(e.target == hackathon.id and e.superseded_at for e in history)
+    assert not (tmp_path / "vault" / "mentions" / "example-hackathon-2026.md").exists()
+
+
+def test_removing_a_mention_keeps_it_from_coming_back(tmp_path: Path) -> None:
+    post, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path, mention_finder=GOOD) as c:
+        c.entities().remove_mention(post, lab)
+        assert "Example Labs" not in {n for _, n, _ in mentions_of(c.repository, post)}
+        again = c.find_mentions().execute(post, OWNER)
+        with pytest.raises(ApplicationError):
+            c.entities().remove_mention(post, lab)
+    assert "Example Labs" not in {s.name for s in again.suggestions}
+
+
+def test_deleting_an_entity_erases_it(tmp_path: Path) -> None:
+    _, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path) as c:
+        c.entities().delete(lab)
+        assert c.repository.get_entity(lab) is None
+        assert all(lab not in (e.source, e.target) for e in c.repository.all_edges())
+        assert [s.entity.name for s in c.entities().summaries()] == ["Example Hackathon 2026"]
+    assert not (tmp_path / "vault" / "mentions" / "example-labs.md").exists()
+
+
+def test_deleting_a_post_updates_what_it_mentioned(tmp_path: Path) -> None:
+    post, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path) as c:
+        c.delete_post().execute(post)
+        assert c.entities().get(lab).mentions == ()
+        assert c.entities().pending() == []
+    note = (tmp_path / "vault" / "mentions" / "example-labs.md").read_text("utf-8")
+    assert "posts/" not in note
