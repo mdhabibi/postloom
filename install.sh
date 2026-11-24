@@ -12,7 +12,7 @@
 # Nothing here needs administrator rights.
 set -eu
 
-SOURCE="${POSTLOOM_SOURCE:-https://github.com/mdhabibi/postloom/archive/refs/heads/main.zip}"
+SOURCE="${POSTLOOM_SOURCE:-}"
 PYTHON_VERSION="${POSTLOOM_PYTHON:-3.12}"
 
 say() { printf '%s\n' "$*"; }
@@ -31,6 +31,15 @@ download() {
         fail "this needs curl or wget to download uv."
     fi
 }
+
+# The latest release from PyPI; before the first release, the newest code on GitHub.
+if [ -z "$SOURCE" ]; then
+    if (download https://pypi.org/pypi/postloom/json) >/dev/null 2>&1; then
+        SOURCE=postloom
+    else
+        SOURCE=https://github.com/mdhabibi/postloom/archive/refs/heads/main.zip
+    fi
+fi
 
 find_uv() {
     for candidate in "$(command -v uv 2>/dev/null || true)" \
