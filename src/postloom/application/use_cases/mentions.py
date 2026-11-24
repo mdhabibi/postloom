@@ -222,6 +222,8 @@ class Accepted:
     url: str | None = None
     match: NodeId | None = None
     """Join this existing person or entity instead of adding a new one."""
+    found_as: str | None = None
+    """The name it was found under, when the user changed it; kept as another name."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,12 +309,13 @@ class ConfirmMentions:
                 ),
                 None,
             )
-        if entity is not None:
-            if not entity.is_called(name):  # the user called it something else here
-                entity = replace(entity, aliases=(*entity.aliases, name))
-                repo.save_entity(entity)
-            return entity.id
-        entity = Entity(_free_key(repo, slugify(name) or "entity"), name, category, choice.url)
+        names = [n for n in (name, choice.found_as) if n]
+        if entity is None:
+            key = _free_key(repo, slugify(name) or "entity")
+            entity = Entity(key, name, category, choice.url)
+        for other in names:  # what the user called it here, and what it was found as
+            if not entity.is_called(other):
+                entity = replace(entity, aliases=(*entity.aliases, other))
         repo.save_entity(entity)
         return entity.id
 
@@ -345,6 +348,7 @@ class ConfirmMentions:
         if review is None:
             return None
         decided = {same_name(a.name) for a in accepted} | {same_name(d) for d in dismissed}
+        decided |= {same_name(a.found_as) for a in accepted if a.found_as}
         decided |= {same_name(a.url) for a in accepted if a.url}
         left = tuple(
             s

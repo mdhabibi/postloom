@@ -47,6 +47,7 @@ const ICONS = {
   people: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.3 6-5.3s5.4 1.9 6 5.3"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.9c1.6.7 2.7 2.4 3 5.1"/>',
   settings: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  tag: '<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0z"/><circle cx="8" cy="8" r="1.4"/>',
   ask: '<path d="M4 5h16v11H9l-5 4z"/><path d="M9 10.5h6"/>',
   article: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>',
   person: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/>',
@@ -352,6 +353,7 @@ const NAV = {
   add: { icon: "plus", label: "Add", active: (hash) => hash.startsWith("#/add") },
   graph: { icon: "graph", label: "Graph", active: (hash) => hash === "#/graph" },
   people: { icon: "people", label: "People", active: (hash) => hash.startsWith("#/people") || hash.startsWith("#/person/") },
+  mentions: { icon: "tag", label: "Mentions", active: (hash) => hash.startsWith("#/mentions") || hash.startsWith("#/entity/") },
   settings: { icon: "settings", label: "Settings", active: (hash) => hash === "#/settings" },
 };
 
@@ -513,6 +515,7 @@ async function submitPost(event) {
     for (const warning of added.warnings) lines.push(warning);
     if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
     result.replaceChildren(notice("", ...lines,
+      lookForMentions(added.id, "post"),
       h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the post")));
     form.reset();
     toast(added.is_update ? "Post updated" : "Post added");
@@ -523,6 +526,20 @@ async function submitPost(event) {
     button.textContent = "Add post";
     result.scrollIntoView({ block: "nearest" });
   }
+}
+
+// Right after adding, look for what the text names; the user reviews it on the item's page.
+function lookForMentions(id, what) {
+  const line = h("p", { class: "hint", role: "status" }, "Looking for people, organisations, links and more...");
+  api("/api/mentions/find", { method: "POST", body: { id } }).then((found) => {
+    const n = found.suggestions.length + found.topics.length;
+    line.textContent = n
+      ? `Found ${plural(n, "thing")} to review: open the ${what} to choose what goes into your graph.`
+      : "Nothing to review in it.";
+  }).catch((error) => {
+    line.textContent = `Couldn't look for mentions: ${error.message} You can try again on the ${what}'s page.`;
+  });
+  return line;
 }
 
 function addView() {
@@ -572,6 +589,7 @@ async function submitArticle(event) {
     if (added.index_error) lines.push(`Saved, but not indexed for search: ${added.index_error}`);
     if (added.suggested_links) lines.push(`${added.suggested_links} related ${added.suggested_links === 1 ? "article" : "articles"} suggested. Review them on the article's page.`);
     result.replaceChildren(notice(added.warnings.length || added.index_error ? "" : "", ...lines,
+      lookForMentions(added.id, "article"),
       h("a", { href: `#/article/${encodeURIComponent(added.id)}` }, "Open the article")));
     form.reset();
     toast(added.is_update ? "Article updated" : "Article added");
@@ -607,6 +625,7 @@ async function articleView(id, focus = {}) {
     article.posts.map((post) => h("section", { class: "post", "aria-label": "Announcement post" },
       h("h2", {}, "Announcement post"), h("p", { dir: "auto", class: "post-text" }, post.text))),
     relatedSection(article),
+    mentionsSection(article),
     article.posts.length ? discussionSection(article) : null);
   const suggestions = article.discussion.length
     ? ["What did people ask in the comments?", "Summarize the key takeaways", "Which questions did I not answer yet?"]
@@ -629,6 +648,7 @@ function postView(post, focus) {
     articleActions(post),
     h("section", { class: "post standalone", "aria-label": "Post" },
       h("p", { dir: "auto", class: "post-text" }, withoutTitle(post.body_markdown, post.title))),
+    mentionsSection(post),
     discussionSection(post));
   const suggestions = post.discussion.length
     ? ["What did people ask in the comments?", "Which questions did I not answer yet?", "What did people disagree with?"]
@@ -647,6 +667,255 @@ function withoutTitle(text, title) {
   const shown = title.replace(/\.\.\.$/, "");
   if (first < 0 || title.endsWith("...") || !lines[first].includes(shown)) return text;
   return lines.slice(first + 1).join("\n").replace(/^\s*\n/, "");
+}
+
+// ---------------------------------------------------------------------------- mentions
+const CATEGORIES = [
+  ["person", "People", "Person"],
+  ["organisation", "Organisations", "Organisation"],
+  ["place", "Places", "Place"],
+  ["event", "Events", "Event"],
+  ["project", "Projects and products", "Project or product"],
+  ["dataset", "Datasets", "Dataset"],
+  ["method", "Methods and techniques", "Method or technique"],
+  ["link", "Links", "Link"],
+  ["other", "Other", "Other"],
+];
+const categoryName = (key, plural = false) => (CATEGORIES.find((c) => c[0] === key) || [key, key, key])[plural ? 1 : 2];
+const mentionHref = (id) => id.startsWith("person:") ? `#/person/${encodeURIComponent(id)}` : `#/entity/${encodeURIComponent(id)}`;
+
+function categorySelect(value, id) {
+  return h("select", { id, "aria-label": "Category" },
+    CATEGORIES.map(([key, , one]) => h("option", { value: key, selected: key === value }, one)));
+}
+
+function byCategory(rows, keyOf) {
+  return CATEGORIES.map(([key, plural]) => [key, plural, rows.filter((r) => keyOf(r) === key)])
+    .filter(([, , group]) => group.length);
+}
+
+// What an article or post names: confirmed mentions, and anything found waiting for review.
+function mentionsSection(item) {
+  const what = item.kind === "post" ? "post" : "article";
+  const section = h("section", { class: "mentions", "aria-labelledby": "mentions-heading" },
+    h("h2", { id: "mentions-heading" }, "Mentioned"), h("p", { class: "hint" }, "Loading..."));
+  async function load() {
+    let data;
+    try {
+      data = await api(`/api/mentions?id=${encodeURIComponent(item.id)}`);
+    } catch (error) {
+      return fill(section, h("h2", { id: "mentions-heading" }, "Mentioned"), notice("error", error.message));
+    }
+    const review = data.review && (data.review.suggestions.length || data.review.topics.length) ? data.review : null;
+    const find = h("button", { class: "button", type: "button", onclick: async () => {
+      find.disabled = true;
+      find.textContent = data.can_find ? "Reading the text..." : "Looking for links...";
+      try {
+        const found = await api("/api/mentions/find", { method: "POST", body: { id: item.id } });
+        if (!found.suggestions.length && !found.topics.length) toast("Nothing new found");
+        load();
+      } catch (error) {
+        find.disabled = false;
+        find.textContent = "Try again";
+        toast(error.message);
+      }
+    } }, icon("search"), data.mentions.length || data.review ? "Find again" : "Find people, organisations and more");
+    const confirmed = data.mentions.length
+      ? byCategory(data.mentions, (m) => m.category).map(([, plural, group]) =>
+        h("div", { class: "mention-group" }, h("h3", {}, plural),
+          h("ul", { class: "mention-chips" }, group.map((m) => h("li", {},
+            h("a", { href: mentionHref(m.target), title: m.evidence || "", dir: "auto" }, m.name),
+            h("button", { class: "chip-remove", type: "button", "aria-label": `Remove ${m.name} from this ${what}`,
+              title: `Not mentioned in this ${what}`,
+              onclick: async () => {
+                try {
+                  await api(`/api/mention?item=${encodeURIComponent(item.id)}&target=${encodeURIComponent(m.target)}`, { method: "DELETE" });
+                  load();
+                } catch (error) {
+                  toast(error.message);
+                }
+              } }, "\u00d7"))))))
+      : review ? null : h("p", { class: "hint" }, `People, organisations, places, events, datasets and links named in this ${what} appear here once you confirm them.`);
+    fill(section,
+      h("div", { class: "section-head" }, h("h2", { id: "mentions-heading" }, "Mentioned"), review ? null : find),
+      review ? reviewPanel(item, review, data.can_find, load) : null,
+      confirmed,
+      !data.can_find && !review ? h("p", { class: "hint" }, "Without a model, postloom finds links only. Connect one in Settings to find people and organisations too.") : null);
+  }
+  load();
+  return section;
+}
+
+function reviewPanel(item, review, canFind, done) {
+  const what = item.kind === "post" ? "post" : "article";
+  const rows = review.suggestions.map((s, index) => {
+    const id = `m${index}`;
+    const keep = h("input", { type: "checkbox", checked: true, "aria-label": `Add ${s.name}` });
+    const name = h("input", { type: "text", value: s.name, dir: "auto", maxlength: 300, "aria-label": "Name" });
+    const category = categorySelect(s.category, `${id}-category`);
+    const same = s.match ? h("input", { type: "checkbox", checked: true, id: `${id}-same` }) : null;
+    const row = h("li", { class: "review-row" },
+      h("div", { class: "review-main" }, keep, name, category),
+      s.match ? h("label", { class: "review-match", for: `${id}-same` }, same,
+        ` Same as ${s.match_name}`, s.match_note ? h("span", { class: "hint" }, ` (${s.match_note})`) : null) : null,
+      s.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, s.evidence) : null,
+      s.url && s.url !== `https://${s.name}` ? h("p", { class: "hint" }, s.url) : null);
+    keep.addEventListener("change", () => { row.classList.toggle("off", !keep.checked); count(); });
+    return { s, row, keep, name, category, same };
+  });
+  const topicRows = review.topics.map((t) => {
+    const keep = h("input", { type: "checkbox", checked: t.exists, "aria-label": `Add the topic ${t.name}` });
+    keep.addEventListener("change", count);
+    return { t, keep, row: h("li", { class: "review-row" }, h("label", { class: "review-main" }, keep, " ", t.name,
+      t.exists ? null : h("span", { class: "badge" }, "new topic"))) };
+  });
+  const add = h("button", { class: "button button-primary", type: "button" });
+  function count() {
+    const n = rows.filter((r) => r.keep.checked).length + topicRows.filter((r) => r.keep.checked).length;
+    add.textContent = n ? `Add ${n} to your graph` : "Save (add nothing)";
+  }
+  add.addEventListener("click", async () => {
+    add.disabled = true;
+    const body = {
+      id: item.id,
+      accept: rows.filter((r) => r.keep.checked).map((r) => ({
+        name: r.name.value.trim(),
+        category: r.category.value,
+        evidence: r.s.evidence || "",
+        url: r.s.url,
+        match: r.same && r.same.checked ? r.s.match : null,
+        found_as: r.s.name,
+      })),
+      dismiss: rows.filter((r) => !r.keep.checked).map((r) => r.s.name),
+      topics: topicRows.filter((r) => r.keep.checked).map((r) => r.t.name),
+    };
+    try {
+      const result = await api("/api/mentions/confirm", { method: "POST", body });
+      toast(result.added.length || result.topics.length ? "Added to your graph" : "Saved");
+      if (result.topics.length) {
+        await refresh();
+        return articleView(item.id);  // the topics shown at the top changed too
+      }
+      done();
+    } catch (error) {
+      add.disabled = false;
+      toast(error.message);
+    }
+  });
+  count();
+  const grouped = byCategory(rows, (r) => r.s.category);
+  return h("div", { class: "review", role: "group", "aria-label": `Found in this ${what}` },
+    h("h3", {}, `Found in this ${what}`),
+    h("p", { class: "hint" }, "Untick what doesn't belong, fix a name or its category, then add the rest. Nothing goes into your graph before you do."),
+    grouped.map(([, plural, group]) => h("div", { class: "review-group" }, h("h4", {}, plural),
+      h("ul", {}, group.map((r) => r.row)))),
+    topicRows.length ? h("div", { class: "review-group" }, h("h4", {}, "Topics"), h("ul", {}, topicRows.map((r) => r.row))) : null,
+    review.finder ? null : h("p", { class: "hint" }, canFind ? "" : "Only links were looked for: no model is connected."),
+    h("div", { class: "editor-actions" }, add,
+      h("button", { class: "button", type: "button", onclick: (event) => { event.currentTarget.closest(".review").remove(); } }, "Decide later")));
+}
+
+function mentionList(rows) {
+  return h("ul", { class: "mention-list" }, rows.map((m) => h("li", {},
+    h("a", { href: `#/article/${encodeURIComponent(m.id)}`, dir: "auto" }, m.title),
+    h("span", { class: "hint" }, ` ${[m.kind === "post" ? "Post" : "Article", formatDate(m.published_on)].filter(Boolean).join(", ")}`),
+    m.evidence ? h("blockquote", { class: "review-evidence", dir: "auto" }, m.evidence) : null)));
+}
+
+async function mentionsView() {
+  const [{ entities, pending }] = await Promise.all([api("/api/entities"), refresh()]);
+  const filter = h("input", { type: "search", placeholder: "Filter by name", "aria-label": "Filter mentions" });
+  const list = h("div", {});
+  function draw() {
+    const wanted = filter.value.trim().toLowerCase();
+    const shown = entities.filter((e) => !wanted || [e.name, ...e.aliases].some((n) => n.toLowerCase().includes(wanted)));
+    fill(list, shown.length
+      ? byCategory(shown, (e) => e.category).map(([, plural, group]) => h("section", { class: "mention-group" },
+        h("h2", {}, `${plural} (${group.length})`),
+        h("ul", { class: "mention-chips" }, group.map((e) => h("li", {},
+          h("a", { href: `#/entity/${encodeURIComponent(e.id)}`, dir: "auto" }, e.name,
+            h("span", { class: "count" }, ` ${e.count}`)))))))
+      : h("p", { class: "hint" }, entities.length ? "Nothing matches." : "Nothing yet. Open an article or post and choose Find people, organisations and more, or add a new one: postloom looks right after adding it."));
+  }
+  filter.addEventListener("input", draw);
+  draw();
+  setMain(h("section", { class: "page" },
+    h("h1", {}, "Mentions"),
+    h("p", { class: "lede" }, "The organisations, places, events, projects, datasets, methods and links your writing mentions, as you confirmed them. People are on the People page."),
+    pending.length ? h("div", { class: "notice" },
+      h("p", {}, h("strong", {}, `Waiting for your review (${pending.length})`)),
+      h("ul", {}, pending.map((p) => h("li", {},
+        h("a", { href: `#/article/${encodeURIComponent(p.id)}`, dir: "auto" }, p.title),
+        ` ${plural(p.count, "suggestion")}`)))) : null,
+    entities.length > 8 ? filter : null,
+    list));
+  renderSidebar();
+}
+
+async function entityView(id) {
+  let e;
+  try {
+    e = await api(`/api/entity?id=${encodeURIComponent(id)}`);
+  } catch (error) {
+    return setMain(h("section", { class: "page" }, h("h1", {}, "Not found"),
+      notice("error", error.message), h("a", { href: "#/mentions" }, "Back to mentions")));
+  }
+  const { entities } = await api("/api/entities");
+  const name = h("input", { id: "entity_name", value: e.name, maxlength: 300, dir: "auto" });
+  const category = categorySelect(e.category, "entity_category");
+  const url = h("input", { id: "entity_url", type: "url", value: e.url || "", maxlength: 2000, placeholder: "https://..." });
+  const others = entities.filter((o) => o.id !== e.id)
+    .sort((a, b) => (a.category === e.category ? 0 : 1) - (b.category === e.category ? 0 : 1) || a.name.localeCompare(b.name));
+  const into = h("select", { id: "merge_into" }, h("option", { value: "" }, "Choose..."),
+    others.map((o) => h("option", { value: o.id }, `${o.name} (${categoryName(o.category)})`)));
+  const save = h("button", { class: "button button-primary", type: "submit" }, "Save");
+  const form = h("form", { class: "editor", "aria-label": "Edit this entry", onsubmit: async (event) => {
+    event.preventDefault();
+    save.disabled = true;
+    try {
+      await api("/api/entity", { method: "PUT", body: { id: e.id, name: name.value.trim(), category: category.value, url: url.value.trim() || null } });
+      toast("Saved");
+      entityView(e.id);
+    } catch (error) {
+      save.disabled = false;
+      toast(error.message);
+    }
+  } },
+    h("div", { class: "field-row" }, field("entity_name", "Name", name), field("entity_category", "Category", category)),
+    field("entity_url", "Link (optional)", url),
+    h("div", { class: "editor-actions" }, save),
+    h("p", { class: "hint" }, "Renaming keeps every link to it; the old name is kept as another name it's known by."));
+  const merge = h("button", { class: "button", type: "button", onclick: async () => {
+    if (!into.value) return toast("Choose an entry to merge into");
+    merge.disabled = true;
+    try {
+      await api("/api/entity/merge", { method: "POST", body: { id: e.id, into: into.value } });
+      toast("Merged");
+      location.hash = `#/entity/${encodeURIComponent(into.value)}`;
+    } catch (error) {
+      merge.disabled = false;
+      toast(error.message);
+    }
+  } }, "Merge");
+  setMain(h("section", { class: "page" },
+    h("p", { class: "eyebrow" }, categoryName(e.category)),
+    h("h1", { dir: "auto" }, e.name),
+    h("p", { class: "byline" }, `Mentioned in ${plural(e.mentions.length, "article or post", "articles and posts")}. `,
+      webLink(e.url) ? h("a", { href: webLink(e.url), target: "_blank", rel: "noopener noreferrer" }, "Open link") : null),
+    e.aliases.length ? h("p", { class: "hint" }, `Also known as: ${e.aliases.join(", ")}`) : null,
+    h("div", { class: "person-section" }, h("h2", {}, "Where you mention it"),
+      e.mentions.length ? mentionList(e.mentions) : h("p", { class: "hint" }, "Nowhere any more.")),
+    h("div", { class: "person-section" }, h("h2", {}, "Edit"), form),
+    others.length ? h("div", { class: "person-section" }, h("h2", {}, "Merge into another entry"),
+      h("p", { class: "hint" }, "When two entries are the same thing, merge this one into the other. Its mentions move there and its names are kept."),
+      h("div", { class: "inline-field" }, h("label", { class: "visually-hidden", for: "merge_into" }, "Merge into"), into, merge)) : null,
+    h("div", { class: "person-section danger-zone" }, h("h2", {}, "Delete"),
+      confirmBox("Delete", `Delete ${e.name} and every mention of it? Your articles and posts are not changed.`, "Delete", async () => {
+        await api(`/api/entity?id=${encodeURIComponent(e.id)}`, { method: "DELETE" });
+        toast("Deleted");
+        location.hash = "#/mentions";
+      }))));
+  renderSidebar();
 }
 
 // ---------------------------------------------------------------------------- edit / delete an article
@@ -1557,7 +1826,7 @@ async function peopleView() {
   const page = h("section", { class: "page" },
     h("h1", {}, "People"),
     h("p", { class: "lede" }, people.length
-      ? "Everyone who has commented on your posts, most engaged first."
+      ? "Everyone who has commented on your posts, most engaged first, and the people you mention."
       : "No one yet. Open an article and add its comments to see who engages with your writing."));
   if (people.length) {
     page.append(h("ul", { class: "people-list" }, people.map((p) => h("li", {},
@@ -1565,7 +1834,7 @@ async function peopleView() {
         h("div", {}, h("h2", {}, p.name, p.profile_url ? null : h("span", { class: "badge" }, "no profile link")),
           p.headline ? h("p", {}, p.headline) : null),
         h("span", { class: "count" }, `${p.messages} ${p.messages === 1 ? "message" : "messages"}`,
-          h("br"), `${p.articles} ${p.articles === 1 ? "article" : "articles"}`))))));
+          h("br"), p.messages ? `${p.articles} ${p.articles === 1 ? "article" : "articles"}` : `mentioned in ${p.mentioned}`))))));
   }
   setMain(page);
   renderSidebar();
@@ -1619,8 +1888,14 @@ async function personView(id) {
       h("button", { class: "button", type: "button",
         onclick: () => save({ notes: notesField.value }, "Notes saved") }, "Save notes")),
 
+    person.mentioned_in.length ? h("div", { class: "person-section" },
+      h("h2", {}, "You mention them in"),
+      mentionList(person.mentioned_in)) : null,
+
+    person.conversations.length ? null : h("div", { class: "person-section" }, h("h2", {}, "Conversations"),
+      h("p", { class: "hint" }, `${firstName} hasn't commented on anything you saved.`)),
     h("div", { class: "person-section" },
-      h("h2", {}, "Conversations"),
+      person.conversations.length ? h("h2", {}, "Conversations") : null,
       person.conversations.map((c) => h("div", {},
         h("h3", {}, h("a", { href: `#/article/${encodeURIComponent(c.article_id)}` }, c.article_title)),
         threadsOf(c.messages).map((thread) => h("ol", { class: "thread" },
@@ -1784,7 +2059,7 @@ async function graphView() {
   } catch (error) {
     return setMain(h("section", { class: "page" }, h("h1", {}, "Graph"), notice("error", error.message)));
   }
-  const options = { people: true, suggested: true };
+  const options = { people: true, mentions: true, suggested: true };
   const canvas = h("div", { class: "graph-canvas" });
   const toggle = (key, label) => h("label", { class: "check" },
     h("input", { type: "checkbox", checked: true, onchange: (e) => { options[key] = e.target.checked; draw(); } }), label);
@@ -1794,15 +2069,16 @@ async function graphView() {
   setMain(h("section", { class: "graph-page" },
     h("h1", {}, "Graph"),
     h("p", { class: "lede" }, articles.length
-      ? "Your articles and posts, their topics and series, and the people who discussed them. Drag to move around, scroll to zoom, select a node to open it."
+      ? "Your articles and posts, their topics and series, the people who discussed them and what you mention. Drag to move around, scroll to zoom, select a node to open it."
       : "Add an article or a post and its topics, links and commenters will appear here."),
     h("div", { class: "graph-controls" },
-      toggle("people", "People"), toggle("suggested", "Suggested links"),
+      toggle("people", "People"), toggle("mentions", "Mentions"), toggle("suggested", "Suggested links"),
       h("ul", { class: "graph-legend", "aria-label": "Legend" },
         h("li", {}, h("span", { class: "key key-topic" }), "Topic"),
         h("li", {}, h("span", { class: "key key-article" }), "Article"),
         h("li", {}, h("span", { class: "key key-post" }), "Post"),
         h("li", {}, svgEl("svg", { class: "key-person", viewBox: "-11 -11 22 22", "aria-hidden": "true" }, personGlyph(10)), "Person"),
+        h("li", {}, h("span", { class: "key key-entity" }), "Mentioned"),
         h("li", {}, h("span", { class: "key key-linked" }), "Linked"),
         h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
     canvas,
@@ -1841,10 +2117,12 @@ function suggestionList(graph) {
 function graphSvg(graph, options) {
   const nodes = graph.nodes
     .filter((n) => options.people || n.kind !== "person")
+    .filter((n) => options.mentions || !isEntity(n))
     .map((n) => ({ ...n, r: nodeRadius(n) }));
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const links = graph.links.filter((l) => byId.has(l.source) && byId.has(l.target)
-    && (options.suggested || l.grade !== "asserted" || l.kind !== "related_to"));
+    && (options.suggested || l.grade !== "asserted" || l.kind !== "related_to")
+    && (options.mentions || l.kind !== "mentions"));
   if (!nodes.length) return h("p", { class: "hint graph-empty" }, "Nothing to show yet.");
   layout(nodes, links, byId);
 
@@ -1869,10 +2147,11 @@ function graphSvg(graph, options) {
   }));
   const nodeLayer = svgEl("g", { class: "nodes" }, nodes.map((n) => {
     const href = n.kind === "article" || n.kind === "post" ? `#/article/${encodeURIComponent(n.id)}`
-      : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}` : null;
+      : n.kind === "person" ? `#/person/${encodeURIComponent(n.id)}`
+      : isEntity(n) ? `#/entity/${encodeURIComponent(n.id)}` : null;
     const shape = n.kind === "person"
       ? personGlyph(n.r, { transform: `translate(${n.x} ${n.y})` })
-      : svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${n.kind}`,
+      : svgEl("circle", { cx: n.x, cy: n.y, r: n.r, class: `node node-${isEntity(n) ? `entity node-${n.kind}` : n.kind}`,
           css: n.kind === "topic" ? { fill: topicColor(n.label) } : null });
     const label = svgEl("text", { x: n.x, y: n.y + n.r + 12, class: `label label-${n.kind}` },
       clip(n.label, n.kind === "person" ? 22 : 30));
@@ -1899,7 +2178,10 @@ function personGlyph(r, attrs = {}) {
       svgEl("path", { d: "M-8.5 9.5c0-5.2 3.8-8.2 8.5-8.2s8.5 3 8.5 8.2z" })));
 }
 
+const isEntity = (n) => n.id.startsWith("entity:");
+
 function nodeRadius(n) {
+  if (isEntity(n)) return 4 + Math.min(Math.sqrt(n.weight) * 1.5, 6);
   if (n.kind === "topic") return 10 + Math.min(Math.sqrt(n.weight) * 2.5, 12);
   if (n.kind === "series") return 8;
   if (n.kind === "article") return 7 + Math.min(Math.sqrt(n.weight), 5);
@@ -1908,6 +2190,7 @@ function nodeRadius(n) {
 }
 
 function nodeTitle(n) {
+  if (isEntity(n)) return `${n.label} (${categoryName(n.kind)}): mentioned in ${plural(n.weight, "article or post", "articles and posts")}`;
   const count = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   if (n.kind === "topic") return `${n.label}: ${count(n.weight, "article or post", "articles and posts")}`;
   if (n.kind === "series") return `${n.label}: ${count(n.weight, "article", "articles")}`;
@@ -2012,6 +2295,8 @@ async function route() {
     if (path === "#/add/post") return addPostView();
     if (path === "#/settings") return await settingsView();
     if (path === "#/people") return await peopleView();
+    if (path === "#/mentions") return await mentionsView();
+    if (path.startsWith("#/entity/")) return await entityView(decodeURIComponent(path.slice(9)));
     if (path === "#/graph") return await graphView();
     if (path.startsWith("#/person/")) return await personView(decodeURIComponent(path.slice(9)));
     renderSidebar();

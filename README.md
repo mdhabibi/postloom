@@ -171,6 +171,22 @@ every message they wrote, from postloom and from your vault. Use it when someone
 to remove their data. Conversations they took part in stay readable, and your own replies
 stay as you wrote them.
 
+### Mentions: people, organisations and more
+
+When you add a post or an article, postloom looks for what it names: people,
+organisations, places, events, projects and products, datasets, methods and links (links
+need no model). It shows them as **Found in this post**, each with the sentence that names
+it, and suggests topics, including new ones when none of yours fit. Untick what doesn't
+belong, fix a name or category, and click **Add**: nothing goes into your graph before
+you do. Names that aren't in your text are never suggested, and neither are you.
+
+Confirmed mentions appear on the post, on **Mentions** (grouped by category, with what
+still waits for review) and in the graph. A person you mention is the same person as the
+one who comments, so their page shows both. Open any entry to rename it (the old name is
+kept, so it's recognised next time), change its category, add a link, merge it into
+another entry, or delete it. Chat uses them too: "Where did I mention Example Labs?",
+"Which companies have I written about?", "Who did I thank?".
+
 ### Asking questions
 
 Press `Ctrl K` (or `/`) and ask. postloom answers only from your library and cites its
@@ -220,7 +236,8 @@ articles as a graph.
 The vault is the source of truth, and `index.db` next to it is only a fast copy:
 
 - **Edit notes freely.** Change an article's text or title, its `topics` or `related`
-  links, a person's notes or tags, or a comment. postloom notices the edit, shows a banner
+  links, a person's notes or tags, a mention's name, category or aliases (in
+  `vault/mentions/`), or a comment. postloom notices the edit, shows a banner
   and reads it; topics and links you change in a note count as your decisions.
 - **Lose the index, lose nothing.** Delete `index.db` (or move the vault to another
   computer) and postloom rebuilds everything on the next start, including which links

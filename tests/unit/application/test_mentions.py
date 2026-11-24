@@ -335,3 +335,49 @@ def test_deleting_a_post_updates_what_it_mentioned(tmp_path: Path) -> None:
         assert c.entities().pending() == []
     note = (tmp_path / "vault" / "mentions" / "example-labs.md").read_text("utf-8")
     assert "posts/" not in note
+
+
+def test_a_renamed_suggestion_keeps_the_name_it_was_found_as(tmp_path: Path) -> None:
+    post = add_post(tmp_path)
+    with open_home(tmp_path, mention_finder=GOOD) as c:
+        c.find_mentions().execute(post, OWNER)
+        done = c.confirm_mentions().execute(
+            post, [Accepted("Example Research Labs", "organisation", found_as="Example Labs")]
+        )
+        (lab,) = c.repository.list_entities()
+    assert (lab.name, lab.aliases) == ("Example Research Labs", ("Example Labs",))
+    assert done.review is not None
+    assert "Example Labs" not in {s.name for s in done.review.suggestions}
+
+
+# -- the graph and chat ----------------------------------------------------------------
+def test_mentioned_things_are_in_the_graph(tmp_path: Path) -> None:
+    post, lab = confirmed_post(tmp_path)
+    with open_home(tmp_path) as c:
+        graph = c.graph().execute()
+    kinds = {n.id: n.kind for n in graph.nodes}
+    assert kinds[lab] == "organisation"
+    robin = next(n for n in graph.nodes if n.label == "Robin Sample")
+    assert robin.kind == "person" and robin.weight == 1  # mentioned, never commented
+    assert {(link.source, link.target) for link in graph.links if link.kind == "mentions"} >= {
+        (post, lab),
+        (post, robin.id),
+    }
+
+
+def test_chat_knows_what_is_mentioned_where(tmp_path: Path) -> None:
+    from tests.fakes import FakeChat
+
+    post, _ = confirmed_post(tmp_path)
+    chat = FakeChat(reply="In your hackathon post [1].")
+    with open_home(tmp_path, chat=chat) as c:
+        answer = c.ask_question().execute("Where did I mention Example Labs?")
+        cards = [s for s in answer.sources if s.kind == "mentions"]
+        assert cards and cards[0].text.startswith("Organisation: Example Labs")
+        assert '"Thanks to Example Labs."' in cards[0].text
+        listed = c.ask_question().execute("Which companies have I written about?")
+        group = next(s for s in listed.sources if s.kind == "mentions")
+        assert group.text.startswith("Organisation entries you mention (1):")
+        people = c.ask_question().execute("Who did I thank in my posts?")
+        assert any("Robin Sample" in s.text for s in people.sources if s.kind == "mentions")
+    assert post

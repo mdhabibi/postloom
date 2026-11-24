@@ -20,9 +20,12 @@ from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.browse_content import CommentView, comment_views
 from postloom.application.use_cases.relations import (
+    Item,
     comments_by,
+    get_item,
     item_of_post,
     items_discussed_by,
+    mentioned_in,
     write_discussion_note,
 )
 from postloom.domain.errors import InvalidProfileUrlError
@@ -39,6 +42,8 @@ class PersonSummary:
     profile_url: str | None
     messages: int
     articles: int
+    mentioned: int = 0
+    """Articles and posts of yours that mention them."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +62,8 @@ class PersonDetail:
     notes: str
     tags: tuple[str, ...]
     conversations: tuple[Conversation, ...]
+    mentioned_in: tuple[tuple[Item, str | None], ...] = ()
+    """Your articles and posts that mention them, with the sentence that does."""
 
 
 class PeopleDirectory:
@@ -66,7 +73,7 @@ class PeopleDirectory:
     def list_people(self) -> list[PersonSummary]:
         people = [self._summarize(p) for p in self._repository.list_people()]
         people.sort(key=lambda p: p.name.casefold())
-        people.sort(key=lambda p: (p.messages, p.articles), reverse=True)
+        people.sort(key=lambda p: (p.messages, p.articles, p.mentioned), reverse=True)
         return people
 
     def get_person(self, person_id: NodeId) -> PersonDetail | None:
@@ -79,7 +86,17 @@ class PeopleDirectory:
             notes=person.notes,
             tags=person.tags,
             conversations=tuple(self._conversations(person_id)),
+            mentioned_in=tuple(self._mentions(person_id)),
         )
+
+    def _mentions(self, person_id: NodeId) -> list[tuple[Item, str | None]]:
+        out: list[tuple[Item, str | None]] = []
+        for edge in self._repository.edges_to(person_id):
+            if edge.kind is EdgeKind.MENTIONS and edge.is_current:
+                item = get_item(self._repository, edge.source)
+                if item is not None:
+                    out.append((item, edge.provenance.evidence))
+        return out
 
     def _summarize(self, person: Person) -> PersonSummary:
         comments = comments_by(self._repository, person.id)
@@ -91,6 +108,7 @@ class PeopleDirectory:
             profile_url=person.profile.url if person.profile else None,
             messages=len(comments),
             articles=len(posts),
+            mentioned=len(mentioned_in(self._repository, person.id)),
         )
 
     def _conversations(self, person_id: NodeId) -> list[Conversation]:

@@ -44,12 +44,14 @@ from postloom.application.use_cases.relations import (
     item_of_post,
     items_discussed_by,
     list_items,
+    mentioned_in,
     post_of,
 )
 from postloom.application.use_cases.search_content import article_for, passage_kind
 from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, thread_texts
-from postloom.domain.graph import NodeId
+from postloom.domain.entities import CATEGORY_NAMES, PERSON, Category
+from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.people import Person
 from postloom.domain.text import mentions, plain_letters, significant_terms, term_coverage
 
@@ -257,6 +259,9 @@ class AskQuestion:
         lines.append(
             f"Activity: {len(written)} messages on {len(discussed)} articles and posts ({on})"
         )
+        cited = mentioned_in(self._repository, person.id)
+        if cited:
+            lines.append(f"You mention them in: {'; '.join(i.title for i in cited)}")
         return "\n".join(lines)
 
     # -- the whole library ------------------------------------------------------------
@@ -310,6 +315,52 @@ class AskQuestion:
                 for a in parts
             ]
             items.append((None, one.name, "Series", "\n".join(lines), "series", None))
+        items += self._mention_items(asked)
+        return items
+
+    def _mention_items(self, asked: str) -> list[_Item]:
+        """Organisations, places, events and the like that the question names or asks for
+        as a group ("which companies did I mention?"), as the author confirmed them."""
+        repo = self._repository
+        entities = list(repo.list_entities())
+        items: list[_Item] = []
+        named = [e for e in entities if any(mentions(asked, n) for n in e.names())]
+        for entity in named[:MAX_NAMED]:
+            where: list[str] = []
+            for edge in repo.edges_to(entity.id):
+                item = get_item(repo, edge.source) if edge.is_current else None
+                if edge.kind is EdgeKind.MENTIONS and item is not None:
+                    said = f': "{edge.provenance.evidence}"' if edge.provenance.evidence else ""
+                    where.append(f"- {_article_line(item)}{said}")
+            lines = [f"{CATEGORY_NAMES[entity.category]}: {entity.name}"]
+            if entity.aliases:
+                lines.append(f"Also called: {', '.join(entity.aliases)}")
+            if entity.url:
+                lines.append(f"Link: {entity.url}")
+            lines.append(f"Mentioned in {len(where)} articles and posts:")
+            lines += where
+            items.append((None, entity.name, "Mentioned", "\n".join(lines), "mentions", None))
+
+        for category, words in _CATEGORY_WORDS.items():
+            if not any(mentions(asked, w) for w in words):
+                continue
+            if category == PERSON:
+                people = [p for p in repo.list_people() if mentioned_in(repo, p.id)]
+                rows = [(p.name, mentioned_in(repo, p.id)) for p in people]
+                label = "People you mention"
+            else:
+                group = [e for e in entities if e.category == category]
+                rows = [(e.name, mentioned_in(repo, e.id)) for e in group]
+                label = f"{CATEGORY_NAMES[Category(category)]} entries you mention"
+            rows = [(name, where) for name, where in rows if where]
+            if not rows:
+                continue
+            rows.sort(key=lambda row: -len(row[1]))
+            lines = [f"{label} ({len(rows)}):"]
+            lines += [
+                f"- {name}: in {'; '.join(i.title for i in where[:5])}" for name, where in rows
+            ]
+            items.append((None, label, "Mentioned", "\n".join(lines), "mentions", None))
         return items
 
     def _passages(self, question: str, previous: str | None) -> list[ChunkHit]:
@@ -396,6 +447,25 @@ def _named_people(asked: str, people: list[Person]) -> list[Person]:
         if len(bearers) == 1 and bearers[0] not in found and mentions(asked, first):
             found.append(bearers[0])
     return found
+
+
+_CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
+    PERSON: (
+        "mention", "mentioned", "thank", "thanked", "tag", "tagged", "credit", "credited",
+        "collaborators", "collaborated",
+    ),
+    "organisation": (
+        "organisation", "organisations", "organization", "organizations", "company",
+        "companies", "university", "universities", "institute", "institutes", "lab", "labs",
+    ),
+    "place": ("place", "places", "city", "cities", "country", "countries"),
+    "event": ("event", "events", "conference", "conferences", "hackathon", "hackathons"),
+    "project": ("project", "projects", "product", "products", "tool", "tools"),
+    "dataset": ("dataset", "datasets"),
+    "method": ("method", "methods", "technique", "techniques"),
+    "link": ("link", "links", "website", "websites"),
+}  # fmt: skip
+"""Words that ask about a whole category of mentioned things."""
 
 
 def _article_line(article: Article | Post) -> str:
