@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from postloom.adapters.llm.providers import ProviderSpec
+from postloom.application.ports.reviews import Review
 from postloom.application.use_cases import (
     Answer,
     ArticleDetail,
@@ -30,8 +31,10 @@ from postloom.application.use_cases import (
     SyncReport,
     TopicUsage,
 )
+from postloom.application.use_cases.mentions import EntityDetail
 from postloom.application.use_cases.usage import UsageSummary
-from postloom.domain.content import Post
+from postloom.domain.content import Article, Post
+from postloom.domain.entities import Entity
 
 Json = dict[str, Any]
 
@@ -175,6 +178,40 @@ class PostUpdate(_Request):
     published_on: date | None = None
 
 
+class MentionsFind(_Request):
+    id: str = Field(min_length=1, max_length=300)
+
+
+class MentionChoice(_Request):
+    name: str = Field(min_length=1, max_length=300)
+    category: str = Field(min_length=1, max_length=40)
+    evidence: str = Field(default="", max_length=2000)
+    url: str | None = Field(default=None, max_length=2000)
+    match: str | None = Field(default=None, max_length=300)
+    found_as: str | None = Field(default=None, max_length=300)
+
+
+class MentionsConfirm(_Request):
+    id: str = Field(min_length=1, max_length=300)
+    accept: list[MentionChoice] = Field(default_factory=list[MentionChoice], max_length=300)
+    dismiss: list[str] = Field(default_factory=list[str], max_length=300)
+    topics: list[str] = Field(default_factory=list[str], max_length=10)
+
+
+class EntityUpdate(_Request):
+    """Only the fields that are sent change; a null url clears it."""
+
+    id: str = Field(min_length=1, max_length=300)
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    category: str | None = Field(default=None, max_length=40)
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class EntityMerge(_Request):
+    id: str = Field(min_length=1, max_length=300)
+    into: str = Field(min_length=1, max_length=300)
+
+
 class HistoryMessage(_Request):
     role: Literal["user", "assistant"]
     text: str = Field(max_length=20_000)
@@ -226,6 +263,7 @@ def person_summary(p: PersonSummary) -> Json:
         "profile_url": p.profile_url,
         "messages": p.messages,
         "articles": p.articles,
+        "mentioned": p.mentioned,
     }
 
 
@@ -249,6 +287,9 @@ def person_detail(detail: PersonDetail) -> Json:
                 "messages": [comment_view(m) for m in c.messages],
             }
             for c in detail.conversations
+        ],
+        "mentioned_in": [
+            {**item_ref(item), "evidence": evidence} for item, evidence in detail.mentioned_in
         ],
     }
 
@@ -552,4 +593,57 @@ def answer(result: Answer) -> Json:
             }
             for s in result.sources
         ],
+    }
+
+
+# -- mentions ------------------------------------------------------------------------
+def review(found: Review | None) -> Json | None:
+    if found is None:
+        return None
+    return {
+        "item": found.item,
+        "finder": found.finder,
+        "found_at": found.found_at.isoformat(),
+        "suggestions": [
+            {
+                "name": s.name,
+                "category": s.category,
+                "evidence": s.evidence,
+                "url": s.url,
+                "match": s.match,
+                "match_name": s.match_name,
+                "match_note": s.match_note,
+            }
+            for s in found.suggestions
+        ],
+        "topics": [{"name": t.name, "exists": t.exists} for t in found.topics],
+    }
+
+
+def item_ref(item: Article | Post) -> Json:
+    return {
+        "id": item.id,
+        "title": item.title,
+        "kind": "post" if isinstance(item, Post) else "article",
+        "published_on": item.published_on.isoformat() if item.published_on else None,
+    }
+
+
+def entity(found: Entity, count: int | None = None) -> Json:
+    data: Json = {
+        "id": found.id,
+        "name": found.name,
+        "category": found.category.value,
+        "url": found.url,
+        "aliases": list(found.aliases),
+    }
+    if count is not None:
+        data["count"] = count
+    return data
+
+
+def entity_detail(detail: EntityDetail) -> Json:
+    return {
+        **entity(detail.entity, len(detail.mentions)),
+        "mentions": [{**item_ref(m.item), "evidence": m.evidence} for m in detail.mentions],
     }

@@ -33,6 +33,7 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+from postloom.application.ports.extraction import FoundMention, FoundMentions
 from postloom.bootstrap import Container, build_container
 from postloom.interfaces.web.app import create_app
 from postloom.settings import Settings
@@ -40,6 +41,7 @@ from tests.fakes import (
     FakeChat,
     FakeEmbedder,
     FakeExtractor,
+    FakeMentionFinder,
     FakeThreadParser,
     part3_extraction,
 )
@@ -76,6 +78,21 @@ def home(tmp_path: Path) -> Path:
     return tmp_path
 
 
+MENTIONS = FoundMentions(
+    mentions=(
+        FoundMention(name="Robin Sample", category="person"),
+        FoundMention(name="Example Labs", category="organisation"),
+        FoundMention(name="Example Hackathon 2026", category="event"),
+        FoundMention(name="Invented Org", category="organisation"),  # not in the text
+    ),
+    new_topics=("Time Series",),
+)
+POST_TEXT = (
+    "Hot take\n\nWe built it at Example Hackathon 2026 with Robin Sample. "
+    "Thanks to Example Labs! Code: https://github.com/example/wavelens #ECG"
+)
+
+
 @pytest.fixture
 def app_url(home: Path) -> Iterator[str]:
     def make(settings: Settings) -> Container:
@@ -86,6 +103,7 @@ def app_url(home: Path) -> Iterator[str]:
             embedder=FakeEmbedder(),
             chat=FakeChat(reply=ANSWER),
             thread_parser=FakeThreadParser(),
+            mention_finder=FakeMentionFinder(MENTIONS),
         )
 
     app = create_app(lambda: replace(Settings.load(home), min_similarity=0.0), make)
@@ -383,3 +401,44 @@ def test_a_local_model_is_downloaded_and_chosen_without_a_terminal(
     config = read_config(home)
     assert config["provider"] == "ollama"
     assert set(config["models"]["ollama"].values()) == {"qwen3.5:4b"}
+
+
+def test_found_mentions_are_reviewed_then_shown_and_edited(page: Page, home: Path) -> None:
+    visit(page, "#/add/post")
+    page.fill("#text", POST_TEXT)
+    page.get_by_role("button", name="Add post").click()
+    expect(page.locator("#add-result")).to_contain_text("Found 5 things to review")
+    page.get_by_role("link", name="Open the post").click()
+
+    review = page.locator(".review")
+    expect(review).to_contain_text("Found in this post")
+    expect(review).not_to_contain_text("Invented Org")
+    expect(review.locator(".review-group h4")).to_have_text(
+        ["People", "Organisations", "Events", "Links", "Topics"]
+    )
+    event = review.locator(".review-row", has=page.locator("input[value='Example Hackathon 2026']"))
+    event.get_by_role("checkbox").uncheck()  # not wanted
+    lab = review.locator(".review-row", has=page.locator("input[value='Example Labs']"))
+    lab.get_by_role("textbox").fill("Example Research Labs")
+    review.get_by_role("checkbox", name="Add the topic Time Series").check()
+    review.get_by_role("button", name="Add 4 to your graph").click()
+
+    mentions = page.locator(".mentions")
+    expect(mentions.locator(".mention-chips a")).to_have_text(
+        ["Robin Sample", "Example Research Labs", "github.com/example/wavelens"]
+    )
+    expect(page.locator(".review")).to_have_count(0)
+    expect(page.locator(".reader .tags")).to_contain_text("Time Series")
+    assert note(home, "mentions/example-research-labs.md").is_file()
+
+    mentions.get_by_role("link", name="Example Research Labs").click()
+    expect(page.locator("h1")).to_have_text("Example Research Labs")
+    expect(page.locator(".eyebrow")).to_have_text("Organisation")
+    page.fill("#entity_name", "Example Labs")
+    page.get_by_role("button", name="Save").click()
+    expect(page.locator(".hint").first).to_contain_text("Also known as: Example Research Labs")
+
+    visit(page, "#/mentions")
+    expect(page.locator(".mention-group h2")).to_have_text(["Organisations (1)", "Links (1)"])
+    visit(page, "#/graph")
+    expect(page.locator(".node-entity")).to_have_count(2)

@@ -5,7 +5,12 @@ from __future__ import annotations
 from postloom.adapters.llm import prompts
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.structured import structured
-from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest, PostTopics
+from postloom.application.ports.extraction import (
+    ExtractedContent,
+    ExtractionRequest,
+    FoundMentions,
+    PostTopics,
+)
 from postloom.application.ports.thread_parser import ParsedThread
 from postloom.application.ports.usage import Task
 
@@ -13,6 +18,8 @@ EXTRACTION_MAX_OUTPUT = 32_000
 """A long article restored as Markdown is ~10k tokens; leave room for big ones."""
 THREADS_MAX_OUTPUT = 16_000
 POST_TOPICS_MAX_OUTPUT = 1_024
+MENTIONS_MAX_OUTPUT = 8_192
+"""Room for an article that names many things, and for a model that thinks first."""
 
 
 class LlmContentExtractor:
@@ -62,6 +69,31 @@ class LlmPostClassifier:
             temperature=0.0,
             max_output_tokens=POST_TOPICS_MAX_OUTPUT,
             failure="The model couldn't choose topics for this post.",
+        )
+
+
+class LlmMentionFinder:
+    def __init__(self, gateway: LlmGateway, model: str) -> None:
+        self._gateway = gateway
+        self._model = model
+
+    @property
+    def name(self) -> str:
+        return f"llm:{self._model}"
+
+    def find(self, text: str, topics: tuple[str, ...], owner_name: str | None) -> FoundMentions:
+        return structured(
+            self._gateway,
+            Task.EXTRACTION,
+            self._model,
+            FoundMentions,
+            system=prompts.MENTIONS_SYSTEM,
+            prompt=prompts.mentions_prompt(text, topics, owner_name),
+            schema=prompts.mentions_schema(topics),
+            schema_name="mentions",
+            temperature=0.0,
+            max_output_tokens=MENTIONS_MAX_OUTPUT,
+            failure="The model couldn't read the names in this text.",
         )
 
 

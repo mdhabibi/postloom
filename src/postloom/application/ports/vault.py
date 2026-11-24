@@ -14,6 +14,7 @@ from typing import Protocol
 
 from postloom.domain.content import Article, Post, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Entity
 from postloom.domain.graph import NodeId
 from postloom.domain.people import Person
 
@@ -58,12 +59,20 @@ class VaultSnapshot:
     posts: tuple[PostNote, ...] = ()
     comments: tuple[Comment, ...] = ()
     people: tuple[Person, ...] = ()
+    entities: tuple[Entity, ...] = ()
     problems: tuple[NoteProblem, ...] = ()
     """Notes that look like postloom's but can't be read (e.g. broken frontmatter)."""
 
     @property
     def is_empty(self) -> bool:
-        return not (self.topics or self.articles or self.posts or self.comments or self.people)
+        return not (
+            self.topics
+            or self.articles
+            or self.posts
+            or self.comments
+            or self.people
+            or self.entities
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +142,18 @@ class Vault(Protocol):
         """
         ...
 
-    def write_person(self, person: Person, items: Sequence[Article | Post]) -> Path:
+    def write_entity(self, entity: Entity, mentioned_in: Sequence[Article | Post]) -> Path:
+        """The note of something the user's writing mentions, with where it is mentioned."""
+        ...
+
+    def remove_entity(self, entity: Entity) -> None: ...
+
+    def write_person(
+        self,
+        person: Person,
+        items: Sequence[Article | Post],
+        mentioned_in: Sequence[Article | Post] = (),
+    ) -> Path:
         """Write (or overwrite) a person's note, linking the articles and posts they
         discussed."""
         ...

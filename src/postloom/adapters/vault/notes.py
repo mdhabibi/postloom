@@ -10,9 +10,9 @@ from typing import Any, cast
 
 import yaml
 
-FOLDERS = ("articles", "posts", "topics", "people", "discussions")
+FOLDERS = ("articles", "posts", "topics", "people", "discussions", "mentions")
 """Where postloom keeps its notes. Anything else in the vault belongs to the user."""
-TYPES = frozenset({"article", "post", "topic", "person", "discussion"})
+TYPES = frozenset({"article", "post", "topic", "person", "discussion", "entity"})
 DATA_DIR = ".postloom"
 """Hidden from Obsidian: the edge journal, the format marker and the trash."""
 

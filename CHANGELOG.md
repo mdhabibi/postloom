@@ -24,6 +24,13 @@ data is stored; postloom upgrades your data folder itself when it starts.
 - Request bodies without a declared length weren't size-limited.
 
 ### Added
+- Mentions: after adding a post or an article, postloom proposes the people,
+  organisations, places, events, projects, datasets, methods and links it names, plus
+  topics (including new ones). You review them with the sentence that names each, and
+  only what you confirm enters the graph. Mentions show on the post, on the new
+  Mentions page, on people's pages, in the graph and in chat; entries can be renamed,
+  recategorised, merged, removed from a post or deleted. Names not in the text, and
+  your own name, are never suggested. Each entry has a note in `vault/mentions/`.
 - One-line installers for macOS, Linux and Windows. They need nothing installed first,
   add a Postloom icon (Launchpad, Start menu and desktop, applications menu), open the
   app, update when run again and uninstall without touching your data.

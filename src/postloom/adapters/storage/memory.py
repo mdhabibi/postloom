@@ -12,6 +12,7 @@ from typing import Any
 from postloom.application.ports.repository import GraphContents
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Entity
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.people import Person
 
@@ -24,6 +25,7 @@ class InMemoryGraphRepository:
         self._posts: dict[NodeId, Post] = {}
         self._comments: dict[NodeId, Comment] = {}
         self._people: dict[NodeId, Person] = {}
+        self._entities: dict[NodeId, Entity] = {}
         self._live: dict[tuple[NodeId, NodeId, EdgeKind], Edge] = {}
         self._history: list[Edge] = []
 
@@ -76,6 +78,15 @@ class InMemoryGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return list(self._people.values())
 
+    def get_entity(self, entity_id: NodeId) -> Entity | None:
+        return self._entities.get(entity_id)
+
+    def save_entity(self, entity: Entity) -> None:
+        self._entities[entity.id] = entity
+
+    def list_entities(self) -> Sequence[Entity]:
+        return list(self._entities.values())
+
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:
@@ -123,6 +134,7 @@ class InMemoryGraphRepository:
             self._posts,
             self._comments,
             self._people,
+            self._entities,
         )
 
     def replace_graph(self, contents: GraphContents) -> None:
@@ -132,6 +144,7 @@ class InMemoryGraphRepository:
         self._posts = {p.id: p for p in contents.posts}
         self._comments = {c.id: c for c in contents.comments}
         self._people = {p.id: p for p in contents.people}
+        self._entities = {e.id: e for e in contents.entities}
         self._live, self._history = {}, []
         for edge in contents.edges:
             if edge.superseded_at is None:

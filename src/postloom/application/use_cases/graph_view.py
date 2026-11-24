@@ -27,10 +27,12 @@ DISCUSSED = "discussed"
 class GraphNode:
     id: NodeId
     kind: str
-    """"topic", "series", "article", "post" or "person"."""
+    """"topic", "series", "article", "post", "person", or what a mentioned thing is
+    ("organisation", "place", "event", "project", "dataset", "method", "link", "other")."""
     label: str
     weight: int
-    """Topics and series: articles; articles: messages; people: messages."""
+    """Topics and series: articles; articles: messages; people: messages and mentions;
+    mentioned things: the articles and posts that mention them."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,7 @@ class GraphOverview:
         links: list[GraphLink] = []
         series: dict[NodeId, str] = {}
         per_group: Counter[NodeId] = Counter()
+        mentioned: Counter[NodeId] = Counter()
 
         for article in articles.values():
             if not isinstance(article, Post) and article.series is not None:
@@ -73,6 +76,9 @@ class GraphOverview:
                 elif edge.kind is EdgeKind.RELATED_TO and edge.target in articles:
                     link = GraphLink(article.id, edge.target, edge.kind.value, grade, edge.weight)
                     links.append(link)  # stored once per pair, so never duplicated here
+                elif edge.kind is EdgeKind.MENTIONS:
+                    links.append(GraphLink(article.id, edge.target, edge.kind.value, grade))
+                    mentioned[edge.target] += 1
 
         messages_on: Counter[NodeId] = Counter()
         people: list[GraphNode] = []
@@ -84,9 +90,10 @@ class GraphOverview:
                 article = item_of_post(repo, comment.post)
                 if article is not None and article.id in articles:
                     discussed[article.id] += 1
-            if not discussed:
+            if not discussed and not mentioned[person.id]:
                 continue
-            people.append(GraphNode(person.id, "person", person.name, sum(discussed.values())))
+            weight = sum(discussed.values()) + mentioned[person.id]
+            people.append(GraphNode(person.id, "person", person.name, weight))
             for article_id, count in discussed.items():
                 messages_on[article_id] += count
                 links.append(GraphLink(person.id, article_id, DISCUSSED, Grade.VERIFIED, count))
@@ -100,6 +107,11 @@ class GraphOverview:
             *(GraphNode(sid, "series", name, per_group[sid]) for sid, name in series.items()),
             *(GraphNode(a.id, _kind(a), a.title, messages_on[a.id]) for a in articles.values()),
             *people,
+            *(
+                GraphNode(e.id, e.category.value, e.name, mentioned[e.id])
+                for e in repo.list_entities()
+                if mentioned[e.id]
+            ),
         ]
         return GraphData(tuple(nodes), tuple(links))
 

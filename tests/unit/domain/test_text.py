@@ -278,3 +278,16 @@ def test_fancy_hashtags_names_and_questions_match() -> None:
         )
         == 1.0
     )
+
+
+def test_sentences_do_not_break_after_titles_or_initials() -> None:
+    from postloom.domain.text import sentence_with, sentences
+
+    text = "Built with Dr. Ana Example and J. Sample. Thanks to all!\nCode: example.org"
+    assert sentences(text) == [
+        "Built with Dr. Ana Example and J. Sample.",
+        "Thanks to all!",
+        "Code: example.org",
+    ]
+    assert sentence_with(text, "Ana Example") == "Built with Dr. Ana Example and J. Sample."
+    assert sentence_with(text, "Nobody") == ""

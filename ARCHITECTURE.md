@@ -49,7 +49,7 @@ everything would make the project harder to contribute to.
 
 ## Data model
 
-Node kinds: `topic`, `series`, `article`, `post`, `comment`, `person`.
+Node kinds: `topic`, `series`, `article`, `post`, `comment`, `person`, `entity`.
 
 | Edge | From -> to | Origin |
 |---|---|---|
@@ -61,6 +61,7 @@ Node kinds: `topic`, `series`, `article`, `post`, `comment`, `person`.
 | `authored` | person -> comment | structural |
 | `related_to` | article -> article | semantic similarity, asserted |
 | `links_to` | article / post -> article | structural |
+| `mentions` | article / post -> person / entity | manual: only what the user confirmed, verified |
 
 The schema is enforced in `domain/graph.py`: an edge connecting the wrong node kinds cannot
 be constructed.
@@ -70,7 +71,23 @@ own, its comments shown under the article) or stands alone. A stand-alone post i
 of the library like an article: it has topics, a page, a note in `vault/posts/` with a
 `topics` list, comments, search and chat. `relations.py` (`list_items`, `get_item`,
 `item_of_post`, `discussion_post`) is the one place that decides which is which, so the
-use cases handle both without special cases. A stand-alone post is matched again by its
+use cases handle both without special cases.
+
+An **entity** is something the writing mentions: an organisation, place, event, project
+or product, dataset, method or link (people are `person` nodes, so a person you thank and
+a person who comments can be the same node). Its id comes from a `key` that never
+changes, so renaming it or changing its category keeps every link; old names become
+aliases. Mentions are found in two steps, and nothing enters the graph in between:
+
+1. `FindMentions` proposes. Links are parsed; a model (`MentionFinder` port) proposes the
+   rest, and a name is kept only if it appears in the text (deterministic check), is not
+   the author, and wasn't already confirmed or turned down for that item. Each proposal
+   is matched to what the graph has. The proposal waits as a `Review` in the index: a
+   cache that can always be found again, so it is not in the vault.
+2. `ConfirmMentions` adds what the user ticked, possibly renamed or recategorised, as
+   verified `mentions` links whose provenance keeps the sentence that names it. Removing
+   a mention later rejects the link, which is also what keeps it from being suggested
+   again. Entities have notes in `vault/mentions/` and are read back on a rebuild. A stand-alone post is matched again by its
 link, then by its text, never by its title (its first line), and a post already saved as
 an announcement is refused, so nothing is stored twice.
 
@@ -434,6 +451,7 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-11-16 | Keyword search matches two-character pieces for scripts written without spaces | FTS5's tokenizer splits on spaces, so Chinese, Japanese and Thai text was one "word" and could not be found. Pieces are the standard dictionary-free approach. |
 | 2026-11-16 | Comments are marked as material, not instructions, in prompts | Pasted comments are written by other people and reach the model; postloom has no tools, so the risk is a misleading draft, which this reduces. |
 | 2026-11-15 | postloom sets each model's thinking level instead of using the default | A real `doctor` run showed Gemini 3.8 Flash taking 43-172s for a one-word answer at its default level; defaults vary per model and release, and thinking eats into the output limit. |
+| 2026-11-24 | Mentions enter the graph only after the user confirms them | A model reading names is the most hallucination-prone step in postloom. Proposals are checked against the text, shown with the sentence that names them, and confirmed by the author, who can rename, recategorise, merge and remove them later without losing links. |
 | 2026-11-24 | Install with uv through one-line scripts, not a packaged app (yet) | uv brings its own Python and needs no admin rights, so one pasted line works for non-developers on every OS. Packaged .dmg/.exe apps show security warnings unless signed, which costs yearly fees; that can come later. |
 | 2026-11-24 | The desktop icon runs `postloom open`, which starts a background server once | Two servers on one data folder would write the same database and vault. A short-lived launcher also keeps working when clicked again, where a long-running macOS app would only be re-focused. |
 | 2026-11-16 | Stand-alone posts are items of their own, without a model if need be | Most creators write many more posts than articles. A post is saved and searchable without a model (topics are chosen by a cheap call when one is connected, and a failed call still saves the post), so the main thing people have works on day one. |

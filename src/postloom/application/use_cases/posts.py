@@ -33,9 +33,11 @@ from postloom.application.use_cases.relations import (
     article_of_post,
     current_topics,
     get_item,
+    mention_edges,
     set_topics,
     standalone_posts,
     write_discussion_note,
+    write_mentioned_notes,
     write_person_note,
 )
 from postloom.domain.content import Post, Topic
@@ -228,11 +230,13 @@ class DeletePost:
         post = _post(repo, post_id)
         comments = list(repo.comments_on(post.id))
         authors = list(dict.fromkeys(c.author for c in comments if not c.is_own))
+        mentioned = [e.target for e in mention_edges(repo, post.id)]
         repo.erase_nodes([post.id, *(c.id for c in comments)])
         self._index.remove(post.id)
         self._vault.remove_post(post)
         for author in authors:
             write_person_note(repo, self._vault, author)
+        write_mentioned_notes(repo, self._vault, mentioned)
         return post
 
 

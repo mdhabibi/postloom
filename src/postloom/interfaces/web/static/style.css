@@ -654,6 +654,7 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .key-topic { background: var(--dye-3); }
 .key-article { background: var(--bg); border: 2px solid var(--text); }
 .key-post { background: var(--bg); border: 2px dashed var(--text-soft); }
+.key-entity { background: var(--muted); border-radius: 2px; transform: rotate(45deg) scale(0.8); }
 .key-person { width: 0.95rem; height: 0.95rem; fill: var(--muted); }
 .key-person .person-hit { fill: none; }
 .key-linked, .key-suggested { width: 1.4rem; height: 0; border-radius: 0; border-top: 2px solid var(--accent); }
@@ -676,6 +677,15 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .node { stroke: var(--surface); stroke-width: 2; transition: opacity 150ms var(--ease); }
 .node-article { fill: var(--bg); stroke: var(--text); stroke-width: 2; }
 .node-post { fill: var(--bg); stroke: var(--text-soft); stroke-width: 2; stroke-dasharray: 3 2; }
+.node-entity { fill: var(--muted); stroke: var(--bg); stroke-width: 1.5; }
+.node-entity.node-organisation { fill: #5b8def; }
+.node-entity.node-place { fill: #3fa37a; }
+.node-entity.node-event { fill: #d9894a; }
+.node-entity.node-project { fill: #9b6dd6; }
+.node-entity.node-dataset { fill: #c9a227; }
+.node-entity.node-method { fill: #4bb3c4; }
+.node-entity.node-link { fill: #8a93a6; }
+.edge-mentions { stroke: var(--line-strong, var(--line)); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.8; }
 .node-series { fill: var(--text-soft); }
 .node-person { fill: var(--text-soft); stroke: none; }
 .node-person .person-hit { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
@@ -858,3 +868,29 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 [dir="auto"] { text-align: start; }
 .language-choice { border: 0; padding: 0; margin: 1rem 0 0; }
 .language-choice legend { padding: 0; margin-bottom: 0.4rem; font-weight: 500; font-size: var(--ui); }
+
+/* mentions: found, reviewed and confirmed */
+.mentions { margin-top: 2rem; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.mention-group h3, .mention-group h2 { font-size: var(--ui); color: var(--text-soft); margin: 1rem 0 0.4rem; }
+.mention-chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.mention-chips li { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem 0.3rem 0.2rem 0.7rem; border: 1px solid var(--line); border-radius: 999px; font-size: var(--ui); }
+.mention-chips a { color: var(--text); text-decoration: none; }
+.mention-chips a:hover { text-decoration: underline; }
+.mention-chips .count { color: var(--muted); padding-inline-end: 0.4rem; }
+.chip-remove { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0.3rem; border-radius: 999px; }
+.chip-remove:hover { color: var(--text); background: var(--hover); }
+.review { margin: 1rem 0; padding: 1rem; border: 1px solid var(--accent); border-radius: var(--r); background: var(--panel, transparent); }
+.review h3 { margin: 0 0 0.25rem; font-size: var(--ui-md); }
+.review-group h4 { margin: 1rem 0 0.4rem; font-size: var(--ui); color: var(--text-soft); }
+.review-group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+.review-row { padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.review-row.off { opacity: 0.55; }
+.review-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.review-main input[type="text"], .review-main select { font-size: var(--ui); padding: 0.35rem 0.55rem; width: auto; }
+.review-main input[type="text"] { flex: 1 1 10rem; min-width: 0; }
+.review-main select { flex: 0 1 11rem; min-width: 0; }
+.editor select, .page select { padding: 0.55rem 0.7rem; }
+.review-match { display: block; margin-top: 0.35rem; font-size: var(--ui); }
+.review-evidence { margin: 0.4rem 0 0; padding-inline-start: 0.7rem; border-inline-start: 2px solid var(--line); color: var(--text-soft); font-size: var(--ui); }
+.mention-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; }

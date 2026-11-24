@@ -512,3 +512,35 @@ def test_a_library_in_other_scripts_round_trips(tmp_path: Path) -> None:
     assert {p.id for p in snapshot.people} == {ali.id, maryam.id, wang.id}
     assert sorted(snapshot.comments, key=lambda c: c.position) == comments
     assert (tmp_path / "articles" / f"{article.slug}.md").exists()
+
+
+def test_entity_notes_are_read_back_and_edits_to_them_kept(tmp_path: Path) -> None:
+    from postloom.domain.entities import Category, Entity
+
+    vault = written(tmp_path)
+    lab = Entity(
+        "example-lab", "Example Lab", Category.ORGANISATION, "https://example.org", ("ExLab",)
+    )
+    path = vault.write_entity(lab, [ARTICLE, STANDALONE])
+    vault.write_person(JANE, [ARTICLE], mentioned_in=[STANDALONE])
+    vault.mark_synced()
+    text = path.read_text(encoding="utf-8")
+    assert path == tmp_path / "mentions" / "example-lab.md"
+    assert "category: organisation" in text and "*Organisation*" in text
+    snapshot = MarkdownVault(tmp_path).read()
+    assert snapshot.problems == ()
+    assert snapshot.entities == (lab,)
+    assert JANE in snapshot.people
+
+    path.write_text(
+        text.replace("name: Example Lab", "name: Example Research Lab").replace(
+            "category: organisation", "category: project"
+        ),
+        encoding="utf-8",
+    )
+    (edited,) = MarkdownVault(tmp_path).read().entities
+    assert (edited.id, edited.name, edited.category) == (lab.id, "Example Research Lab", "project")
+
+    path.write_text(text.replace("category: organisation", "category: spaceship"), "utf-8")
+    problem = MarkdownVault(tmp_path).read().problems[0]
+    assert problem.path == "mentions/example-lab.md" and "category" in problem.reason

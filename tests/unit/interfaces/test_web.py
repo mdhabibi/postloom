@@ -983,3 +983,99 @@ def test_quit_is_offered_only_when_postloom_can_stop_itself(tmp_path: Path) -> N
     client = client_for(tmp_path)
     assert client.get("/api/status").json["can_quit"] is False
     assert client.post("/api/quit", json_body={}).status == 400
+
+
+MENTIONING = (
+    "Hackathon recap\n\nBuilt with Robin Sample at Example Hackathon 2026. "
+    "Thanks to Example Labs! Code: https://github.com/example/wavelens #ECG"
+)
+
+
+THANKS = "Thanks to Example Labs!"
+
+
+def test_mentions_are_found_reviewed_confirmed_and_managed(tmp_path: Path) -> None:
+    found: dict[str, object] = {
+        "mentions": [
+            {"name": "Robin Sample", "category": "person", "evidence": ""},
+            {
+                "name": "Example Labs",
+                "category": "organisation",
+                "evidence": "Thanks to Example Labs!",
+            },
+            {"name": "Made Up Inc", "category": "organisation", "evidence": ""},
+        ],
+        "topics": [],
+        "new_topics": ["Time Series"],
+    }
+    backend = FakeBackend(json_replies={"mentions": found, "post_topics": {"topics": []}})
+    client = client_for(tmp_path, backend=backend)
+    post = client.post("/api/posts", json_body={"text": MENTIONING}).json["id"]
+    empty = client.get(f"/api/mentions?id={post}").json
+    assert empty == {"mentions": [], "review": None, "can_find": True}
+
+    review = client.post("/api/mentions/find", json_body={"id": post}).json
+    names = [(s["name"], s["category"]) for s in review["suggestions"]]
+    assert names == [
+        ("Robin Sample", "person"),
+        ("Example Labs", "organisation"),
+        ("github.com/example/wavelens", "link"),
+    ]
+    assert review["topics"] == [{"name": "Time Series", "exists": False}]
+    assert client.get(f"/api/mentions?id={post}").json["review"] == review
+    assert client.get("/api/entities").json["pending"][0]["id"] == post
+
+    body = {
+        "id": post,
+        "accept": [
+            {"name": "Example Labs", "category": "organisation", "evidence": THANKS},
+            {"name": "github.com/example/wavelens", "category": "link",
+             "url": "https://github.com/example/wavelens"},
+        ],
+        "dismiss": ["Robin Sample"],
+        "topics": ["Time Series"],
+    }  # fmt: skip
+    done = client.post("/api/mentions/confirm", json_body=body)
+    assert done.status == 200, done.text
+    assert done.json["topics"] == ["Time Series"] and done.json["review"]["suggestions"] == []
+    mentions = client.get(f"/api/mentions?id={post}").json["mentions"]
+    assert {(m["name"], m["category"]) for m in mentions} == {
+        ("Example Labs", "organisation"),
+        ("github.com/example/wavelens", "link"),
+    }
+    lab = next(m["target"] for m in mentions if m["category"] == "organisation")
+
+    listing = client.get("/api/entities").json
+    assert listing["pending"] == []
+    assert {(e["name"], e["count"]) for e in listing["entities"]} == {
+        ("Example Labs", 1),
+        ("github.com/example/wavelens", 1),
+    }
+    renamed = client.put("/api/entity", json_body={"id": lab, "name": "Example Research Labs"})
+    assert renamed.json["aliases"] == ["Example Labs"]
+    assert renamed.json["mentions"][0]["evidence"] == "Thanks to Example Labs!"
+    bad = client.put("/api/entity", json_body={"id": lab, "url": "javascript:alert(1)"})
+    assert bad.status == 400
+    link = next(e["id"] for e in listing["entities"] if e["category"] == "link")
+    merged = client.post("/api/entity/merge", json_body={"id": link, "into": lab}).json
+    assert "github.com/example/wavelens" in merged["aliases"]
+
+    removed = client.delete(f"/api/mention?item={post}&target={lab}")
+    assert removed.status == 200
+    assert client.get(f"/api/mentions?id={post}").json["mentions"] == []
+    assert client.delete(f"/api/entity?id={lab}").json["name"] == "Example Research Labs"
+    assert client.get("/api/entities").json["entities"] == []
+    assert client.get(f"/api/entity?id={lab}").status == 400
+
+
+def test_confirming_refuses_bad_input(tmp_path: Path) -> None:
+    client = client_for(tmp_path, providers=False)
+    post = client.post("/api/posts", json_body={"text": MENTIONING}).json["id"]
+    links_only = client.post("/api/mentions/find", json_body={"id": post}).json
+    assert links_only["finder"] is None
+    assert [s["category"] for s in links_only["suggestions"]] == ["link"]
+    bad = {"id": post, "accept": [{"name": "X", "category": "spaceship"}]}
+    assert client.post("/api/mentions/confirm", json_body=bad).status == 400
+    sneaky = {"id": post, "accept": [{"name": "X", "category": "link", "url": "javascript:x"}]}
+    assert client.post("/api/mentions/confirm", json_body=sneaky).status == 400
+    assert client.post("/api/mentions/find", json_body={"id": "post:nope"}).status == 400

@@ -351,6 +351,41 @@ def mentions(text: str, phrase: str) -> bool:
     return f" {wanted} " in f" {' '.join(_WORD.findall(plain_letters(text).casefold()))} "
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
+_ABBREVIATIONS = frozenset(
+    [
+        *("dr.", "prof.", "mr.", "mrs.", "ms.", "st.", "vs.", "e.g.", "i.e.", "etc."),
+        *("inc.", "ltd.", "co.", "no.", "fig.", "al.", "jr.", "sr."),
+    ]
+)
+
+
+def sentences(text: str) -> list[str]:
+    """Split text into sentences and lines, without breaking after "Dr." or "J."."""
+    out: list[str] = []
+    for line in text.splitlines():
+        pending = ""
+        for part in _SENTENCE_END.split(line):
+            pending = f"{pending} {part}" if pending else part
+            last = pending.rsplit(None, 1)[-1] if pending.strip() else ""
+            if last.casefold() in _ABBREVIATIONS or re.fullmatch(r"[A-Z]\.", last):
+                continue
+            out.append(pending)
+            pending = ""
+        if pending:
+            out.append(pending)
+    return [s for s in out if s.strip()]
+
+
+def sentence_with(text: str, phrase: str, limit: int = 300) -> str:
+    """The first sentence or line of ``text`` that mentions ``phrase`` ("" if none)."""
+    for sentence in sentences(text):
+        if mentions(sentence, phrase):
+            sentence = " ".join(sentence.split())
+            return sentence if len(sentence) <= limit else sentence[: limit - 3] + "..."
+    return ""
+
+
 def looks_english(text: str) -> bool:
     """A cheap guess, good enough to warn about an English-only search model: mostly Latin
     letters, and English's small words ("the", "and", "of"...) are common."""

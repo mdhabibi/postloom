@@ -63,11 +63,13 @@ from postloom.application.use_cases import (
     IngestPostCommand,
     SyncReport,
 )
+from postloom.application.use_cases.mentions import Accepted, mentions_of
+from postloom.application.use_cases.relations import get_item
 from postloom.bootstrap import Container, Settings
 from postloom.config import read_config
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId
-from postloom.domain.text import canonical_url
+from postloom.domain.text import canonical_url, web_url
 from postloom.interfaces.desktop import ollama
 from postloom.interfaces.web import schemas
 from postloom.settings import MODEL_TASKS, save_settings
@@ -475,6 +477,99 @@ def create_app(
         post = state.container.delete_post().execute(NodeId(_id(request)))
         return JSONResponse({"deleted": post.id, "title": post.title})
 
+    def mentions_get(request: Request) -> Response:
+        container = state.container
+        item = NodeId(_id(request))
+        if get_item(container.repository, item) is None:
+            raise ApplicationError(f"Unknown article or post: {item}")
+        confirmed = [
+            {
+                "target": edge.target,
+                "name": name,
+                "category": category,
+                "evidence": edge.provenance.evidence,
+            }
+            for edge, name, category in mentions_of(container.repository, item)
+        ]
+        return JSONResponse(
+            {
+                "mentions": confirmed,
+                "review": schemas.review(container.reviews.get(item)),
+                "can_find": container.mention_finder is not None,
+            }
+        )
+
+    def mentions_find(request: Request, body: schemas.MentionsFind) -> Response:
+        owner = state.settings.owner_name or None
+        found = state.container.find_mentions().execute(NodeId(body.id), owner)
+        return JSONResponse(schemas.review(found))
+
+    def mentions_confirm(request: Request, body: schemas.MentionsConfirm) -> Response:
+        accepted = [
+            Accepted(
+                name=c.name,
+                category=c.category,
+                evidence=c.evidence,
+                url=web_url(c.url) if c.url else None,
+                match=NodeId(c.match) if c.match else None,
+                found_as=c.found_as,
+            )
+            for c in body.accept
+        ]
+        done = state.container.confirm_mentions().execute(
+            NodeId(body.id), accepted, body.dismiss, body.topics
+        )
+        return JSONResponse(
+            {
+                "added": list(done.added),
+                "topics": list(done.topics),
+                "review": schemas.review(done.review),
+            }
+        )
+
+    def mention_remove(request: Request) -> Response:
+        item = request.query_params.get("item", "")
+        target = request.query_params.get("target", "")
+        if not item or not target:
+            raise ApplicationError("Missing item or target.")
+        state.container.entities().remove_mention(NodeId(item), NodeId(target))
+        return JSONResponse({"removed": target})
+
+    def entities_list(request: Request) -> Response:
+        manage = state.container.entities()
+        return JSONResponse(
+            {
+                "entities": [schemas.entity(s.entity, s.count) for s in manage.summaries()],
+                "pending": [
+                    {**schemas.item_ref(p.item), "count": len(p.review.suggestions)}
+                    for p in manage.pending()
+                ],
+            }
+        )
+
+    def entity_get(request: Request) -> Response:
+        detail = state.container.entities().get(NodeId(_id(request)))
+        return JSONResponse(schemas.entity_detail(detail))
+
+    def entity_update(request: Request, body: schemas.EntityUpdate) -> Response:
+        sent = body.model_fields_set
+        manage = state.container.entities()
+        manage.update(
+            NodeId(body.id),
+            name=body.name,
+            category=body.category,
+            url=body.url if "url" in sent else UNSET,
+        )
+        return JSONResponse(schemas.entity_detail(manage.get(NodeId(body.id))))
+
+    def entity_merge(request: Request, body: schemas.EntityMerge) -> Response:
+        merged = state.container.entities().merge(NodeId(body.id), NodeId(body.into))
+        return JSONResponse(schemas.entity(merged))
+
+    def entity_delete(request: Request) -> Response:
+        gone = state.container.entities().delete(NodeId(_id(request)))
+        return JSONResponse({"deleted": gone.id, "name": gone.name})
+
     def search(request: Request) -> Response:
         query = request.query_params.get("q", "")
         limit = min(max(int(request.query_params.get("limit", "10") or 10), 1), 50)
@@ -645,6 +740,19 @@ def create_app(
         Route("/api/posts", api(ingest_post, schemas.PostIngestRequest), methods=["POST"]),
         Route("/api/post", api(update_post, schemas.PostUpdate), methods=["PUT"]),
         Route("/api/post", api(delete_post), methods=["DELETE"]),
+        Route("/api/mentions", api(mentions_get)),
+        Route("/api/mentions/find", api(mentions_find, schemas.MentionsFind), methods=["POST"]),
+        Route(
+            "/api/mentions/confirm",
+            api(mentions_confirm, schemas.MentionsConfirm),
+            methods=["POST"],
+        ),
+        Route("/api/mention", api(mention_remove), methods=["DELETE"]),
+        Route("/api/entities", api(entities_list)),
+        Route("/api/entity", api(entity_get)),
+        Route("/api/entity", api(entity_update, schemas.EntityUpdate), methods=["PUT"]),
+        Route("/api/entity", api(entity_delete), methods=["DELETE"]),
+        Route("/api/entity/merge", api(entity_merge, schemas.EntityMerge), methods=["POST"]),
         Route("/api/search", api(search)),
         Route("/api/ask", api(ask, schemas.AskRequest), methods=["POST"]),
         Route(

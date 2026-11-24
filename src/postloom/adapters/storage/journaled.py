@@ -12,6 +12,7 @@ from postloom.application.ports.journal import EdgeJournal
 from postloom.application.ports.repository import GraphContents, GraphRepository
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Entity
 from postloom.domain.graph import Edge, NodeId
 from postloom.domain.people import Person
 
@@ -57,6 +58,15 @@ class JournaledRepository:
 
     def get_post(self, post_id: NodeId) -> Post | None:
         return self._inner.get_post(post_id)
+
+    def get_entity(self, entity_id: NodeId) -> Entity | None:
+        return self._inner.get_entity(entity_id)
+
+    def save_entity(self, entity: Entity) -> None:
+        self._inner.save_entity(entity)
+
+    def list_entities(self) -> Sequence[Entity]:
+        return self._inner.list_entities()
 
     def save_post(self, post: Post) -> None:
         self._inner.save_post(post)
