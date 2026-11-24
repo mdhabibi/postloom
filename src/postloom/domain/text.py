@@ -130,13 +130,75 @@ def web_url(raw: str | None) -> str | None:
     return text
 
 
+_SMALL_CAPITALS = dict(
+    zip(
+        "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡʏᴢ",
+        "abcdefghijklmnopqrstuvwyz",
+        strict=True,
+    )
+)
+_DECORATIONS = frozenset("\u0305\u0332\u0333\u0334\u0335\u0336\u0337\u0338\u20e5")
+"""Combining marks fancy-text tools add to every letter: underline, overline, strike-through."""
+_INVISIBLE = frozenset("\u00ad\u200b\u2060\ufeff")
+"""Soft hyphen, zero-width space, word joiner, byte-order mark. (The zero-width non-joiner
+is kept: Persian writing needs it.)"""
+_LOOK_ALIKE_RANGES = (
+    (0x1D400, 0x1D7FF),  # mathematical bold, italic, script, fraktur, double-struck, mono...
+    (0xFF10, 0xFF5A),  # fullwidth digits and letters
+    (0x2100, 0x214F),  # letterlike symbols: double-struck R, H, C, script g, l ...
+    (0x1D2C, 0x1D6A),  # superscript and subscript letters
+    (0x1D9B, 0x1DBF),
+    (0x02B0, 0x02B8),
+    (0x2070, 0x209C),
+)
+_ENCLOSED_RANGES = (
+    (0x249C, 0x24E9),  # parenthesized and circled letters
+    (0x1F110, 0x1F149),  # parenthesized and squared capitals
+)
+
+
+def plain_letters(text: str) -> str:
+    """The same text with "fancy" letters made ordinary, for search and matching.
+
+    LinkedIn has no bold or italic, so creators paste look-alike characters from text
+    converters: mathematical bold, italic, script and double-struck letters, small
+    capitals, circled and squared letters, fullwidth letters, letters with a combining
+    strike-through or underline. They read as words but match nothing typed on a keyboard.
+    Ordinary text in any language comes back unchanged, character for character, so this
+    is safe to apply anywhere text is compared; what is stored and shown keeps the
+    author's characters.
+    """
+    if text.isascii():
+        return text
+    out: list[str] = []
+    for char in text:
+        code = ord(char)
+        if char in _DECORATIONS or char in _INVISIBLE:
+            continue
+        if char in _SMALL_CAPITALS:
+            out.append(_SMALL_CAPITALS[char])
+        elif 0x1F150 <= code <= 0x1F169:  # negative circled capitals
+            out.append(chr(ord("A") + code - 0x1F150))
+        elif 0x1F170 <= code <= 0x1F189:  # negative squared capitals
+            out.append(chr(ord("A") + code - 0x1F170))
+        elif any(low <= code <= high for low, high in _ENCLOSED_RANGES):
+            out.append(unicodedata.normalize("NFKC", char).strip("()"))
+        elif any(low <= code <= high for low, high in _LOOK_ALIKE_RANGES) and (
+            unicodedata.category(char)[0] in "LN"
+        ):
+            out.append(unicodedata.normalize("NFKC", char))
+        else:
+            out.append(char)
+    return "".join(out)
+
+
 def extract_hashtags(text: str) -> list[str]:
     """Return hashtags in order of first appearance, without '#' and without duplicates.
 
     Matching is case-insensitive for de-duplication; the first spelling seen is kept.
     """
     seen: dict[str, str] = {}
-    for match in _HASHTAG.finditer(text):
+    for match in _HASHTAG.finditer(plain_letters(text)):
         tag = match.group(1)
         seen.setdefault(tag.lower(), tag)
     return list(seen.values())
@@ -192,7 +254,7 @@ SHINGLE_WORDS = 4
 
 def shingles(text: str, size: int = SHINGLE_WORDS) -> frozenset[str]:
     """Every run of ``size`` consecutive words, ignoring case, punctuation and Markdown."""
-    words = _WORD.findall(plain_text(text).casefold())
+    words = _WORD.findall(plain_text(plain_letters(text)).casefold())
     if len(words) <= size:
         return frozenset({" ".join(words)}) if words else frozenset()
     return frozenset(" ".join(words[i : i + size]) for i in range(len(words) - size + 1))
@@ -246,6 +308,7 @@ def significant_terms(query: str) -> list[str]:
     """The words of a question that carry its meaning: no stopwords, no 1-2 letter words
     (unless the question has nothing else). Text in unspaced scripts (Chinese, Japanese,
     Thai...) contributes its two-character pieces instead."""
+    query = plain_letters(query)
     spaced = _UNSPACED.sub(" ", query.casefold())
     words = list(dict.fromkeys(_WORD.findall(spaced)))
     kept = [w for w in words if w not in STOPWORDS and len(w) > 2]
@@ -274,7 +337,7 @@ def term_coverage(terms: Sequence[str], text: str) -> float:
     unspaced script, anywhere in it."""
     if not terms:
         return 0.0
-    folded = text.casefold()
+    folded = plain_letters(text).casefold()
     present = set(_WORD.findall(folded))
     found = sum(1 for t in terms if (t in folded if _UNSPACED.match(t) else t in present))
     return found / len(terms)
@@ -282,10 +345,10 @@ def term_coverage(terms: Sequence[str], text: str) -> float:
 
 def mentions(text: str, phrase: str) -> bool:
     """True when ``phrase`` appears in ``text`` as whole words, ignoring case."""
-    wanted = " ".join(_WORD.findall(phrase.casefold()))
+    wanted = " ".join(_WORD.findall(plain_letters(phrase).casefold()))
     if not wanted:
         return False
-    return f" {wanted} " in f" {' '.join(_WORD.findall(text.casefold()))} "
+    return f" {wanted} " in f" {' '.join(_WORD.findall(plain_letters(text).casefold()))} "
 
 
 def looks_english(text: str) -> bool:

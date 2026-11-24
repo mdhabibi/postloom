@@ -8,6 +8,10 @@ data is stored; postloom upgrades your data folder itself when it starts.
 ## [Unreleased]
 
 ### Fixed
+- Words written with LinkedIn "fancy text" converters (bold, italic, script, double-struck,
+  monospace, small capitals, circled, fullwidth, struck-through) are found by search and
+  chat, matched as hashtags and names, and read correctly by the model. Posts keep the
+  letters exactly as written; the same post from another converter is recognised.
 - An edited note could make postloom write a Markdown file outside the vault. Ids from
   notes are now validated and such a note is reported as unreadable.
 - Commenters whose names are written in Persian, Arabic, Chinese, Cyrillic, Hindi and

@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 
 from postloom.domain.graph import NodeId
+from postloom.domain.text import plain_letters
 
 DEFAULT_MAX_CHARS = 3000
 _HEADING = re.compile(r"^(#{2,3})\s+(.*\S)\s*$")
@@ -31,7 +32,9 @@ class Chunk:
 
     @property
     def content_hash(self) -> str:
-        payload = "\x1f".join((self.title, self.heading, self.text))
+        # Over the searchable form: identical for ordinary text, so only chunks written in
+        # fancy letters get new vectors (from text an embedding model can read).
+        payload = plain_letters("\x1f".join((self.title, self.heading, self.text)))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

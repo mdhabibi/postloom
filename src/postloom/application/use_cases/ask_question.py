@@ -51,7 +51,7 @@ from postloom.domain.content import Article, Post
 from postloom.domain.discussion import OWNER, thread_texts
 from postloom.domain.graph import NodeId
 from postloom.domain.people import Person
-from postloom.domain.text import mentions, significant_terms, term_coverage
+from postloom.domain.text import mentions, plain_letters, significant_terms, term_coverage
 
 MAX_SOURCES = 8
 MAX_CONTEXT_CHARS = 40_000
@@ -325,7 +325,7 @@ class AskQuestion:
         for query in queries:
             if self._embedder is not None:
                 try:
-                    vector = self._embedder.embed_query(query)
+                    vector = self._embedder.embed_query(plain_letters(query))
                 except ProviderError:
                     vector = None  # keyword evidence below still applies
                 if vector is not None:
@@ -433,7 +433,8 @@ def _fit(sources: list[Source]) -> list[Source]:
 
 
 def _question_message(question: str, sources: Sequence[Source]) -> ChatMessage:
-    blocks = [f"[{s.number}] {s.title} | {s.section}\n{s.text}" for s in sources]
+    # Fancy letters cost the model several tokens each and are read less reliably.
+    blocks = [plain_letters(f"[{s.number}] {s.title} | {s.section}\n{s.text}") for s in sources]
     text = "Sources:\n\n" + "\n\n---\n\n".join(blocks) + f"\n\nQuestion: {question}"
     return ChatMessage(Role.USER, text)
 

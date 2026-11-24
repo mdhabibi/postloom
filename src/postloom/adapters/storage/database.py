@@ -17,6 +17,8 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
+from postloom.domain.text import plain_letters
+
 MEMORY = ":memory:"
 
 MIGRATIONS: tuple[str, ...] = (
@@ -96,6 +98,13 @@ MIGRATIONS: tuple[str, ...] = (
         size     INTEGER NOT NULL
     );
     """,
+    # 6: index words written in fancy look-alike letters as ordinary words.
+    """
+    DELETE FROM chunks_fts;
+    INSERT INTO chunks_fts (rowid, title, heading, text)
+        SELECT id, plain_letters(title), plain_letters(heading), plain_letters(text)
+        FROM chunks;
+    """,
 )
 
 
@@ -107,6 +116,7 @@ class SqliteDatabase:
         self.lock = threading.RLock()
         self.connection = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self.connection.row_factory = sqlite3.Row
+        self.connection.create_function("plain_letters", 1, plain_letters, deterministic=True)
         self.connection.execute("PRAGMA foreign_keys = ON")
         if not self.is_memory:
             self.connection.execute("PRAGMA journal_mode = WAL")
