@@ -2,7 +2,8 @@
 
 The installers run ``postloom shortcut`` once. It creates, for the current user only:
 
-- macOS: ``~/Applications/Postloom.app`` (Launchpad, Spotlight, the Dock);
+- macOS: ``/Applications/Postloom.app`` (Launchpad, Spotlight, Finder's Applications), or
+  ``~/Applications/Postloom.app`` when this user may not write ``/Applications``;
 - Windows: ``Postloom`` in the Start menu and on the desktop;
 - Linux: ``postloom.desktop`` in the applications menu.
 
@@ -40,6 +41,8 @@ class Shortcuts:
     system: str  # platform.system(): "Darwin", "Windows" or "Linux"
     user_home: Path
     python: Path
+    system_apps: Path = Path("/Applications")
+    """Where Finder's Applications folder is; the icon goes there when this user may write it."""
     """The interpreter of the installed postloom; on Windows the one without a window."""
 
     @classmethod
@@ -62,7 +65,10 @@ class Shortcuts:
         removed: list[Path] = []
         if self.system == "Windows":
             return self._windows_links(None, remove=True)
-        for path in self._paths():
+        paths = self._paths()
+        if self.system == "Darwin":  # it may be in either Applications folder
+            paths = [self.system_apps / f"{APP_NAME}.app", *self._user_apps()]
+        for path in paths:
             if path.is_dir():
                 shutil.rmtree(path)
                 removed.append(path)
@@ -74,15 +80,23 @@ class Shortcuts:
     # -- macOS -----------------------------------------------------------------------------
     def _paths(self) -> list[Path]:
         if self.system == "Darwin":
-            return [self.user_home / "Applications" / f"{APP_NAME}.app"]
+            if os.access(self.system_apps, os.W_OK):
+                return [self.system_apps / f"{APP_NAME}.app"]
+            return self._user_apps()
         share = self.user_home / ".local" / "share"
         return [
             share / "applications" / "postloom.desktop",
             share / "icons" / "hicolor" / "512x512" / "apps" / "postloom.png",
         ]
 
+    def _user_apps(self) -> list[Path]:
+        return [self.user_home / "Applications" / f"{APP_NAME}.app"]
+
     def _mac_app(self, home: Path) -> Path:
         app = self._paths()[0]
+        for old in self._user_apps():  # earlier installs put it here
+            if old != app and old.is_dir():
+                shutil.rmtree(old)
         contents = app / "Contents"
         (contents / "MacOS").mkdir(parents=True, exist_ok=True)
         (contents / "Resources").mkdir(parents=True, exist_ok=True)
@@ -276,7 +290,7 @@ def blocked_message(folder: Path, log: Path) -> str:
             f"macOS doesn't let Postloom read {folder}. This happens when your data is on "
             "another drive, or in Documents, Desktop or Downloads.\n\n"
             "In System Settings, open Privacy & Security, then Full Disk Access. Click +, "
-            "open your home folder, then Applications, choose Postloom and turn it on. "
+            "choose Postloom in Applications and turn it on. "
             f"Then open Postloom again.\n\nDetails: {log}"
         )
     return f"Postloom isn't allowed to read {folder}. Check that folder's permissions.\n\n{log}"

@@ -17,7 +17,8 @@ UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
 POSTLOOM="$("$UV" tool dir --bin)/postloom"
 
 if [ "$(uname)" = Darwin ]; then
-    ICON="$HOME/Applications/Postloom.app"
+    ICON="/Applications/Postloom.app"
+    [ -d "$ICON" ] || ICON="$HOME/Applications/Postloom.app"
     plutil -lint "$ICON/Contents/Info.plist"
     test -s "$ICON/Contents/Resources/postloom.icns"
     LAUNCH="$ICON/Contents/MacOS/Postloom"

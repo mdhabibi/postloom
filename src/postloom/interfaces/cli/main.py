@@ -605,7 +605,7 @@ def _shortcut(args: argparse.Namespace, settings: Settings) -> int:
     for path in changed:
         print(f"Added {path}")
     where = {
-        "Darwin": "in Launchpad, Spotlight and ~/Applications",
+        "Darwin": "in Launchpad, Spotlight and Applications",
         "Windows": "in the Start menu and on your desktop",
     }.get(shortcuts.system, "in your applications menu")
     print(f"Open postloom any time from the Postloom icon {where}.")

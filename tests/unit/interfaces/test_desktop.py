@@ -21,7 +21,8 @@ OTHER_SYSTEMS = pytest.mark.skipif(
 
 @OTHER_SYSTEMS
 def test_the_mac_app_runs_postloom_open_for_the_data_folder(tmp_path: Path) -> None:
-    shortcuts = Shortcuts("Darwin", tmp_path, PYTHON)
+    # No usable system Applications folder: the user's own one is used.
+    shortcuts = Shortcuts("Darwin", tmp_path, PYTHON, system_apps=tmp_path / "missing")
     [app] = shortcuts.create(HOME)
     assert app == tmp_path / "Applications" / "Postloom.app"
     with (app / "Contents" / "Info.plist").open("rb") as file:
@@ -103,3 +104,15 @@ def test_on_a_mac_the_browser_is_opened_with_open(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(subprocess, "run", run)
     assert shortcuts.open_in_browser("http://127.0.0.1:8767/")
     assert ran == [["open", "http://127.0.0.1:8767/"]]
+
+
+@OTHER_SYSTEMS
+def test_the_mac_app_goes_to_finders_applications_when_allowed(tmp_path: Path) -> None:
+    system_apps = tmp_path / "Applications (system)"
+    system_apps.mkdir()
+    older = tmp_path / "Applications" / "Postloom.app"
+    older.mkdir(parents=True)  # where an earlier install put it
+    shortcuts = Shortcuts("Darwin", tmp_path, PYTHON, system_apps=system_apps)
+    assert shortcuts.create(HOME) == [system_apps / "Postloom.app"]
+    assert not older.exists()
+    assert shortcuts.remove() == [system_apps / "Postloom.app"]
