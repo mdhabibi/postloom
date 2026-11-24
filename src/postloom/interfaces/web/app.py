@@ -830,7 +830,11 @@ def _json(
 
     def run(request: Request, args: list[Any]) -> Response:
         with state.request():
-            if reads_vault and request.method not in ("GET", "HEAD"):
+            if request.method in ("GET", "HEAD"):
+                # A screen only reads: answer it from the library snapshot.
+                with state.container.reading():
+                    return handler(*args)
+            if reads_vault:
                 state.sync_if_changed()
             return handler(*args)
 
