@@ -42,6 +42,9 @@ class DefaultModels:
     """Empty when the provider has no embeddings (postloom then embeds locally)."""
     chat_fallbacks: tuple[str, ...] = ()
     """Tried in order when the chat model is overloaded."""
+    reading_fallbacks: tuple[str, ...] = ()
+    """Tried in order when the model that reads articles, posts, comments and mentions
+    is overloaded (a busy small model is common on free tiers)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +83,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
                 reply="gemini-3.8-flash",
                 embedding="gemini-embedding-2",
                 chat_fallbacks=("gemini-3.5-flash-lite",),
+                reading_fallbacks=("gemini-3.8-flash",),
             ),
             key_envs=("GEMINI_API_KEY", "GOOGLE_API_KEY"),
             key_url="https://aistudio.google.com/apikey",
@@ -125,6 +129,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
                 reply="google/gemini-3.8-flash",
                 embedding="openai/text-embedding-3-small",
                 chat_fallbacks=("google/gemini-3.5-flash-lite",),
+                reading_fallbacks=("google/gemini-3.8-flash",),
             ),
             key_envs=("OPENROUTER_API_KEY",),
             key_url="https://openrouter.ai/keys",

@@ -460,3 +460,35 @@ def test_retries_are_logged_so_a_slow_answer_can_be_explained(
         "Gemini answered HTTP 503 (This model is experiencing high demand.); retrying in 2s"
     )
     assert sleeps.seconds == [2.0]
+
+
+def json_text_reply(data: dict[str, Any]) -> HttpResponse:
+    return text_reply(json.dumps(data))
+
+
+def test_a_busy_reading_model_falls_back_to_the_next_one() -> None:
+    from postloom.adapters.llm.content import LlmMentionFinder
+
+    found = {"mentions": [{"name": "Example Labs", "category": "organisation", "evidence": ""}],
+             "topics": [], "new_topics": []}  # fmt: skip
+    transport = FakeTransport([busy(), busy(), busy(), json_text_reply(found)])
+    gateway, _ = metered(GeminiBackend("k", transport=transport, sleep=Sleeps()))
+    finder = LlmMentionFinder(gateway, "lite", ("flash",))
+    result = finder.find("Thanks to Example Labs.", (), None)
+    assert result.mentions[0].name == "Example Labs"
+    assert [c.url.rsplit("/", 1)[1] for c in transport.calls] == [
+        "lite:generateContent",
+        "lite:generateContent",
+        "lite:generateContent",
+        "flash:generateContent",
+    ]
+
+
+def test_all_reading_models_busy_gives_one_clear_error() -> None:
+    from postloom.adapters.llm.content import LlmMentionFinder
+
+    gateway, _ = metered(
+        GeminiBackend("k", transport=FakeTransport([busy() for _ in range(6)]), sleep=Sleeps())
+    )
+    with pytest.raises(ProviderUnavailableError, match=r"\(lite, flash\)"):
+        LlmMentionFinder(gateway, "lite", ("flash",)).find("text", (), None)
