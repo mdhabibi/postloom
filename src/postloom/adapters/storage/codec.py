@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Category, Entity
 from postloom.domain.graph import NodeId
 from postloom.domain.people import Person, ProfileObservation, ProfileUrl
 
@@ -41,6 +42,27 @@ def topic_to_json(topic: Topic) -> Json:
 
 def topic_from_json(data: Json) -> Topic:
     return Topic(name=data["name"], description=data.get("description", ""))
+
+
+# -- entities ------------------------------------------------------------------
+def entity_to_json(entity: Entity) -> Json:
+    return {
+        "key": entity.key,
+        "name": entity.name,
+        "category": entity.category.value,
+        "url": entity.url,
+        "aliases": list(entity.aliases),
+    }
+
+
+def entity_from_json(data: Json) -> Entity:
+    return Entity(
+        key=data["key"],
+        name=data["name"],
+        category=Category(data["category"]),
+        url=data.get("url"),
+        aliases=tuple(data.get("aliases", ())),
+    )
 
 
 # -- series --------------------------------------------------------------------

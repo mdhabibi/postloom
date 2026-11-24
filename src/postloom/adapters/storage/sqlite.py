@@ -19,6 +19,7 @@ from postloom.adapters.storage.database import MEMORY, MIGRATIONS, SqliteDatabas
 from postloom.application.ports.repository import GraphContents
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Entity
 from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind
 from postloom.domain.people import Person
 from postloom.domain.provenance import Grade, Origin, Provenance
@@ -126,6 +127,16 @@ class SqliteGraphRepository:
     def list_people(self) -> Sequence[Person]:
         return [codec.person_from_json(d) for d in self._all(NodeKind.PERSON)]
 
+    def get_entity(self, entity_id: NodeId) -> Entity | None:
+        data = self._get(entity_id)
+        return codec.entity_from_json(data) if data else None
+
+    def save_entity(self, entity: Entity) -> None:
+        self._put(entity.id, NodeKind.ENTITY, codec.entity_to_json(entity))
+
+    def list_entities(self) -> Sequence[Entity]:
+        return [codec.entity_from_json(d) for d in self._all(NodeKind.ENTITY)]
+
     # -- edges ------------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:
         if edge.superseded_at is not None:
@@ -170,6 +181,7 @@ class SqliteGraphRepository:
             *((p.id, NodeKind.POST, codec.post_to_json(p)) for p in contents.posts),
             *((c.id, NodeKind.COMMENT, codec.comment_to_json(c)) for c in contents.comments),
             *((p.id, NodeKind.PERSON, codec.person_to_json(p)) for p in contents.people),
+            *((e.id, NodeKind.ENTITY, codec.entity_to_json(e)) for e in contents.entities),
         ]
         with self._transaction() as db:
             db.execute("DELETE FROM nodes")

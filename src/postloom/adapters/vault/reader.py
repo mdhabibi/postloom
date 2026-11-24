@@ -37,6 +37,7 @@ from postloom.application.ports.vault import (
 )
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import OWNER, Comment
+from postloom.domain.entities import Category, Entity
 from postloom.domain.errors import DomainError
 from postloom.domain.graph import NodeId, NodeKind, node_id
 from postloom.domain.people import Person, ProfileObservation, ProfileUrl
@@ -70,6 +71,7 @@ class _Reader:
         self._topics: dict[NodeId, Topic] = {}
         self._topic_by_file: dict[str, NodeId] = {}
         self._people: dict[NodeId, Person] = {}
+        self._entities: dict[NodeId, Entity] = {}
         self._person_alias: dict[str, NodeId] = {}
         """The id written in a note -> the person's id now (it changes when someone adds
         a profile link to the note)."""
@@ -98,6 +100,9 @@ class _Reader:
         for path, meta, body in notes["person"]:
             with self._reporting(path):
                 self._person(path, meta, body)
+        for path, meta, _ in notes["entity"]:
+            with self._reporting(path):
+                self._entity(meta)
         articles: list[ArticleNote] = []
         for path, meta, body in notes["article"]:
             with self._reporting(path):
@@ -119,6 +124,7 @@ class _Reader:
             posts=tuple(posts),
             comments=tuple(comments),
             people=tuple(self._people.values()),
+            entities=tuple(self._entities.values()),
             problems=tuple(self._problems),
         )
 
@@ -133,6 +139,23 @@ class _Reader:
 
     def _problem(self, path: Path, reason: str) -> None:
         self._problems.append(NoteProblem(path.relative_to(self._root).as_posix(), reason))
+
+    # -- what the writing mentions ---------------------------------------------------
+    def _entity(self, meta: Meta) -> None:
+        category = _text(meta, "category")
+        try:
+            kind = Category(category)
+        except ValueError as error:
+            choices = ", ".join(c.value for c in Category)
+            raise NoteError(f"`category` must be one of {choices}") from error
+        entity = Entity(
+            key=_key(meta, NodeKind.ENTITY),
+            name=_text(meta, "name"),
+            category=kind,
+            url=_text(meta, "url") or None,
+            aliases=tuple(_strings(meta, "aliases")),
+        )
+        self._entities[entity.id] = entity
 
     # -- topics -------------------------------------------------------------------
     def _topic(self, path: Path, meta: Meta, body: str) -> None:

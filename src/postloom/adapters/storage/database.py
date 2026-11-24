@@ -105,6 +105,14 @@ MIGRATIONS: tuple[str, ...] = (
         SELECT id, plain_letters(title), plain_letters(heading), plain_letters(text)
         FROM chunks;
     """,
+    # 7: mentions found in an article or post that wait for the user to confirm them.
+    """
+    CREATE TABLE IF NOT EXISTS mention_reviews (
+        item     TEXT PRIMARY KEY,
+        found_at TEXT NOT NULL,
+        data     TEXT NOT NULL
+    );
+    """,
 )
 
 

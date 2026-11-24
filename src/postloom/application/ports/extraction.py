@@ -7,7 +7,7 @@ use case; a malformed response fails loudly instead of corrupting the graph.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -80,3 +80,42 @@ class PostClassifier(Protocol):
     def name(self) -> str: ...
 
     def classify(self, post_text: str, allowed_topics: tuple[str, ...]) -> PostTopics: ...
+
+
+MentionCategory = Literal[
+    "person", "organisation", "place", "event", "project", "dataset", "method", "other"
+]
+
+
+class FoundMention(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="The name exactly as written, without titles like Dr.")
+    category: MentionCategory
+    evidence: str = Field(default="", description="The sentence that names it, copied.")
+
+
+class FoundMentions(BaseModel):
+    """What a model found named in an article or a post: a proposal for the user."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mentions: tuple[FoundMention, ...] = ()
+    topics: tuple[str, ...] = Field(
+        default=(), description="Up to three of the author's existing topics that fit."
+    )
+    new_topics: tuple[str, ...] = Field(
+        default=(), description="Up to three short new topic names when none of theirs fit."
+    )
+
+
+class MentionFinder(Protocol):
+    """Finds the people, organisations, places and other things a text names.
+
+    Only a proposal: postloom keeps a name only if it appears in the text, and nothing
+    enters the graph until the user confirms it."""
+
+    @property
+    def name(self) -> str: ...
+
+    def find(self, text: str, topics: tuple[str, ...], owner_name: str | None) -> FoundMentions: ...

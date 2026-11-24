@@ -21,6 +21,7 @@ class NodeKind(StrEnum):
     POST = "post"
     COMMENT = "comment"
     PERSON = "person"
+    ENTITY = "entity"
 
 
 def node_id(kind: NodeKind, key: str) -> NodeId:
@@ -41,6 +42,7 @@ class EdgeKind(StrEnum):
     AUTHORED = "authored"  # person -> comment
     RELATED_TO = "related_to"  # article -> article (semantic suggestion)
     LINKS_TO = "links_to"  # article | post -> article
+    MENTIONS = "mentions"  # article | post -> person | entity (only once the user confirms)
 
 
 _ALLOWED: dict[EdgeKind, tuple[frozenset[NodeKind], frozenset[NodeKind]]] = {
@@ -60,6 +62,10 @@ _ALLOWED: dict[EdgeKind, tuple[frozenset[NodeKind], frozenset[NodeKind]]] = {
     EdgeKind.LINKS_TO: (
         frozenset({NodeKind.ARTICLE, NodeKind.POST}),
         frozenset({NodeKind.ARTICLE}),
+    ),
+    EdgeKind.MENTIONS: (
+        frozenset({NodeKind.ARTICLE, NodeKind.POST}),
+        frozenset({NodeKind.PERSON, NodeKind.ENTITY}),
     ),
 }
 

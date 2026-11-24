@@ -21,7 +21,12 @@ from postloom.adapters.llm.base import (
 from postloom.adapters.llm.http import JsonObject
 from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
-from postloom.application.ports.extraction import ExtractedContent, ExtractionRequest, PostTopics
+from postloom.application.ports.extraction import (
+    ExtractedContent,
+    ExtractionRequest,
+    FoundMentions,
+    PostTopics,
+)
 from postloom.application.ports.thread_parser import ParsedMessage, ParsedThread
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -72,6 +77,24 @@ class FakePostClassifier:
     def classify(self, post_text: str, allowed_topics: tuple[str, ...]) -> PostTopics:
         self.requests.append(post_text)
         return PostTopics(topics=tuple(t for t in self.topics if t in allowed_topics))
+
+
+@dataclass
+class FakeMentionFinder:
+    """Proposes the given mentions for every text, and records what it was asked."""
+
+    found: FoundMentions = field(default_factory=FoundMentions)
+    requests: list[tuple[str, tuple[str, ...], str | None]] = field(
+        default_factory=list[tuple[str, tuple[str, ...], str | None]]
+    )
+
+    @property
+    def name(self) -> str:
+        return "llm:fake-mentions"
+
+    def find(self, text: str, topics: tuple[str, ...], owner_name: str | None) -> FoundMentions:
+        self.requests.append((text, topics, owner_name))
+        return self.found
 
 
 def part3_extraction(**overrides: object) -> ExtractedContent:

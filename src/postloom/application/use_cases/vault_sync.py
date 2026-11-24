@@ -44,6 +44,7 @@ from postloom.application.use_cases.relations import (
     current_topics,
     items_discussed_by,
     list_items,
+    mentioned_in,
     post_of,
     set_series,
     set_topics,
@@ -119,8 +120,13 @@ class ExportVault:
                 write_discussion_note(repo, vault, post, post)
                 keep.add(f"discussion:{post.key}")
         for person in repo.list_people():
-            vault.write_person(person, items_discussed_by(repo, person.id))
+            vault.write_person(
+                person, items_discussed_by(repo, person.id), mentioned_in(repo, person.id)
+            )
             keep.add(person.id)
+        for entity in repo.list_entities():
+            vault.write_entity(entity, mentioned_in(repo, entity.id))
+            keep.add(entity.id)
         return vault.prune(keep, protect)
 
 
@@ -210,6 +216,7 @@ class SyncVault:
             *(t.id for t in snapshot.topics),
             *(c.id for c in comments),
             *(p.id for p in snapshot.people),
+            *(e.id for e in snapshot.entities),
         }
 
         fact = Provenance(Origin.STRUCTURAL, Grade.VERIFIED, VAULT, now)
@@ -245,6 +252,7 @@ class SyncVault:
             posts=tuple(n.post for n in posts.values()),
             comments=tuple(comments),
             people=snapshot.people,
+            entities=snapshot.entities,
             edges=tuple(edges),
         )
 

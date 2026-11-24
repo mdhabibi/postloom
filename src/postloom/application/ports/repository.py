@@ -13,6 +13,7 @@ from typing import Protocol
 
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import Comment
+from postloom.domain.entities import Entity
 from postloom.domain.graph import Edge, NodeId
 from postloom.domain.people import Person
 
@@ -27,6 +28,7 @@ class GraphContents:
     posts: tuple[Post, ...] = ()
     comments: tuple[Comment, ...] = ()
     people: tuple[Person, ...] = ()
+    entities: tuple[Entity, ...] = ()
     edges: tuple[Edge, ...] = ()
     """Live edges and history, in the order they were recorded."""
 
@@ -68,6 +70,13 @@ class GraphRepository(Protocol):
     def save_person(self, person: Person) -> None: ...
 
     def list_people(self) -> Sequence[Person]: ...
+
+    # -- what the user's writing mentions ---------------------------------------
+    def get_entity(self, entity_id: NodeId) -> Entity | None: ...
+
+    def save_entity(self, entity: Entity) -> None: ...
+
+    def list_entities(self) -> Sequence[Entity]: ...
 
     # -- edges ----------------------------------------------------------------
     def save_edge(self, edge: Edge) -> None:

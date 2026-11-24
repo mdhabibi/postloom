@@ -50,6 +50,7 @@ from postloom.application.ports.vault import (
 )
 from postloom.domain.content import Article, Post, Topic
 from postloom.domain.discussion import Comment, conversation_depth, conversation_order
+from postloom.domain.entities import CATEGORY_NAMES, Entity
 from postloom.domain.graph import NodeId
 from postloom.domain.people import Person
 
@@ -199,7 +200,34 @@ class MarkdownVault:
         self._write(path, meta, "\n".join(lines))
         return path
 
-    def write_person(self, person: Person, items: Sequence[Article | Post]) -> Path:
+    def write_entity(self, entity: Entity, mentioned_in: Sequence[Article | Post]) -> Path:
+        path = self._entity_path(entity)
+        meta: Meta = {
+            "id": entity.id,
+            "type": "entity",
+            "name": entity.name,
+            "category": entity.category.value,
+            "url": entity.url,
+            "aliases": list(entity.aliases),
+            "mentioned_in": [_item_link(i) for i in mentioned_in],
+        }
+        lines = [f"# {entity.name}", "", f"*{CATEGORY_NAMES[entity.category]}*"]
+        if entity.url:
+            lines += ["", entity.url]
+        if entity.aliases:
+            lines += ["", "Also called: " + ", ".join(entity.aliases)]
+        self._write(path, meta, "\n".join(lines))
+        return path
+
+    def remove_entity(self, entity: Entity) -> None:
+        self._remove(self._entity_path(entity))
+
+    def write_person(
+        self,
+        person: Person,
+        items: Sequence[Article | Post],
+        mentioned_in: Sequence[Article | Post] = (),
+    ) -> Path:
         with self._lock:
             previous = self._people().get(person.id)
             path = self._person_path(person)
@@ -214,6 +242,7 @@ class MarkdownVault:
             "tags": list(person.tags),
             "articles": [_item_link(i) for i in items if isinstance(i, Article)],
             "posts": [_item_link(i) for i in items if isinstance(i, Post)],
+            "mentioned_in": [_item_link(i) for i in mentioned_in],
             "headlines": [
                 {
                     "headline": o.headline,
@@ -323,6 +352,9 @@ class MarkdownVault:
 
     def _discussion_path(self, post_key: str) -> Path:
         return self.root / "discussions" / f"{post_key}.md"
+
+    def _entity_path(self, entity: Entity) -> Path:
+        return self.root / "mentions" / f"{entity.key}.md"
 
     def _topic_path(self, topic: Topic) -> Path:
         return self.root / "topics" / f"{_topic_filename(topic)}.md"

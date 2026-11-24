@@ -6,16 +6,16 @@ so the two can never follow different rules.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 
 from postloom.application.ports.repository import GraphRepository
 from postloom.application.ports.vault import Vault
 from postloom.application.use_cases.links import related_edges, rewrite_article_note
 from postloom.domain.content import Article, Post, Topic
 from postloom.domain.discussion import Comment
-from postloom.domain.graph import Edge, EdgeKind, NodeId
+from postloom.domain.graph import Edge, EdgeKind, NodeId, NodeKind, kind_of
 from postloom.domain.provenance import Grade, Origin, Provenance
 
 __all__ = [
@@ -226,7 +226,44 @@ def write_discussion_note(
 def write_person_note(repository: GraphRepository, vault: Vault, person_id: NodeId) -> None:
     person = repository.get_person(person_id)
     if person is not None:
-        vault.write_person(person, items_discussed_by(repository, person_id))
+        vault.write_person(
+            person,
+            items_discussed_by(repository, person_id),
+            mentioned_in(repository, person_id),
+        )
+
+
+def mention_edges(repository: GraphRepository, item_id: NodeId) -> list[Edge]:
+    """What an article or post mentions, as the user confirmed it."""
+    return [e for e in repository.edges_from(item_id) if e.kind is EdgeKind.MENTIONS]
+
+
+def mentioned_in(repository: GraphRepository, target: NodeId) -> list[Item]:
+    """The articles and posts that mention a person or an entity, newest first."""
+    items = [
+        item
+        for edge in repository.edges_to(target)
+        if edge.kind is EdgeKind.MENTIONS
+        and (item := get_item(repository, edge.source)) is not None
+    ]
+    return sorted(items, key=lambda i: i.published_on or date.min, reverse=True)
+
+
+def write_entity_note(repository: GraphRepository, vault: Vault, entity_id: NodeId) -> None:
+    entity = repository.get_entity(entity_id)
+    if entity is not None:
+        vault.write_entity(entity, mentioned_in(repository, entity_id))
+
+
+def write_mentioned_notes(
+    repository: GraphRepository, vault: Vault, targets: Iterable[NodeId]
+) -> None:
+    """Rewrite the notes of these mentioned people and entities (their lists changed)."""
+    for target in dict.fromkeys(targets):
+        if kind_of(target) is NodeKind.ENTITY:
+            write_entity_note(repository, vault, target)
+        elif kind_of(target) is NodeKind.PERSON:
+            write_person_note(repository, vault, target)
 
 
 def write_mentions(repository: GraphRepository, vault: Vault, article: Article) -> None:
@@ -235,6 +272,9 @@ def write_mentions(repository: GraphRepository, vault: Vault, article: Article) 
     for edge in related_edges(repository, article.id):
         other = edge.target if edge.source == article.id else edge.source
         rewrite_article_note(repository, vault, other)
+    write_mentioned_notes(
+        repository, vault, (e.target for e in mention_edges(repository, article.id))
+    )
     post = post_of(repository, article.id)
     if post is None:
         return

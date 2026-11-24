@@ -8,14 +8,19 @@ thread parser, chat, reply drafts, embeddings) runs on it through one metered ga
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import TracebackType
 
 from postloom import how_to_run
 from postloom.adapters.clock import SystemClock
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.chat import LlmChat
-from postloom.adapters.llm.content import LlmContentExtractor, LlmPostClassifier, LlmThreadParser
+from postloom.adapters.llm.content import (
+    LlmContentExtractor,
+    LlmMentionFinder,
+    LlmPostClassifier,
+    LlmThreadParser,
+)
 from postloom.adapters.llm.embeddings import RemoteEmbeddings, vector_space
 from postloom.adapters.llm.gateway import LlmGateway
 from postloom.adapters.llm.local_embeddings import (
@@ -26,6 +31,7 @@ from postloom.adapters.llm.local_embeddings import (
 from postloom.adapters.llm.providers import PRICES, build_backend
 from postloom.adapters.storage.database import SqliteDatabase
 from postloom.adapters.storage.journaled import JournaledRepository
+from postloom.adapters.storage.reviews import InMemoryReviewStore, SqliteReviewStore
 from postloom.adapters.storage.search import SqliteSearchIndex
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.adapters.storage.stamps import SqliteNoteStamps
@@ -44,7 +50,8 @@ from postloom.application.ports import (
     UsageLedger,
     Vault,
 )
-from postloom.application.ports.extraction import PostClassifier
+from postloom.application.ports.extraction import MentionFinder, PostClassifier
+from postloom.application.ports.reviews import ReviewStore
 from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.ports.usage import Task
 from postloom.application.use_cases import (
@@ -73,6 +80,7 @@ from postloom.application.use_cases import (
     UpdateArticle,
     UpdatePerson,
 )
+from postloom.application.use_cases.mentions import ConfirmMentions, FindMentions
 from postloom.application.use_cases.posts import DeletePost, IngestPost, UpdatePost
 from postloom.application.use_cases.usage import BudgetPolicy, PriceBook, UsageReport
 from postloom.settings import Settings
@@ -118,6 +126,10 @@ class Container:
     """Model for reply drafts; falls back to ``chat``."""
     post_classifier: PostClassifier | None = None
     """Chooses a post's topics; without it posts are saved without topics."""
+    mention_finder: MentionFinder | None = None
+    """Proposes the people, organisations and more a text names; links need no model."""
+    reviews: ReviewStore = field(default_factory=InMemoryReviewStore)
+    """Found mentions waiting for the user to confirm them."""
     min_similarity: float = 0.0
     related_similarity: float = 0.75
     monthly_budget_usd: float | None = None
@@ -171,6 +183,12 @@ class Container:
             self.clock,
             english_only_search=self.english_only_search,
         )
+
+    def find_mentions(self) -> FindMentions:
+        return FindMentions(self.mention_finder, self.repository, self.reviews, self.clock)
+
+    def confirm_mentions(self) -> ConfirmMentions:
+        return ConfirmMentions(self.repository, self.vault, self.reviews, self.clock)
 
     def update_post(self) -> UpdatePost:
         return UpdatePost(self.repository, self.vault, self.clock)
@@ -298,6 +316,7 @@ def build_container(
     thread_parser: ThreadParser | None = None,
     reply_chat: ChatModel | None = None,
     post_classifier: PostClassifier | None = None,
+    mention_finder: MentionFinder | None = None,
     clock: Clock | None = None,
 ) -> Container:
     """Wire the app from settings. Anything passed explicitly wins (tests, embedding apps).
@@ -335,6 +354,7 @@ def build_container(
         post_classifier = post_classifier or LlmPostClassifier(
             gateway, settings.model("extraction")
         )
+        mention_finder = mention_finder or LlmMentionFinder(gateway, settings.model("extraction"))
         chat = chat or LlmChat(gateway, settings.model("chat"), fallbacks=fallbacks)
         reply_chat = reply_chat or LlmChat(
             gateway,
@@ -365,6 +385,8 @@ def build_container(
         thread_parser=thread_parser,
         reply_chat=reply_chat,
         post_classifier=post_classifier,
+        mention_finder=mention_finder,
+        reviews=SqliteReviewStore(database),
         min_similarity=cutoffs.search,
         related_similarity=cutoffs.related,
         monthly_budget_usd=settings.monthly_budget_usd,

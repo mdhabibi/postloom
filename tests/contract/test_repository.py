@@ -13,6 +13,7 @@ from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.application.ports.repository import GraphContents, GraphRepository
 from postloom.domain.content import Article, Post, Series, Topic
 from postloom.domain.discussion import OWNER, Comment
+from postloom.domain.entities import Category, Entity
 from postloom.domain.graph import Edge, EdgeKind, NodeId
 from postloom.domain.people import Person, ProfileUrl
 from postloom.domain.provenance import Grade, Origin, Provenance
@@ -46,6 +47,15 @@ POST = Post(
     hashtags=("RAG",),
     links=("https://lnkd.in/euyuNU9y",),
     banner_path="assets/part3.png",
+)
+
+
+LAB = Entity(
+    "example-lab",
+    "Example Lab",
+    Category.ORGANISATION,
+    url="https://example.org",
+    aliases=("ExLab",),
 )
 
 
@@ -182,6 +192,10 @@ def filled(repo: GraphRepository) -> GraphRepository:
     repo.save_edge(Edge(POST.id, ARTICLE.id, EdgeKind.ANNOUNCES, structural))
     repo.save_edge(Edge(jane.id, comment.id, EdgeKind.AUTHORED, structural))
     repo.save_edge(Edge(comment.id, POST.id, EdgeKind.COMMENTED_ON, structural))
+    repo.save_entity(LAB)
+    confirmed = Provenance(Origin.MANUAL, Grade.VERIFIED, "user", T0, "Thanks to Example Lab")
+    repo.save_edge(Edge(POST.id, LAB.id, EdgeKind.MENTIONS, confirmed))
+    repo.save_edge(Edge(POST.id, jane.id, EdgeKind.MENTIONS, confirmed))
     return repo
 
 
@@ -194,6 +208,7 @@ def snapshot(repo: GraphRepository) -> GraphContents:
         posts=posts,
         comments=tuple(c for p in posts for c in repo.comments_on(p.id)),
         people=tuple(repo.list_people()),
+        entities=tuple(repo.list_entities()),
         edges=tuple(repo.all_edges()),
     )
 
@@ -209,7 +224,7 @@ def test_posts_are_listed(make: Callable[[], GraphRepository]) -> None:
 def test_all_edges_includes_history_and_rejections(make: Callable[[], GraphRepository]) -> None:
     repo = filled(make())
     edges = list(repo.all_edges())
-    assert len(edges) == 5
+    assert len(edges) == 7
     assert sum(1 for e in edges if e.superseded_at is not None) == 1
     assert [e.superseded_at for e in edges if e.kind is EdgeKind.BELONGS_TO] == [T1, None]
 
@@ -224,7 +239,7 @@ def test_deleting_a_node_erases_its_edges_and_their_history(
     assert list(repo.edges_from(ARTICLE.id, include_history=True)) == []
     assert all(ARTICLE.id not in (e.source, e.target) for e in repo.all_edges())
     assert len(repo.list_articles()) == 1  # other nodes are untouched
-    assert len(repo.all_edges()) == 2
+    assert len(repo.all_edges()) == 4  # the comment and mention edges
 
 
 @adapters
@@ -269,3 +284,18 @@ def test_removing_a_node_keeps_the_history_of_its_edges(
     repo.remove_node(RAG.id)
     assert list(repo.list_topics()) == []
     assert len(repo.edges_to(RAG.id, include_history=True)) == 2
+
+
+@adapters
+def test_entities_round_trip_and_keep_their_id_when_renamed(
+    make: Callable[[], GraphRepository],
+) -> None:
+    repo = make()
+    repo.save_entity(LAB)
+    assert repo.get_entity(LAB.id) == LAB
+    renamed = LAB.renamed("Example Research Lab")
+    repo.save_entity(renamed)
+    assert renamed.id == LAB.id
+    assert repo.list_entities() == [renamed]
+    assert renamed.aliases == ("ExLab", "Example Lab")
+    assert renamed.is_called("example   lab") and renamed.is_called("EXLAB")
