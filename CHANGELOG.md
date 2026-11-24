@@ -27,6 +27,17 @@ data is stored; postloom upgrades your data folder itself when it starts.
 - Request bodies without a declared length weren't size-limited.
 
 ### Added
+- A large library stays quick and tidy. With 500 articles, 1000 people and 5000 comments
+  every screen opens in well under a second (the graph took over 5 seconds, lists over a
+  second): screens are answered from an in-memory snapshot of the library that any change
+  refreshes. A new **Library** page lists everything with search, kind, topic and sort;
+  the sidebar keeps the busiest topics and newest writing; People and Mentions can be
+  searched, filtered and sorted; long lists show 50 at a time; a person's conversations
+  come 10 at a time.
+- The graph shows at most 160 nodes, the most connected first, instead of everything at
+  once. Click a node for a card with **Open** and **Focus here**; focus on any article,
+  topic, person or mention by name to see its connections; narrow it to the last 3 or 12
+  months. The focus and choices are kept in the address.
 - Mentions: after adding a post or an article, postloom proposes the people,
   organisations, places, events, projects, datasets, methods and links it names, plus
   topics (including new ones). You review them with the sentence that names each, and

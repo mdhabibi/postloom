@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
+from postloom.adapters.storage.cached import CachedRepository
 from postloom.adapters.storage.memory import InMemoryGraphRepository
 from postloom.adapters.storage.sqlite import SqliteGraphRepository
 from postloom.application.ports.repository import GraphContents, GraphRepository
@@ -20,9 +21,25 @@ from postloom.domain.provenance import Grade, Origin, Provenance
 
 pytestmark = pytest.mark.contract
 
+
+def cached_while_reading() -> GraphRepository:
+    """Reads always come from the snapshot, so every write must keep it right."""
+    repo = CachedRepository(SqliteGraphRepository())
+    scope = repo.reading()
+    scope.__enter__()
+    _OPEN_SCOPES.append(scope)  # kept, or closing it would end the reading
+    assert repo._reading()  # pyright: ignore[reportPrivateUsage]
+    return repo
+
+
+_OPEN_SCOPES: list[object] = []
+
+
 FACTORIES: dict[str, Callable[[], GraphRepository]] = {
     "memory": InMemoryGraphRepository,
     "sqlite": SqliteGraphRepository,
+    "cached": cached_while_reading,
+    "cached-idle": lambda: CachedRepository(SqliteGraphRepository()),
 }
 adapters = pytest.mark.parametrize("make", FACTORIES.values(), ids=FACTORIES.keys())
 

@@ -10,6 +10,7 @@ import hashlib
 import re
 import unicodedata
 from collections.abc import Sequence
+from functools import lru_cache
 from urllib.parse import urlsplit
 
 from postloom.domain.errors import InvalidUrlError
@@ -26,6 +27,7 @@ _SERIES_PART = re.compile(r"\bpart\s*[-:#]?\s*(\d{1,3})\b", re.IGNORECASE)
 _TRAILING_PUNCT = ".,;:!?"
 
 
+@lru_cache(maxsize=65536)
 def slugify(text: str, max_length: int = 80) -> str:
     """Turn arbitrary text into a lowercase, hyphen-separated slug, for ids and file names.
 

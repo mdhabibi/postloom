@@ -15,6 +15,7 @@ import hashlib
 import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
+from functools import lru_cache
 
 from postloom.domain.errors import EmptyContentError
 from postloom.domain.graph import NodeId, NodeKind, node_id
@@ -62,6 +63,7 @@ class Comment:
         return node_id(NodeKind.COMMENT, self.key)
 
 
+@lru_cache(maxsize=65536)
 def comment_key(post: NodeId, author_name: str, text: str) -> str:
     normalized = " ".join(text.split()).casefold()
     digest = hashlib.sha256(f"{post}\x1f{normalized}".encode()).hexdigest()[:16]

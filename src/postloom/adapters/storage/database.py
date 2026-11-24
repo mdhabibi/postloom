@@ -136,6 +136,11 @@ class SqliteDatabase:
         row = self.connection.execute("PRAGMA user_version").fetchone()
         return int(row[0])
 
+    def data_version(self) -> int:
+        """Changes when another connection (another postloom process) commits a write."""
+        with self.lock:
+            return int(self.connection.execute("PRAGMA data_version").fetchone()[0])
+
     def close(self) -> None:
         with self.lock:
             self.connection.close()

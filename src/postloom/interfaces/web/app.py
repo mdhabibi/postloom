@@ -272,6 +272,7 @@ def create_app(
                 "ollama_context": settings.ollama_context,
                 "locked": sorted(settings.locked),
                 "articles": articles,
+                "library_version": container.library_version,
                 "people": len(container.repository.list_people()),
                 "topics": [t.name for t in container.repository.list_topics()],
                 "vault_changes": container.vault.changes().count,
@@ -830,7 +831,11 @@ def _json(
 
     def run(request: Request, args: list[Any]) -> Response:
         with state.request():
-            if reads_vault and request.method not in ("GET", "HEAD"):
+            if request.method in ("GET", "HEAD"):
+                # A screen only reads: answer it from the library snapshot.
+                with state.container.reading():
+                    return handler(*args)
+            if reads_vault:
                 state.sync_if_changed()
             return handler(*args)
 

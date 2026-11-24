@@ -184,7 +184,7 @@ def test_every_screen_opens_without_errors(page: Page, route: str, shows: str) -
 
 def test_the_phone_layout_has_a_menu_and_no_sideways_scrolling(page: Page) -> None:
     page.set_viewport_size({"width": 390, "height": 844})
-    for route in ("#/", CACHING, JANE, "#/settings"):
+    for route in ("#/", CACHING, JANE, "#/settings", "#/library", "#/people", "#/graph"):
         visit(page, route)
         overflow: Any = page.evaluate(
             "document.documentElement.scrollWidth - document.documentElement.clientWidth"
@@ -442,3 +442,61 @@ def test_found_mentions_are_reviewed_then_shown_and_edited(page: Page, home: Pat
     expect(page.locator(".mention-group h2")).to_have_text(["Organisations (1)", "Links (1)"])
     visit(page, "#/graph")
     expect(page.locator(".node-entity")).to_have_count(2)
+
+
+# -- a large library stays tidy --------------------------------------------------------
+def test_the_library_page_searches_filters_and_remembers(page: Page) -> None:
+    visit(page, "#/library")
+    rows = page.locator(".library-page .article-row")
+    expect(rows).to_have_count(3)
+    page.get_by_role("searchbox", name="Search titles and summaries").fill("agents")
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("Agents in production")
+    assert "query=agents" in page.url  # Back and reload keep the search
+
+    page.get_by_role("searchbox").fill("")
+    expect(rows).to_have_count(3)
+    page.get_by_label("Kind").select_option("post")
+    expect(page.locator(".library-page")).to_contain_text("Nothing matches")
+    page.get_by_label("Kind").select_option("")
+    page.get_by_label("Sort").select_option("title")
+    expect(rows.locator("h3")).to_have_text(TITLES_BY_NAME)
+
+    visit(page, "#/")
+    expect(page.locator(".main-nav a[data-route='library']")).to_be_visible()
+
+
+TITLES_BY_NAME = ["Agents in production", "Caching basics", "Evaluating retrieval"]
+
+
+def test_people_can_be_searched_and_narrowed(page: Page) -> None:
+    visit(page, "#/people")
+    people = page.locator(".people-list .person-row")
+    total = people.count()
+    assert total >= 2
+    page.get_by_role("searchbox", name="Search names and headlines").fill("jane")
+    expect(people).to_have_count(1)
+    expect(people.first).to_contain_text("Jane Example")
+    page.get_by_role("searchbox").fill("")
+    page.get_by_label("Show").select_option("nolink")
+    expect(page.locator(".people-list .badge").first).to_have_text("no profile link")
+
+
+def test_a_graph_node_opens_a_card_and_can_be_focused(page: Page) -> None:
+    visit(page, "#/graph")
+    expect(page.locator(".graph-note")).to_contain_text("Showing all")
+    page.locator(".graph-node[data-id='article:caching-basics']").click()
+    card = page.locator(".graph-card")
+    expect(card).to_contain_text("Caching basics")
+    expect(card.get_by_role("link", name="Open")).to_have_attribute("href", CACHING)
+
+    card.get_by_role("button", name="Focus here").click()
+    expect(page.locator(".graph-node.focus")).to_have_attribute("data-id", "article:caching-basics")
+    expect(page.locator(".graph-note")).to_contain_text("Caching basics and all")
+    assert "focus=article%3Acaching-basics" in page.url
+
+    page.reload()  # the focus is part of the address
+    expect(page.locator(".graph-node.focus")).to_have_count(1)
+    page.get_by_role("button", name="Clear focus").click()
+    expect(page.locator(".graph-node.focus")).to_have_count(0)
+    expect(page.locator(".graph-card")).to_be_hidden()

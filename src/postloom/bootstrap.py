@@ -8,6 +8,7 @@ thread parser, chat, reply drafts, embeddings) runs on it through one metered ga
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
 from types import TracebackType
 
@@ -29,6 +30,7 @@ from postloom.adapters.llm.local_embeddings import (
     local_embeddings_installed,
 )
 from postloom.adapters.llm.providers import PRICES, build_backend
+from postloom.adapters.storage.cached import CachedRepository
 from postloom.adapters.storage.database import SqliteDatabase
 from postloom.adapters.storage.journaled import JournaledRepository
 from postloom.adapters.storage.reviews import InMemoryReviewStore, SqliteReviewStore
@@ -156,6 +158,19 @@ class Container:
         tb: TracebackType | None,
     ) -> None:
         self.close()
+
+    def reading(self) -> AbstractContextManager[None]:
+        """A block that only reads the library: it is answered from memory."""
+        if isinstance(self.repository, CachedRepository):
+            return self.repository.reading()
+        return nullcontext()
+
+    @property
+    def library_version(self) -> int | None:
+        """Changes whenever the library may have changed; None when that can't be told."""
+        if isinstance(self.repository, CachedRepository):
+            return self.repository.version
+        return None
 
     def _needs(self, port: object | None) -> None:
         if port is None:
@@ -380,7 +395,11 @@ def build_container(
     journal = FileEdgeJournal(settings.vault_dir)
     container = Container(
         # Every edge write goes to the vault's journal too; there is no other way in.
-        repository=JournaledRepository(SqliteGraphRepository(database), journal),
+        # Screens read from a snapshot that any write (here or elsewhere) drops.
+        repository=CachedRepository(
+            JournaledRepository(SqliteGraphRepository(database), journal),
+            changed=database.data_version,
+        ),
         search_index=SqliteSearchIndex(database),
         vault=MarkdownVault(settings.vault_dir, SqliteNoteStamps(database)),
         clock=clock,

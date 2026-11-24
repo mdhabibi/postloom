@@ -333,7 +333,14 @@ def related_link(link: RelatedLink) -> Json:
 def graph_data(graph: GraphData) -> Json:
     return {
         "nodes": [
-            {"id": n.id, "kind": n.kind, "label": n.label, "weight": n.weight} for n in graph.nodes
+            {
+                "id": n.id,
+                "kind": n.kind,
+                "label": n.label,
+                "weight": n.weight,
+                "date": n.published_on.isoformat() if n.published_on else None,
+            }
+            for n in graph.nodes
         ],
         "links": [
             {
