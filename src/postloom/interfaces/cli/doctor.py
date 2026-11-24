@@ -74,9 +74,10 @@ def _vault(container: Container) -> Check:
         first = snapshot.problems[0]
         more = f" (and {len(snapshot.problems) - 1} more)" if len(snapshot.problems) > 1 else ""
         return Check("Vault", False, f"{first.path} can't be read: {first.reason}{more}")
+    posts = sum(1 for n in snapshot.posts if n.announces is None)
     counts = (
-        f"{len(snapshot.articles)} articles, {len(snapshot.comments)} comments, "
-        f"{len(snapshot.people)} people"
+        f"{len(snapshot.articles)} articles, {posts} posts, {len(snapshot.comments)} comments, "
+        f"{len(snapshot.people)} people, {len(snapshot.entities)} mentioned entries"
     )
     pending = container.vault.changes().count
     if pending:
