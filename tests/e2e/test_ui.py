@@ -500,3 +500,23 @@ def test_a_graph_node_opens_a_card_and_can_be_focused(page: Page) -> None:
     page.get_by_role("button", name="Clear focus").click()
     expect(page.locator(".graph-node.focus")).to_have_count(0)
     expect(page.locator(".graph-card")).to_be_hidden()
+
+
+def test_forms_say_what_to_paste_and_text_can_be_made_larger(page: Page) -> None:
+    visit(page, "#/add")
+    article = page.get_by_role("textbox", name="The article", exact=True)
+    expect(article).to_have_attribute("aria-describedby", "article_text-hint")
+    expect(page.locator("#article_text-hint")).to_contain_text("open the article")
+    expect(page.get_by_role("textbox", name="The post that shared it")).to_be_visible()
+    expect(page.locator(".details-group legend")).to_contain_text("Details")
+
+    size = "getComputedStyle(document.documentElement).fontSize"
+    assert page.evaluate(size) == "16px"
+    page.get_by_role("button", name="Larger text size").click()
+    assert page.evaluate(size) == "20px"
+    page.reload()  # the choice is remembered
+    expect(page.get_by_role("button", name="Larger text size")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    page.get_by_role("button", name="Standard text size").click()
+    assert page.evaluate(size) == "16px"
