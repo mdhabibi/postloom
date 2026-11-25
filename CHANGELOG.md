@@ -8,6 +8,10 @@ data is stored; postloom upgrades your data folder itself when it starts.
 ## [Unreleased]
 
 ### Added
+- A website (`site/`, published to GitHub Pages once the repository is public): what
+  postloom does in five figures, the privacy promises, the one-line install and an FAQ.
+  Its screenshots come from a fictional library that `scripts/demo/` rebuilds, so they can
+  be refreshed whenever the app changes; the README uses them too.
 - **Images and videos.** Add the pictures, slides and videos of a post or an article, when
   adding it or later on its page. They are kept in the vault (`vault/media/`) and made
   searchable by what you write about them, by what a model sees in an image (including

@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>postloom: your LinkedIn, remembered</title>
+<meta name="description" content="A private memory of your LinkedIn articles, posts, comments and the people in them, on your own computer.">
+<link rel="canonical" href="https://mdhabibi.github.io/postloom/">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b0e1a">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mdhabibi.github.io/postloom/">
+<meta property="og:title" content="postloom: your LinkedIn, remembered">
+<meta property="og:description" content="A private memory of your LinkedIn articles, posts, comments and the people in them, on your own computer.">
+<meta property="og:image" content="https://mdhabibi.github.io/postloom/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="postloom: your LinkedIn, remembered. A private library of your articles, posts and comments.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="fonts/SourceSerif4Variable-Roman.ttf.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* Fonts are served from this site, like the app serves its own: no third-party requests. */
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-SemiBold.woff2") format("woff2"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4Variable-Roman.ttf.woff2") format("woff2"); font-weight: 200 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4Variable-Italic.ttf.woff2") format("woff2"); font-weight: 200 900; font-style: italic; font-display: swap; }
+/* Layout: a loom. Colored warp threads run down the page edge; sections are woven across
+   them as figures in a technical paper (Fig. 1-5), screenshots framed like plates. */
+:root {
+  --ground: #0b0e1a;
+  --surface: #121729;
+  --raised: #182036;
+  --line: #262e4a;
+  --ink: #e9ebf5;
+  --soft: #b2b8d2;
+  --muted: #8189aa;
+  --accent: #93a2ff;
+  --accent-ink: #0b0e1a;
+  --t1: #7c94ff; --t2: #f0727a; --t3: #f2c14e; --t4: #5fc4d9;
+  --t5: #78c98a; --t6: #b48cf0; --t7: #e59b6a; --t8: #ee7fb4;
+  --display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --shadow: 0 30px 80px -30px rgb(0 0 0 / 0.7);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f3f4f9; --surface: #ffffff; --raised: #eceef7; --line: #d6daea;
+    --ink: #141829; --soft: #3d4462; --muted: #5d6482; --accent: #4456d6; --accent-ink: #ffffff;
+    --shadow: 0 30px 70px -35px rgb(20 24 41 / 0.45);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #f3f4f9; --surface: #ffffff; --raised: #eceef7; --line: #d6daea;
+  --ink: #141829; --soft: #3d4462; --muted: #5d6482; --accent: #4456d6; --accent-ink: #ffffff;
+  --shadow: 0 30px 70px -35px rgb(20 24 41 / 0.45);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--ground); color: var(--ink);
+  font: 400 1.0625rem/1.65 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+img { display: block; max-width: 100%; height: auto; }
+.wrap {
+  width: 100%; max-width: 72rem; margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.label {
+  font: 500 0.75rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 { font: 600 clamp(1.9rem, 1.3rem + 2.2vw, 2.9rem)/1.12 var(--display); letter-spacing: -0.01em; }
+h3 { font: 600 1.35rem/1.25 var(--display); }
+p { margin: 0; }
+.lede { color: var(--soft); font-size: 1.15rem; max-width: 38rem; }
+
+/* -- the warp: threads down the left edge of the page -------------------------------- */
+.warp {
+  position: fixed; inset: 0 auto 0 0; width: 0.5rem; display: flex; z-index: 0; pointer-events: none;
+}
+.warp i { flex: 1; opacity: 0.85; }
+.warp i:nth-child(1) { background: var(--t1); } .warp i:nth-child(2) { background: var(--t2); }
+.warp i:nth-child(3) { background: var(--t3); } .warp i:nth-child(4) { background: var(--t4); }
+
+/* -- header -------------------------------------------------------------------------- */
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10;
+  background: var(--ground);
+}
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: color-mix(in srgb, var(--ground) 86%, transparent);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
+}
+.top .wrap { display: flex; align-items: center; gap: 1.5rem; height: 3.75rem; }
+.brand { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font: 600 1.15rem/1 var(--sans); }
+.brand img { width: 1.6rem; height: 1.6rem; }
+.top nav { display: flex; gap: 1.4rem; margin-left: auto; }
+.top nav a { color: var(--soft); text-decoration: none; font-size: 0.95rem; }
+.top nav a:hover { color: var(--ink); }
+.button {
+  display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.15rem; border-radius: 0.6rem;
+  font: 600 0.98rem/1 var(--sans); text-decoration: none; border: 1px solid var(--line); color: var(--ink);
+  background: var(--surface); cursor: pointer; white-space: nowrap;
+}
+.button:hover { border-color: var(--accent); }
+.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.button.primary:hover { filter: brightness(1.08); }
+.top .button { padding: 0.55rem 0.95rem; }
+@media (max-width: 760px) { .top nav { display: none; } .top .button { margin-left: auto; } }
+
+/* -- hero ---------------------------------------------------------------------------- */
+.hero { position: relative; padding-block: 4.5rem 0; overflow: hidden; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+@media (max-width: 900px) { .hero canvas { display: none; } }
+.hero .wrap { position: relative; z-index: 1; }
+.hero-text { display: grid; gap: 1.4rem; max-width: 47rem; }
+.hero h1 { font: 600 clamp(2.7rem, 1.6rem + 4.6vw, 5.1rem)/1.02 var(--display); letter-spacing: -0.02em; }
+.hero h1 em { font-style: italic; color: var(--accent); }
+.hero .lede { font-size: clamp(1.1rem, 1rem + 0.4vw, 1.3rem); }
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin: 0; padding: 0; list-style: none; }
+.facts li { display: flex; align-items: center; gap: 0.5rem; color: var(--soft); font-size: 0.95rem; }
+.facts li::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 2px; background: var(--c); }
+.plate {
+  margin: 3.5rem 0 0; border: 1px solid var(--line); border-radius: 0.9rem 0.9rem 0 0; border-bottom: 0;
+  overflow: hidden; box-shadow: var(--shadow); background: var(--surface);
+}
+.plate-bar { display: flex; align-items: center; gap: 0.4rem; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--line); }
+.plate-bar span { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--line); }
+.plate-bar .label { margin-left: auto; }
+
+/* -- sections ------------------------------------------------------------------------ */
+section { position: relative; z-index: 1; }
+.band { padding-block: 6rem; border-top: 1px solid var(--line); }
+.band.tint { background: var(--surface); }
+.head { display: grid; gap: 1rem; margin-bottom: 3rem; max-width: 46rem; }
+
+.problem-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.problem-grid article { padding: 1.4rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--ground); display: grid; gap: 0.6rem; align-content: start; }
+.problem-grid q { font: 500 1.15rem/1.4 var(--display); quotes: none; }
+.problem-grid p { color: var(--soft); font-size: 0.98rem; }
+
+/* figures: text beside a framed screenshot */
+.fig { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.25fr); gap: 3.5rem; align-items: center; padding-block: 3rem; }
+.fig + .fig { border-top: 1px dashed var(--line); }
+.fig.flip .fig-text { order: 2; }
+.fig-text { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.fig-text p { color: var(--soft); }
+.fig-text ul { margin: 0; padding-left: 1.1rem; color: var(--soft); display: grid; gap: 0.35rem; }
+.step { display: flex; align-items: center; gap: 0.75rem; }
+.step b { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; font: 600 0.95rem/1 var(--mono); color: var(--accent-ink); background: var(--c, var(--accent)); }
+figure { margin: 0; min-width: 0; }
+.frame { border: 1px solid var(--line); border-radius: 0.8rem; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
+.frame.crop { max-height: 31rem; }
+.frame.crop img { width: 100%; object-fit: cover; object-position: top; }
+.pair { display: grid; gap: 1rem; }
+figcaption { margin-top: 0.8rem; font: 400 0.82rem/1.5 var(--mono); color: var(--muted); }
+figcaption b { color: var(--soft); font-weight: 500; }
+
+/* before / after */
+.ledger { width: 100%; border-collapse: collapse; font-size: 1rem; }
+.ledger th { text-align: left; padding: 0 1rem 0.8rem 0; }
+.ledger td { padding: 1rem 1rem 1rem 0; border-top: 1px solid var(--line); vertical-align: top; }
+.ledger td:first-child { color: var(--muted); width: 44%; }
+.ledger td:last-child { color: var(--ink); }
+.table-scroll { overflow-x: auto; }
+
+/* promises */
+.promises { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.promises article { display: grid; gap: 0.7rem; padding: 1.6rem; border-radius: 0.8rem; border: 1px solid var(--line); background: var(--ground); align-content: start; }
+.promises article::before { content: ""; height: 3px; width: 2.5rem; border-radius: 2px; background: var(--c); }
+.promises p { color: var(--soft); font-size: 0.98rem; }
+.providers { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.2rem 0 0; padding: 0; list-style: none; }
+.providers li { font: 500 0.8rem/1 var(--mono); padding: 0.4rem 0.55rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--soft); }
+
+/* install */
+.install { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.terminal { border: 1px solid var(--line); border-radius: 0.8rem; background: var(--ground); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.terminal header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
+.terminal header strong { font-size: 1rem; }
+.terminal header span { color: var(--muted); font-size: 0.88rem; }
+.terminal pre { margin: 0; padding: 1.1rem 1rem; overflow-x: auto; font: 400 0.9rem/1.5 var(--mono); color: var(--ink); }
+.terminal pre::before { content: "$ "; color: var(--muted); }
+.terminal footer { display: flex; justify-content: flex-end; padding: 0 1rem 1rem; margin-top: auto; }
+.copy { font: 500 0.85rem/1 var(--sans); padding: 0.5rem 0.8rem; }
+.after { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2rem; color: var(--soft); font-size: 0.98rem; }
+.after strong { color: var(--ink); display: block; margin-bottom: 0.25rem; }
+
+/* faq */
+.faq { display: grid; gap: 0; max-width: 50rem; }
+.faq details { border-top: 1px solid var(--line); }
+.faq details:last-child { border-bottom: 1px solid var(--line); }
+.faq summary { cursor: pointer; padding: 1.15rem 0; font: 600 1.1rem/1.35 var(--sans); list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 400 1.4rem/1 var(--mono); color: var(--muted); }
+.faq details[open] summary::after { content: "\2212"; }
+.faq details p { color: var(--soft); padding-bottom: 1.2rem; max-width: 44rem; }
+
+/* closing */
+.closing { text-align: left; padding-block: 6rem; border-top: 1px solid var(--line); }
+.closing .wrap { display: grid; gap: 1.4rem; }
+.closing h2 { font-size: clamp(2.2rem, 1.4rem + 3vw, 3.6rem); max-width: 40rem; }
+footer.site { border-top: 1px solid var(--line); padding-block: 2.5rem; color: var(--muted); font-size: 0.92rem; }
+footer.site .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; }
+footer.site nav { display: flex; flex-wrap: wrap; gap: 1.2rem; }
+footer.site a { color: var(--soft); }
+
+@media (max-width: 900px) {
+  .fig, .fig.flip { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+  .fig.flip .fig-text { order: 0; }
+  .problem-grid, .promises, .install, .after { grid-template-columns: minmax(0, 1fr); }
+  .band { padding-block: 4.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="warp" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="img/icon.svg" alt="">postloom</a>
+    <nav aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#private">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/mdhabibi/postloom">GitHub</a>
+    </nav>
+    <a class="button primary" href="#install">Download</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <canvas id="loom" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <div class="hero-text">
+        <p class="label">For people who write on LinkedIn</p>
+        <h1>Your LinkedIn, <em>remembered</em>.</h1>
+        <p class="lede">postloom keeps your articles, posts and every comment under them, with the people who wrote them, in one private library on your computer. Find anything again, ask questions about it, and answer the people waiting for a reply.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Download for Mac, Windows or Linux</a>
+          <a class="button" href="#how">See how it works</a>
+        </div>
+        <ul class="facts">
+          <li style="--c: var(--t1)">Runs on your computer</li>
+          <li style="--c: var(--t2)">Works with any AI model, or none</li>
+          <li style="--c: var(--t3)">Never logs in to LinkedIn</li>
+        </ul>
+      </div>
+      <figure class="plate">
+        <div class="plate-bar" aria-hidden="true"><span></span><span></span><span></span><p class="label">localhost · postloom</p></div>
+        <img src="img/home.png" width="2880" height="1800" alt="The postloom home screen: 6 articles, 3 posts and 31 messages from 10 people, the comments waiting for a reply, and the most engaged people.">
+      </figure>
+    </div>
+  </section>
+
+  <section class="band tint">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">The problem</p>
+        <h2>Your best conversations disappear into the feed.</h2>
+        <p class="lede">A post does well for three days. Then its comments, the questions, the people who might hire you or build with you, sink under everything that came after.</p>
+      </div>
+      <div class="problem-grid">
+        <article>
+          <q>Who asked about the cache threshold in spring?</q>
+          <p>LinkedIn shows your activity one post at a time. Finding one comment means scrolling back months.</p>
+        </article>
+        <article>
+          <q>Did I ever answer Samir?</q>
+          <p>Replies get lost between notifications. Nothing tells you which questions are still open.</p>
+        </article>
+        <article>
+          <q>What have I already written about evaluation?</q>
+          <p>Your own articles become hard to search once there are more than a handful.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">How it works</p>
+        <h2>Paste once. Remember everything.</h2>
+        <p class="lede">You copy from LinkedIn and paste into postloom. It does the reading, the filing and the linking, and asks you before anything goes into your library.</p>
+      </div>
+
+      <div class="fig">
+        <div class="fig-text">
+          <p class="step" style="--c: var(--t1)"><b>1</b><span class="label">Paste</span></p>
+          <h3>Copy an article, a post or a comment section, and paste it in.</h3>
+          <p>Messy text is fine. postloom restores the headings, lists and code of an article, recognises who replied to whom in a comment section, and reads letters from "bold text" converters like any other.</p>
+        </div>
+        <figure>
+          <div class="frame crop"><img src="img/add.png" width="1600" height="3078" alt="The Add an article screen, in two numbered steps: the article, then the post that shared it." loading="lazy"></div>
+          <figcaption><b>Fig. 1</b> Adding an article: what to copy is written above each box.</figcaption>
+        </figure>
+      </div>
+
+      <div class="fig flip">
+        <div class="fig-text">
+          <p class="step" style="--c: var(--t2)"><b>2</b><span class="label">Confirm</span></p>
+          <h3>It finds who and what you mention. You decide what stays.</h3>
+          <p>People, organisations, events, methods and links are proposed with the sentence they come from. Untick, rename or recategorise, then add the rest. Nothing enters your graph before you say so.</p>
+        </div>
+        <figure>
+          <div class="frame crop"><img src="img/review.png" width="1196" height="1664" alt="Found in this post: Lena Okafor matched to the person who commented on three posts, Northwind Analytics, Fjord AI Meetup, a link and a suggested new topic." loading="lazy"></div>
+          <figcaption><b>Fig. 2</b> Found in this post: each suggestion with its evidence, and a match to someone already in your library.</figcaption>
+        </figure>
+      </div>
+
+      <div class="fig">
+        <div class="fig-text">
+          <p class="step" style="--c: var(--t3)"><b>3</b><span class="label">Remember</span></p>
+          <h3>Everything connects: topics, series, people, conversations.</h3>
+          <p>Each person gets a page with everything they said under your posts. The graph shows how your writing hangs together; focus on anyone or anything to see what surrounds it.</p>
+        </div>
+        <figure>
+          <div class="frame"><img src="img/graph.png" width="2096" height="1302" alt="The graph focused on Lena Okafor: the articles she commented on, their topics and the other people in those conversations." loading="lazy"></div>
+          <figcaption><b>Fig. 3</b> The graph, focused on one person and the 16 things around her.</figcaption>
+        </figure>
+      </div>
+
+      <div class="fig flip">
+        <div class="fig-text">
+          <p class="step" style="--c: var(--t4)"><b>4</b><span class="label">Ask and reply</span></p>
+          <h3>Ask your library. Answer the people waiting.</h3>
+          <p>Questions are answered from your own articles, posts and comments, with numbered sources you can open. When someone is waiting, postloom drafts a reply from the article and the whole thread.</p>
+          <ul>
+            <li>Every answer cites where it comes from.</li>
+            <li>You copy the draft and post it yourself. postloom never posts.</li>
+          </ul>
+        </div>
+        <figure>
+          <div class="pair">
+            <div class="frame"><img src="img/chat.png" width="1600" height="916" alt="Asked what people said about the cache threshold, postloom answers with two numbered sources and notes that Samir hasn't had a reply yet." loading="lazy"></div>
+            <div class="frame"><img src="img/reply.png" width="1196" height="1006" alt="A draft reply to Samir Haddad's comment, with Copy reply and Redraft buttons." loading="lazy"></div>
+          </div>
+          <figcaption><b>Fig. 4</b> An answer with its sources, and a reply draft for the question still open.</figcaption>
+        </figure>
+      </div>
+
+      <div class="fig">
+        <div class="fig-text">
+          <p class="step" style="--c: var(--t5)"><b>5</b><span class="label">Images and video</span></p>
+          <h3>Even the chart in your post can be found.</h3>
+          <p>Add the pictures, slides and videos you posted. A model writes down what an image shows and the text in it; a video's subtitles make what is said in it searchable.</p>
+        </div>
+        <figure>
+          <div class="frame"><img src="img/media-search.png" width="1600" height="440" alt="A search for how much faster the cache is finds the latency chart from a post, with its numbers read from the image." loading="lazy"></div>
+          <figcaption><b>Fig. 5</b> A search result found inside an image: 1,240 ms without the cache, 310 ms with it.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="band tint">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Before and after</p>
+        <h2>The same week, with and without a memory.</h2>
+      </div>
+      <div class="table-scroll">
+        <table class="ledger">
+          <thead><tr><th class="label">Today</th><th class="label">With postloom</th></tr></thead>
+          <tbody>
+            <tr><td>Scroll your activity page to find a comment from March.</td><td>Search "threshold question" and get the comment, its thread and your reply.</td></tr>
+            <tr><td>Open each post to see who is still waiting for an answer.</td><td>Home lists every message waiting for your reply, newest first.</td></tr>
+            <tr><td>Remember that someone commented on several of your posts.</td><td>Their page shows every conversation you had, across all your posts.</td></tr>
+            <tr><td>Start a reply from scratch, again.</td><td>Start from a draft grounded in the article and the whole thread.</td></tr>
+            <tr><td>Wonder what you already wrote on a subject.</td><td>Ask, and get an answer from your own articles, with sources.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="private">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Three promises</p>
+        <h2>Your writing, your computer, your choice of model.</h2>
+      </div>
+      <div class="promises">
+        <article style="--c: var(--t1)">
+          <h3>It stays on your computer.</h3>
+          <p>Your library is a folder of plain Markdown files you can open in Obsidian, back up or move. There is no postloom account and no server, and the app only listens to your own computer.</p>
+        </article>
+        <article style="--c: var(--t2)">
+          <h3>It works with any model.</h3>
+          <p>Use a key from the provider you like, or run models locally with Ollama and nothing leaves your computer at all. Search and the graph need no model.</p>
+          <ul class="providers" aria-label="Supported providers">
+            <li>Gemini</li><li>Claude</li><li>OpenAI</li><li>OpenRouter</li><li>Ollama</li><li>OpenAI-compatible</li>
+          </ul>
+        </article>
+        <article style="--c: var(--t3)">
+          <h3>It never touches your LinkedIn account.</h3>
+          <p>You copy and paste. postloom doesn't log in, doesn't scrape and never posts anything for you, so there is nothing for LinkedIn to object to and nothing to give access to.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band tint" id="install">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Install</p>
+        <h2>One line. No Python, no database, no admin rights.</h2>
+        <p class="lede">Open a terminal, paste the line for your computer, press Enter. In a minute or two postloom opens in your browser, and from then on it is an app with its own icon.</p>
+      </div>
+      <div class="install">
+        <div class="terminal">
+          <header><strong>Mac or Linux</strong><span>Mac: press ⌘ Space, type Terminal</span></header>
+          <pre id="cmd-unix">curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh</pre>
+          <footer><button class="button copy" type="button" data-copy="cmd-unix" id="copy-unix">Copy</button></footer>
+        </div>
+        <div class="terminal">
+          <header><strong>Windows</strong><span>Start menu, type PowerShell</span></header>
+          <pre id="cmd-win">irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex</pre>
+          <footer><button class="button copy" type="button" data-copy="cmd-win" id="copy-win">Copy</button></footer>
+        </div>
+      </div>
+      <div class="after">
+        <p><strong>Update</strong>Run the same line again. Your library is never touched.</p>
+        <p><strong>Connect a model</strong>Settings walks you through it: a free Gemini key, any other provider, or a local model.</p>
+        <p><strong>What it costs</strong>postloom is free. A month of daily use with a hosted model costs about $1.40; with Ollama, nothing.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">Questions</p><h2>Before you install.</h2></div>
+      <div class="faq">
+        <details id="faq-free"><summary>Is postloom free?</summary><p>Yes. If you use a hosted model you pay that provider for what you use, which for most people is a few cents a day or less; the usage page shows the real figure and you can set a monthly budget. With Ollama, models run on your computer for free.</p></details>
+        <details id="faq-license"><summary>Is it open source?</summary><p>It is fair source, under the Functional Source License (FSL-1.1-ALv2). You can read, run, change and share the code for anything except offering a competing commercial product. Each release becomes Apache-2.0 two years after it is published.</p></details>
+        <details id="faq-linkedin"><summary>Does it connect to my LinkedIn account?</summary><p>No. You copy text from LinkedIn and paste it into postloom. It never logs in, never reads LinkedIn for you and never posts. Replies it drafts are for you to copy and send yourself.</p></details>
+        <details id="faq-data"><summary>Where is my data, and who sees it?</summary><p>In a Postloom folder on your computer, as Markdown notes plus a search index that can always be rebuilt from them. When you use a hosted model, only the text a feature needs is sent to that provider, when you click something. With Ollama, nothing leaves your computer.</p></details>
+        <details id="faq-people"><summary>What about the people who comment on my posts?</summary><p>postloom keeps their names, headlines and comments locally, for your own use. If someone asks to be removed, one click erases them from the app, its history, the search index and your notes.</p></details>
+        <details id="faq-model"><summary>Which model should I choose?</summary><p>Gemini's free tier is the easiest start. Claude writes replies that sound most like you. Ollama keeps everything on your computer if it has enough memory. You can change at any time, and set a different model for each task.</p></details>
+        <details id="faq-systems"><summary>Which computers and languages does it work on?</summary><p>Macs (Apple silicon and Intel), Windows and Linux. Search works across many languages, including right-to-left scripts like Persian, Arabic and Hebrew.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing">
+    <div class="wrap">
+      <p class="label">postloom</p>
+      <h2>Keep every conversation your writing starts.</h2>
+      <div class="actions">
+        <a class="button primary" href="#install">Download postloom</a>
+        <a class="button" href="https://github.com/mdhabibi/postloom">Read the code on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p>Made by <a href="https://github.com/mdhabibi">Mahdi Habibi</a>. Fair source under FSL-1.1-ALv2. Not affiliated with or endorsed by LinkedIn.</p>
+    <nav aria-label="Links">
+      <a href="https://github.com/mdhabibi/postloom">GitHub</a>
+      <a href="https://github.com/mdhabibi/postloom/blob/main/CHANGELOG.md">What's new</a>
+      <a href="https://github.com/mdhabibi/postloom/issues">Report a problem</a>
+      <a href="https://github.com/mdhabibi/postloom/blob/main/LICENSE.md">License</a>
+      <a href="fonts/Geist-OFL.txt">Font licenses</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Copy buttons for the install lines.
+for (const button of document.querySelectorAll("[data-copy]")) {
+  button.addEventListener("click", async () => {
+    const text = document.getElementById(button.dataset.copy).textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById(button.dataset.copy));
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = "Selected: press Ctrl+C";
+    }
+    setTimeout(() => { button.textContent = "Copy"; }, 2400);
+  });
+}
+
+// The hero's loom: colored warp threads, with a weft woven across them once on load.
+(function () {
+  const canvas = document.getElementById("loom");
+  const context = canvas.getContext("2d");
+  const style = getComputedStyle(document.documentElement);
+  const threads = ["--t1", "--t2", "--t3", "--t4", "--t5", "--t6", "--t7", "--t8"];
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let width = 0, height = 0, start = 0;
+
+  function size() {
+    const box = canvas.getBoundingClientRect();
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    width = box.width; height = box.height;
+    canvas.width = width * ratio; canvas.height = height * ratio;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  function draw(progress) {
+    context.clearRect(0, 0, width, height);
+    const colors = threads.map((t) => style.getPropertyValue(t).trim());
+    const line = style.getPropertyValue("--line").trim();
+    const left = width * 0.66, gap = Math.max(22, width * 0.022);
+    const count = Math.ceil((width - left) / gap);
+    // Warp: vertical threads on the right, fading in toward the edge.
+    for (let i = 0; i < count; i++) {
+      const x = left + i * gap;
+      context.globalAlpha = 0.12 + 0.28 * (i / count);
+      context.strokeStyle = colors[i % colors.length];
+      context.lineWidth = 2;
+      context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height * 0.62); context.stroke();
+    }
+    // Weft: rows woven over and under, drawn left to right as the page opens.
+    const rows = 7;
+    for (let r = 0; r < rows; r++) {
+      const y = 46 + r * ((height * 0.62 - 70) / rows);
+      const reach = left + (width - left) * Math.min(1, Math.max(0, progress * 1.6 - r * 0.09));
+      for (let i = 0; i < count - 1; i++) {
+        const x = left + i * gap;
+        if (x > reach) break;
+        const over = (i + r) % 2 === 0;
+        context.globalAlpha = over ? 0.55 : 0.16;
+        context.strokeStyle = over ? colors[(r + 3) % colors.length] : line;
+        context.lineWidth = over ? 3 : 2;
+        context.beginPath(); context.moveTo(x + 3, y); context.lineTo(Math.min(x + gap - 3, reach), y); context.stroke();
+      }
+    }
+    context.globalAlpha = 1;
+  }
+
+  function frame(time) {
+    if (!start) start = time;
+    const progress = Math.min(1, (time - start) / 2200);
+    draw(1 - Math.pow(1 - progress, 3));
+    if (progress < 1) requestAnimationFrame(frame);
+  }
+
+  size();
+  if (still) draw(1); else requestAnimationFrame(frame);
+  addEventListener("resize", () => { size(); draw(1); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(1));
+})();
+</script>
+</body>
+</html>
