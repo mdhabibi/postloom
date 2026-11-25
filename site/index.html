@@ -1,10 +1,30 @@
-<title>postloom</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>postloom: your LinkedIn, remembered</title>
 <meta name="description" content="A private memory of your LinkedIn articles, posts, comments and the people in them, on your own computer.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<link rel="canonical" href="https://mdhabibi.github.io/postloom/">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b0e1a">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mdhabibi.github.io/postloom/">
+<meta property="og:title" content="postloom: your LinkedIn, remembered">
+<meta property="og:description" content="A private memory of your LinkedIn articles, posts, comments and the people in them, on your own computer.">
+<meta property="og:image" content="https://mdhabibi.github.io/postloom/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="postloom: your LinkedIn, remembered. A private library of your articles, posts and comments.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="fonts/SourceSerif4Variable-Roman.ttf.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* Fonts are served from this site, like the app serves its own: no third-party requests. */
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-SemiBold.woff2") format("woff2"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4Variable-Roman.ttf.woff2") format("woff2"); font-weight: 200 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4Variable-Italic.ttf.woff2") format("woff2"); font-weight: 200 900; font-style: italic; font-display: swap; }
 /* Layout: a loom. Colored warp threads run down the page edge; sections are woven across
    them as figures in a technical paper (Fig. 1-5), screenshots framed like plates. */
 :root {
@@ -21,7 +41,7 @@
   --t5: #78c98a; --t6: #b48cf0; --t7: #e59b6a; --t8: #ee7fb4;
   --display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --shadow: 0 30px 80px -30px rgb(0 0 0 / 0.7);
   color-scheme: dark;
 }
@@ -41,6 +61,9 @@
 }
 
 * { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
@@ -204,6 +227,8 @@ footer.site a { color: var(--soft); }
   .band { padding-block: 4.5rem; }
 }
 </style>
+</head>
+<body>
 
 <div class="warp" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
@@ -456,6 +481,7 @@ footer.site a { color: var(--soft); }
       <a href="https://github.com/mdhabibi/postloom/blob/main/CHANGELOG.md">What's new</a>
       <a href="https://github.com/mdhabibi/postloom/issues">Report a problem</a>
       <a href="https://github.com/mdhabibi/postloom/blob/main/LICENSE.md">License</a>
+      <a href="fonts/Geist-OFL.txt">Font licenses</a>
     </nav>
   </div>
 </footer>
@@ -542,3 +568,5 @@ for (const button of document.querySelectorAll("[data-copy]")) {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(1));
 })();
 </script>
+</body>
+</html>

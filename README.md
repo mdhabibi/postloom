@@ -2,6 +2,8 @@
 
 **A local-first knowledge graph and chat for your LinkedIn articles, posts, comments and the people behind them.**
 
+[Website](https://mdhabibi.github.io/postloom/) · [Install](#install) · [What's new](CHANGELOG.md)
+
 You publish a post or an article, and a conversation starts in the comments. A week later
 it's all buried in the feed. postloom keeps it: paste in your post or article, and it becomes
 a connected note in your own graph, linked to its topics, its series, the links and hashtags
@@ -12,14 +14,15 @@ wrote.
 > **Status: alpha.** Articles, posts, search, chat, comment threads, people, reply drafts, related
 > article links and the graph view work end to end. See the [roadmap](#roadmap).
 
-![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](docs/images/home.png)
+![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](site/img/home.png)
 
 <p align="center">
-  <img src="docs/images/reply-draft.png" width="49%" alt="A reply draft for a comment, written from the article and the whole conversation">
-  <img src="docs/images/graph.png" width="49%" alt="The graph of articles, topics, series and the people who discussed them">
+  <img src="site/img/chat.png" width="49%" alt="A question about the library answered with numbered sources from the author's own posts and comments">
+  <img src="site/img/graph.png" width="49%" alt="The graph focused on one person: the articles they discussed, their topics and the other people in those conversations">
 </p>
 
-*Screenshots use sample data; the people in them are invented.*
+*Screenshots use a fictional library: the author, the people and the numbers are invented.
+`scripts/demo/screenshots.py` rebuilds it and retakes them.*
 
 ## Why postloom
 

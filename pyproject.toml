@@ -63,7 +63,7 @@ content-type = "text/markdown"
 path = "README.md"
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
-pattern = '(\]\(|src=")(docs/images/)'
+pattern = '(\]\(|src=")(site/img/)'
 replacement = '\1https://raw.githubusercontent.com/mdhabibi/postloom/main/\2'
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
@@ -74,7 +74,7 @@ replacement = '](https://github.com/mdhabibi/postloom/blob/main/\1)'
 packages = ["src/postloom"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [".github", "docs/images", ".pre-commit-config.yaml"]
+exclude = [".github", "site", ".pre-commit-config.yaml"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]
