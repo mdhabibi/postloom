@@ -2,6 +2,11 @@
 
 **A local-first knowledge graph and chat for your LinkedIn articles, posts, comments and the people behind them.**
 
+[![CI](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml/badge.svg)](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/postloom)](https://pypi.org/project/postloom/)
+[![Python](https://img.shields.io/pypi/pyversions/postloom)](https://pypi.org/project/postloom/)
+[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue)](LICENSE.md)
+
 [Website](https://mdhabibi.github.io/postloom/) · [Install](#install) · [What's new](CHANGELOG.md)
 
 You publish a post or an article, and a conversation starts in the comments. A week later
@@ -350,27 +355,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 
 ## Roadmap
 
-- [x] Domain model with provenance and superseded history
-- [x] Ingest use case, Markdown/Obsidian vault, architecture tests
-- [x] **Milestone 1 (MVP):** SQLite index, Gemini extraction and embeddings, hybrid
-      search, local web app with paste-to-add, search and grounded chat
-- [x] **Milestone 2:** comments, replies and people
-  - [x] Paste a comment section, review, save as conversation chains; chat sees them
-  - [x] People pages: who engaged with what, headline history, profile links, notes
-  - [x] Reply drafts grounded in the article and the whole conversation
-- [ ] **Milestone 3:** graph and links
-  - [x] Related-article suggestions you accept or dismiss, or link by hand
-  - [x] Graph view of articles, topics, series and people
-  - [x] Images and videos on posts and articles, searchable by caption, what a model sees
-        in them and subtitles
-- [x] **Providers:** Gemini, Claude, OpenAI, OpenRouter, Ollama and any OpenAI-compatible
-      server; free local embeddings; usage page and monthly budget
-- [x] **Own your data:** the vault is read back (rebuild, Obsidian edits), stable article
-      identity, edit and delete articles, erase a person, manage topics
-- [x] **Grounded chat:** posts and comments searched, graph lookups for people, topics and
-      series, follow-ups, per-person chat, unverified answers flagged
-- [x] **Milestone 4:** one-command install (`uvx`/`pipx`), browser tests in CI, first release
-- [ ] Docker image
+postloom 0.1.0 is the first public release. Next:
+
+- [ ] Double-click installers for Mac and Windows, signed so no security warning appears
+      ([#23](https://github.com/mdhabibi/postloom/issues/23))
+- [ ] A Docker image, for running postloom on a home server
+
+Something missing? [Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
+What has changed in each version is in the [changelog](CHANGELOG.md).
 
 ## Contributing
 

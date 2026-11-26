@@ -1,6 +1,14 @@
 # Contributing to postloom
 
-Thanks for your interest! postloom is in alpha; issues and ideas are very welcome.
+Thanks for your interest! postloom is young; problems, ideas and pull requests are very
+welcome. Please read the [code of conduct](CODE_OF_CONDUCT.md) first.
+
+## Your contributions and the license
+
+postloom is fair source under the [Functional Source License](LICENSE.md). By sending a pull
+request you agree that your contribution is licensed under the same terms, and that the
+author of postloom may also license it under other terms in the future (for example for a
+commercial edition). If that doesn't suit you, open an issue to discuss the change instead.
 
 ## Setup
 

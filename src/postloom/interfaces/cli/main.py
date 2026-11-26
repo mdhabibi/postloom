@@ -103,7 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"postloom {__version__} by {info.author}, {info.license} license. {info.homepage}",
+        version=f"postloom {__version__} by {info.author}, {info.license} license. {info.website}",
     )
     parser.add_argument("--home", type=Path, help=home_help)
 
