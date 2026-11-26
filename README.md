@@ -206,11 +206,122 @@ too long for the limit you set, instead of letting them be silently cut off.
 - **Ask questions:** answers only from your own library, with sources you can open.
 - **The graph:** articles, topics, series, people and mentions, focused on whatever you pick.
 - **Export the graph:** RDF (Turtle, JSON-LD) with schema.org and PROV-O, Cypher for
-  Neo4j, or GraphML for Gephi, with the provenance of every link.
+  Neo4j, or GraphML for Gephi, with the provenance of every link
+  ([how](#export-your-graph)).
 - **Your vault:** plain Markdown you can open in Obsidian, edit, back up or move.
 - **Command line:** everything the app does, scriptable.
 
 The [user guide](docs/guide.md) explains each of them in detail, with every setting.
+
+## Export your graph
+
+Take your whole graph into the tools you already use: every article, post, comment,
+person and mention, every link between them, and where each link came from (parsed from
+your text, suggested by a model, or confirmed by you).
+
+1. Open **Settings** and scroll to **Export your graph**.
+2. Pick a format:
+
+   | Format | Pick it for |
+   |---|---|
+   | **RDF (Turtle)** | A triple store (GraphDB, Apache Jena, Stardog) and SPARQL |
+   | **RDF (JSON-LD)** | The same RDF as JSON, for your own code |
+   | **Cypher for Neo4j** | Neo4j (or Memgraph) and Cypher queries |
+   | **GraphML** | Gephi, yEd, Cytoscape, NetworkX or igraph |
+
+3. Choose what goes in. **Include what was written** (on by default) adds article bodies,
+   posts, comments and your notes on people; turn it off to share only the structure
+   (names, titles, dates). **Include history** adds links that were replaced or that you
+   dismissed, marked as not current.
+4. Click **Export the graph**. The file lands in your downloads, named like
+   `postloom-graph-2026-11-26.ttl`.
+
+From the terminal: `postloom export turtle` (or `jsonld`, `cypher`, `graphml`), with
+`--history`, `--no-text` and `-o <file>`.
+
+<details>
+<summary><b>Load it into Neo4j</b></summary>
+
+With Neo4j running, load the script with `cypher-shell` (it comes with Neo4j):
+
+```bash
+cypher-shell -u neo4j -p <your password> -f postloom-graph-2026-11-26.cypher
+```
+
+Or open Neo4j Browser, turn on **Enable multi statement query editor** in its settings,
+paste the file and run it. Loading the same file again changes nothing, and a newer export
+updates what changed. Then try:
+
+```cypher
+MATCH (p:Person)-[:AUTHORED]->(:Comment)-[:COMMENTED_ON]->(:Post)-[:ANNOUNCES]->(a:Article)
+RETURN p.name, count(DISTINCT a) AS articles ORDER BY articles DESC LIMIT 10;
+```
+
+Every node has the label `Postloom`, its kind (`Article`, `Post`, `Comment`, `Person`,
+`Topic`, `Series`, `Entity`, `Media`) and a unique `id`. Relationships (`BELONGS_TO`,
+`PART_OF`, `ANNOUNCES`, `COMMENTED_ON`, `REPLIED_TO`, `AUTHORED`, `RELATED_TO`, `LINKS_TO`,
+`MENTIONS`) carry `origin`, `grade` (`verified`, `asserted` or `rejected`), `producer` and
+`recorded_at`. With history, filter on `r.current = true` for today's graph.
+
+</details>
+
+<details>
+<summary><b>Load it into a triple store and query it with SPARQL</b></summary>
+
+- **GraphDB:** create a repository, then **Import → Upload RDF files**, choose the `.ttl`
+  file and click **Import**. Query it under **SPARQL**.
+- **Apache Jena:** `sparql --data postloom-graph-2026-11-26.ttl --query query.rq`
+- **Python:** `rdflib.Graph().parse("postloom-graph-2026-11-26.ttl")`
+
+Who comments most:
+
+```sparql
+PREFIX pl: <https://postloom-app.vercel.app/ns#>
+PREFIX schema: <https://schema.org/>
+SELECT ?name (COUNT(?comment) AS ?comments) WHERE {
+  ?person pl:authored ?comment ; schema:name ?name .
+} GROUP BY ?name ORDER BY DESC(?comments) LIMIT 10
+```
+
+Links a model made that you haven't confirmed yet, using the provenance records:
+
+```sparql
+PREFIX pl: <https://postloom-app.vercel.app/ns#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+SELECT ?from ?link ?to ?producer WHERE {
+  ?record a pl:EdgeRecord ; pl:grade pl:Asserted ; pl:producer ?producer ;
+          rdf:subject ?from ; rdf:predicate ?link ; rdf:object ?to .
+  FILTER NOT EXISTS { ?record prov:invalidatedAtTime ?until }
+}
+```
+
+Nodes use schema.org (`schema:Article`, `schema:Comment`, `schema:Person`...) and SKOS
+for topics, and are named `urn:postloom:<id>`. Relations are `pl:` properties mapped to
+schema.org and Dublin Core; the vocabulary is at
+[postloom-app.vercel.app/ns](https://postloom-app.vercel.app/ns) and inside every export.
+Each link is also a `pl:EdgeRecord` (an `rdf:Statement`) with its origin, grade, producer
+and PROV-O times.
+
+</details>
+
+<details>
+<summary><b>Open it in Gephi, yEd or NetworkX</b></summary>
+
+- **Gephi:** **File → Open**, choose the `.graphml` file, keep **Directed** and click
+  **OK**. Under **Appearance**, colour nodes by the `labels` attribute (partition) and size
+  them by degree; run **ForceAtlas 2** under **Layout**.
+- **yEd:** **File → Open**, then **Layout → Organic**.
+- **NetworkX:** `networkx.read_graphml("postloom-graph-2026-11-26.graphml")`
+- **Neo4j:** copy the file into Neo4j's `import` folder, then run
+  `CALL apoc.import.graphml("file:///postloom-graph-2026-11-26.graphml", {readLabels: true})`
+  (needs the APOC plugin and `apoc.import.file.enabled=true`).
+
+</details>
+
+The file holds the names and comments of the people in your library, so share it with the
+same care as your vault. The [user guide](docs/guide.md#exporting-the-graph) has the full
+data model.
 
 ## Privacy
 
