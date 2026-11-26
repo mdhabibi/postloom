@@ -7,22 +7,6 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
-### Added
-- **Export your graph** (Settings, or `postloom export`) as RDF in Turtle or JSON-LD
-  (schema.org, SKOS and PROV-O, with every link's provenance as a reified statement), as a
-  Cypher script for Neo4j, or as GraphML for Gephi, yEd, Cytoscape and NetworkX. Choose
-  whether to include what was written and the history of replaced and dismissed links.
-  The vocabulary is published at https://postloom-app.vercel.app/ns.
-
-### Changed
-- The README is a shorter front page (what postloom is, install, getting started, models,
-  privacy), and everything it can do, screen by screen, is in the new
-  [user guide](docs/guide.md).
-- The README opens centred with the logo, and installs in the same four steps per computer
-  as the website; update and uninstall are folded away.
-- The website moved to [postloom-app.vercel.app](https://postloom-app.vercel.app/),
-  with security headers and caching (`site/vercel.json`); the GitHub Pages workflow is gone.
-
 ## [0.1.0] - unreleased
 
 The first public release.
@@ -66,6 +50,10 @@ The first public release.
   to a trash folder, never deleted; your own notes are never touched.
 - Delete a person: erases their profile, notes and every message they wrote, everywhere,
   for data-removal requests.
+- Export the whole graph, with where every link came from, as RDF (Turtle or JSON-LD, with
+  schema.org, SKOS and PROV-O), as a Cypher script for Neo4j, or as GraphML for Gephi,
+  yEd, Cytoscape and NetworkX. The vocabulary is published at
+  https://postloom-app.vercel.app/ns.
 
 ### Models and cost
 - Bring your own key: Gemini, Claude, OpenAI, OpenRouter, any OpenAI-compatible server,

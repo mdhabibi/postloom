@@ -3,13 +3,6 @@
 Thanks for your interest! postloom is young; problems, ideas and pull requests are very
 welcome. Please read the [code of conduct](CODE_OF_CONDUCT.md) first.
 
-## Your contributions and the license
-
-postloom is fair source under the [Functional Source License](LICENSE.md). By sending a pull
-request you agree that your contribution is licensed under the same terms, and that the
-author of postloom may also license it under other terms in the future (for example for a
-commercial edition). If that doesn't suit you, open an issue to discuss the change instead.
-
 ## Setup
 
 ```bash
@@ -70,16 +63,16 @@ A change to the UI should come with a browser test in `tests/e2e/test_ui.py`.
 - **Tests describe behaviour.** Name them as sentences:
   `test_reingest_never_overrides_the_users_decisions`.
 
-## Licensing of contributions
+## Contributions and the license
 
-postloom is fair source under the [Functional Source License 1.1](LICENSE.md), and its
-author may also offer it under other terms, including commercial ones. So that this stays
-possible, every pull request needs the contributor's agreement that:
+postloom is fair source under the [Functional Source License 1.1](../LICENSE.md), and its
+author may also offer it under other terms in the future. So that this stays possible,
+every pull request needs the contributor's agreement that:
 
 1. you wrote the contribution, or have the right to submit it;
 2. it is licensed under the project's license; and
 3. you grant Mahdi Habibi a perpetual, worldwide, irrevocable, royalty-free license to
-   use, modify and relicense it, including in commercial versions of postloom.
+   use, modify and relicense it, including in other editions of postloom.
 
 Say so in the pull request description ("I agree to the contribution terms in
-CONTRIBUTING.md"). A pull request without this can't be merged.
+CONTRIBUTING.md"). If that doesn't suit you, open an issue to discuss the change instead.

@@ -343,14 +343,14 @@ postloom is not affiliated with or endorsed by LinkedIn.
 ## Documentation
 
 - [User guide](docs/guide.md): every feature and setting
-- [Architecture](ARCHITECTURE.md): how postloom is built, and why
+- [Architecture](docs/architecture.md): how postloom is built, and why
 - [Changelog](CHANGELOG.md): what changed in each version
-- [Contributing](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md) and
-  [security policy](SECURITY.md)
+- [Contributing](.github/CONTRIBUTING.md), [code of conduct](.github/CODE_OF_CONDUCT.md) and
+  [security policy](.github/SECURITY.md)
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Something missing?
+Contributions are welcome. See [CONTRIBUTING.md](.github/CONTRIBUTING.md). Something missing?
 [Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
 
 ## License
