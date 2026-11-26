@@ -59,6 +59,7 @@ from postloom.application.errors import (
     ProviderError,
 )
 from postloom.application.ports.chat import ChatMessage, Role
+from postloom.application.ports.graph_export import ExportOptions
 from postloom.application.use_cases import (
     UNSET,
     Decision,
@@ -700,6 +701,28 @@ def create_app(
     def graph(request: Request) -> Response:
         return JSONResponse(schemas.graph_data(state.container.graph().execute()))
 
+    def export_formats(request: Request) -> Response:
+        formats = state.container.export_graph().formats()
+        return JSONResponse(
+            {
+                "formats": [
+                    {"id": f.name, "title": f.title, "extension": f.extension} for f in formats
+                ]
+            }
+        )
+
+    def export_graph(request: Request) -> Response:
+        params = request.query_params
+        options = ExportOptions(
+            text=params.get("text", "1") != "0", history=params.get("history", "0") == "1"
+        )
+        export = state.container.export_graph().execute(params.get("format", ""), options)
+        return Response(
+            export.content,
+            media_type=export.media_type,
+            headers={"Content-Disposition": f'attachment; filename="{export.filename}"'},
+        )
+
     def review_link(request: Request, body: schemas.LinkReviewRequest) -> Response:
         link = state.container.review_link().execute(
             NodeId(body.article_id), NodeId(body.other_id), Decision(body.decision)
@@ -862,6 +885,8 @@ def create_app(
         Route("/api/reply-draft", api(draft_reply, schemas.ReplyDraftRequest), methods=["POST"]),
         Route("/api/overview", api(overview)),
         Route("/api/graph", api(graph)),
+        Route("/api/export", api(export_graph)),
+        Route("/api/export/formats", api(export_formats)),
         Route("/api/links", api(review_link, schemas.LinkReviewRequest), methods=["POST"]),
         Route("/api/links/suggest", api(suggest_links), methods=["POST"]),
         Route("/api/people", api(list_people)),

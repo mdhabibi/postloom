@@ -132,6 +132,46 @@ anything you mention (type its name in **Focus on**), that node and its connecti
 period choice (last 3 or 12 months) narrows it further, and the address keeps the focus,
 so you can bookmark it.
 
+## Exporting the graph
+
+**Settings → Export your graph** saves the whole graph in a format other tools read:
+every article, post, comment, person and mention, every link between them, and where each
+link came from (parsed from your text, suggested by a model, or decided by you).
+
+| Format | For |
+|---|---|
+| **RDF (Turtle)** | Triple stores such as GraphDB, Apache Jena or Stardog, and SPARQL queries |
+| **RDF (JSON-LD)** | The same RDF as JSON, for code and the web |
+| **Cypher for Neo4j** | A script that loads everything into Neo4j: `cypher-shell -f file.cypher`, or Neo4j Browser |
+| **GraphML** | Gephi, yEd, Cytoscape, NetworkX and igraph, and Neo4j through APOC |
+
+Two choices come with it. **Include what was written** (on by default) adds article
+bodies, post texts, comments and your notes on people; without it you get the structure
+with names, titles and dates. **Include history** adds the links that were replaced or
+that you dismissed, marked as such.
+
+How the graph is modelled:
+
+- **RDF** uses schema.org (`schema:Article`, `schema:Comment`, `schema:Person`...) and
+  SKOS for topics. Relations are postloom properties (`pl:belongsTo`, `pl:authored`...)
+  mapped to schema.org and Dublin Core, and the vocabulary is published at
+  [postloom-app.vercel.app/ns](https://postloom-app.vercel.app/ns) and included in every
+  export. A node's IRI is `urn:postloom:` plus its postloom id; people with a profile are
+  `schema:sameAs` their LinkedIn URL. Each live relation is a plain triple, and each
+  recorded link is also a `pl:EdgeRecord` (an `rdf:Statement`) with its origin, grade,
+  producer and PROV-O times, so you can ask SPARQL which links a model suggested and you
+  accepted.
+- **Cypher and GraphML** describe a labeled property graph: nodes labelled `Article`,
+  `Post`, `Comment`, `Person`, `Topic`, `Series`, `Entity` (plus the category, such as
+  `Organisation`) and `Media`, and relationships such as `BELONGS_TO`, `AUTHORED`,
+  `COMMENTED_ON`, `REPLIED_TO` and `MENTIONS`, with provenance as properties. The Cypher
+  script merges on ids, so loading it twice changes nothing and loading a newer export
+  updates what changed.
+
+The export is a file on your computer: it holds the names and comments of the people in
+your library, so share it with the same care as the vault. It is also a snapshot: if you
+later delete a person, delete them from anywhere you loaded an export too.
+
 ## A large library
 
 Every list is built to stay tidy at hundreds of articles and thousands of people. The
@@ -180,6 +220,8 @@ postloom links --explain                                 # how similar your arti
 postloom usage                                           # this month's calls and cost
 postloom sync                                            # read your vault again
 postloom doctor                                          # check provider, models, search, vault
+postloom export turtle --history                         # the graph for other tools (also
+                                                         # jsonld, cypher, graphml; -o file)
 ```
 
 `doctor` makes one tiny real call with each model you configured (a fraction of a cent), so

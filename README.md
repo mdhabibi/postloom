@@ -205,6 +205,8 @@ too long for the limit you set, instead of letting them be silently cut off.
   subtitles.
 - **Ask questions:** answers only from your own library, with sources you can open.
 - **The graph:** articles, topics, series, people and mentions, focused on whatever you pick.
+- **Export the graph:** RDF (Turtle, JSON-LD) with schema.org and PROV-O, Cypher for
+  Neo4j, or GraphML for Gephi, with the provenance of every link.
 - **Your vault:** plain Markdown you can open in Obsidian, edit, back up or move.
 - **Command line:** everything the app does, scriptable.
 

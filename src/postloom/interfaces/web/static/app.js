@@ -1727,7 +1727,8 @@ async function settingsView() {
         h("button", { class: "button", type: "button", onclick: saveOwnerName, disabled: s.locked.includes("owner_name") }, "Save name")),
       h("p", { class: "hint" }, "Used to recognise your own replies when you paste comments.")),
     topicsSection(),
-    vaultSection(s));
+    vaultSection(s),
+    exportSection());
   setMain(page);
 }
 
@@ -1839,6 +1840,63 @@ function vaultSection(s) {
     h("p", { class: "hint" }, "Every article, post, comment and person is a Markdown note in this folder. Open it in Obsidian to browse it as a graph, and edit the notes there if you like: postloom reads your changes. If postloom's index is ever lost, it rebuilds itself from this folder, so backing up this folder backs up everything."),
     button, result,
     h("p", { class: "hint" }, h("a", { href: "#/about" }, `About postloom ${s.version}`), " \u00b7 license, source code and credits"));
+}
+
+// ---------------------------------------------------------------------------- settings: export
+const EXPORT_USES = {
+  turtle: "For triple stores (GraphDB, Jena, Stardog) and SPARQL. Uses schema.org and PROV-O.",
+  jsonld: "The same RDF as JSON, for code and the web.",
+  cypher: "A script that loads everything into Neo4j: cypher-shell -f, or Neo4j Browser.",
+  graphml: "Opens in Gephi, yEd, Cytoscape and NetworkX, and in Neo4j through APOC.",
+};
+
+function exportSection() {
+  const section = h("section", { class: "settings-section", "aria-labelledby": "export-heading" });
+  let chosen = "turtle";
+  const result = h("div", { role: "status" });
+  const withText = h("input", { type: "checkbox", id: "export_text", checked: true });
+  const withHistory = h("input", { type: "checkbox", id: "export_history" });
+  const button = h("button", { class: "button", type: "button", onclick: async () => {
+    button.disabled = true;
+    fill(result, h("p", { class: "hint" }, "Exporting…"));
+    try {
+      const query = new URLSearchParams({ format: chosen, text: withText.checked ? "1" : "0", history: withHistory.checked ? "1" : "0" });
+      const response = await fetch(`/api/export?${query}`, { headers: { "X-Postloom": "1" } });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Export failed (${response.status}).`);
+      }
+      const name = (/filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "") || [])[1] || "postloom-graph";
+      const url = URL.createObjectURL(await response.blob());
+      const link = h("a", { href: url, download: name });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      fill(result, notice("ok", `Saved ${name} to your downloads.`));
+    } catch (error) {
+      fill(result, notice("error", error.message));
+    }
+    button.disabled = false;
+  } }, "Export the graph");
+  const render = (formats) => {
+    fill(section,
+      h("h2", { class: "settings-heading", id: "export-heading" }, "Export your graph"),
+      h("p", { class: "hint" }, "Every article, post, comment, person and mention, with every link between them and where each link came from (parsed, suggested by a model, or confirmed by you). For your own analysis in other graph tools; nothing leaves your computer until you share the file."),
+      h("div", { class: "provider-grid", role: "radiogroup", "aria-label": "Export format" },
+        formats.map((f) => h("label", { class: `provider-card${f.id === chosen ? " selected" : ""}` },
+          h("input", { type: "radio", name: "export_format", value: f.id, checked: f.id === chosen,
+            onchange: () => { chosen = f.id; render(formats); } }),
+          h("span", { class: "provider-name" }, f.title),
+          h("span", { class: "provider-description" }, EXPORT_USES[f.id] || `.${f.extension}`)))),
+      h("label", { class: "check", for: "export_text" }, withText, " Include what was written: article bodies, posts, comments and your notes on people"),
+      h("label", { class: "check", for: "export_history" }, withHistory, " Include history: links that were replaced or that you dismissed, marked as such"),
+      h("div", { class: "actions" }, button),
+      result);
+  };
+  api("/api/export/formats").then(({ formats }) => render(formats))
+    .catch((error) => fill(section, notice("error", error.message)));
+  return section;
 }
 
 const TASK_LABELS = {
@@ -2556,6 +2614,7 @@ async function graphView(initial = {}) {
         h("li", {}, h("span", { class: "key key-suggested" }), "Suggested"))),
     note,
     h("div", { class: "graph-stage" }, canvas, card),
+    articles.length ? h("p", { class: "hint" }, "Want it in Neo4j, Gephi or an RDF store? ", h("a", { href: "#/settings" }, "Export your graph in Settings"), ".") : null,
     suggestionList(graph)));
   draw();
 }
