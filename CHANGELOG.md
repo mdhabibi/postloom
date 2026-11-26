@@ -7,6 +7,11 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+### Changed
+- The README is a shorter front page (what postloom is, install, getting started, models,
+  privacy), and everything it can do, screen by screen, is in the new
+  [user guide](docs/guide.md).
+
 ## [0.1.0] - unreleased
 
 The first public release.
