@@ -15,7 +15,7 @@ or none.
 [![Mac, Windows, Linux](https://img.shields.io/badge/runs%20on-Mac%20%7C%20Windows%20%7C%20Linux-555)](#install)
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue)](LICENSE.md)
 
-[**Website**](https://postloom-gamma.vercel.app/) · [**Install**](#install) ·
+[**Website**](https://postloom-app.vercel.app/) · [**Install**](#install) ·
 [**User guide**](docs/guide.md) · [**What's new**](CHANGELOG.md)
 
 </div>
