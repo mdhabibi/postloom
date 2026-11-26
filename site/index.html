@@ -677,7 +677,7 @@ for (const button of document.querySelectorAll("[data-copy]")) {
     // Beside the headline when there is room for a graph there, behind it (faint) when not.
     const text = hero.querySelector(".hero-text");
     textRight = text ? Math.max(...[...text.children].map((el) => el.getBoundingClientRect().right)) - box.left : width / 2;
-    narrow = width - textRight < 420;
+    narrow = width - textRight < 300;
     area = plate ? plate.getBoundingClientRect().top - box.top - 12 : height;
     canvas.width = width * ratio; canvas.height = height * ratio;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
