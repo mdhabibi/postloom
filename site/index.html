@@ -126,7 +126,6 @@ body::before {
 /* -- hero ---------------------------------------------------------------------------- */
 .hero { position: relative; padding-block: 4.5rem 0; overflow: hidden; }
 .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
-@media (max-width: 900px) { .hero canvas { display: none; } }
 .hero .wrap { position: relative; z-index: 1; }
 .hero-text { display: grid; gap: 1.4rem; max-width: 47rem; }
 .hero h1 { font: 600 clamp(2.7rem, 1.6rem + 4.6vw, 5.1rem)/1.02 var(--display); letter-spacing: -0.02em; }
@@ -575,66 +574,292 @@ for (const button of document.querySelectorAll("[data-copy]")) {
   show(document.getElementById(mine));
 })();
 
-// The hero's loom: colored warp threads, with a weft woven across them once on load.
+// The hero's graph: what postloom builds from your writing, alive in the background.
+// Topics, articles, posts, comments, the people who wrote them and what you mention,
+// linked as they are in the app. Signals run along the links; pointing at a node shows
+// what it is. Still for people who prefer less motion, paused when out of sight.
 (function () {
   const canvas = document.getElementById("loom");
+  const hero = canvas.parentElement;
+  const plate = hero.querySelector(".plate");
   const context = canvas.getContext("2d");
-  const style = getComputedStyle(document.documentElement);
-  const threads = ["--t1", "--t2", "--t3", "--t4", "--t5", "--t6", "--t7", "--t8"];
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let width = 0, height = 0, start = 0;
+  const KINDS = {
+    topic: { color: "--t3", label: "Topic", r: 15 },
+    article: { color: "--t1", label: "Article", r: 14 },
+    post: { color: "--t4", label: "Post", r: 12 },
+    comment: { color: "--t6", label: "Comment", r: 10 },
+    person: { color: "--t2", label: "Person", r: 12 },
+    mention: { color: "--t5", label: "Mention", r: 11 },
+  };
+  let width = 0, height = 0, area = 0, narrow = false, textRight = 0, light = false;
+  let nodes = [], links = [], pulses = [], colors = {}, ink = "", ground = "";
+  let pointer = null, born = 0, visible = true, running = false, nextPulse = 0;
 
-  function size() {
-    const box = canvas.getBoundingClientRect();
-    const ratio = Math.min(devicePixelRatio || 1, 2);
-    width = box.width; height = box.height;
-    canvas.width = width * ratio; canvas.height = height * ratio;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  // A fixed little library, so the picture is the same on every visit.
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+
+  function build() {
+    const scale = narrow ? 0.55 : 1;
+    const n = (k) => Math.max(1, Math.round(k * scale));
+    nodes = []; links = []; seed = 7;
+    const add = (kind, near) => {
+      const node = { kind, x: 0, y: 0, vx: 0, vy: 0, order: nodes.length, phase: random() * 6.28, glow: 0, near };
+      nodes.push(node);
+      return node;
+    };
+    const link = (a, b) => links.push({ a, b });
+    const pick = (list) => list[Math.floor(random() * list.length)];
+    const topics = Array.from({ length: n(3) }, () => add("topic"));
+    const articles = Array.from({ length: n(6) }, (_, i) => add("article", topics[i % topics.length]));
+    for (const a of articles) { link(a, a.near); if (random() < 0.35) link(a, pick(topics)); }
+    const posts = articles.slice(0, n(5)).map((a) => { const p = add("post", a); link(p, a); return p; });
+    const people = Array.from({ length: n(8) }, () => add("person"));
+    for (let i = 0; i < n(12); i++) {
+      const post = pick(posts);
+      const c = add("comment", post);
+      link(c, post);
+      const author = people[i % people.length];
+      link(author, c);
+      author.near = author.near || c;
+    }
+    for (let i = 0; i < n(3); i++) {
+      const m = add("mention", pick(articles));
+      link(m.near, m);
+      if (random() < 0.5) link(pick(articles), m);
+    }
+    layout();
   }
 
-  function draw(progress) {
-    context.clearRect(0, 0, width, height);
-    const colors = threads.map((t) => style.getPropertyValue(t).trim());
-    const line = style.getPropertyValue("--line").trim();
-    const left = width * 0.66, gap = Math.max(22, width * 0.022);
-    const count = Math.ceil((width - left) / gap);
-    // Warp: vertical threads on the right, fading in toward the edge.
-    for (let i = 0; i < count; i++) {
-      const x = left + i * gap;
-      context.globalAlpha = 0.12 + 0.28 * (i / count);
-      context.strokeStyle = colors[i % colors.length];
-      context.lineWidth = 2;
-      context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height * 0.62); context.stroke();
+  // A short force simulation, run once: links pull, nodes push apart, all stay in the area.
+  function layout() {
+    const left = narrow ? width * 0.04 : textRight + 40, right = width * (narrow ? 0.96 : 0.97);
+    const top = 30, bottom = Math.max(top + 160, area - 30);
+    for (const node of nodes) {
+      const near = node.near && node.near.order < node.order ? node.near : null;
+      node.x = near ? near.x + (random() - 0.5) * 90 : left + random() * (right - left);
+      node.y = near ? near.y + (random() - 0.5) * 90 : top + random() * (bottom - top);
     }
-    // Weft: rows woven over and under, drawn left to right as the page opens.
-    const rows = 7;
-    for (let r = 0; r < rows; r++) {
-      const y = 46 + r * ((height * 0.62 - 70) / rows);
-      const reach = left + (width - left) * Math.min(1, Math.max(0, progress * 1.6 - r * 0.09));
-      for (let i = 0; i < count - 1; i++) {
-        const x = left + i * gap;
-        if (x > reach) break;
-        const over = (i + r) % 2 === 0;
-        context.globalAlpha = over ? 0.55 : 0.16;
-        context.strokeStyle = over ? colors[(r + 3) % colors.length] : line;
-        context.lineWidth = over ? 3 : 2;
-        context.beginPath(); context.moveTo(x + 3, y); context.lineTo(Math.min(x + gap - 3, reach), y); context.stroke();
+    const rest = narrow ? 52 : 74;
+    for (let tick = 0; tick < 320; tick++) {
+      const heat = 1 - tick / 320;
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          const d2 = Math.max(dx * dx + dy * dy, 25), d = Math.sqrt(d2);
+          const push = (rest * rest * 0.9) / d2;
+          dx /= d; dy /= d;
+          a.vx -= dx * push; a.vy -= dy * push; b.vx += dx * push; b.vy += dy * push;
+        }
+      }
+      for (const { a, b } of links) {
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+        const pull = (d - rest) * 0.04;
+        a.vx += (dx / d) * pull; a.vy += (dy / d) * pull; b.vx -= (dx / d) * pull; b.vy -= (dy / d) * pull;
+      }
+      for (const node of nodes) {
+        node.x += Math.max(-12, Math.min(12, node.vx * heat));
+        node.y += Math.max(-12, Math.min(12, node.vy * heat));
+        node.vx *= 0.5; node.vy *= 0.5;
+        node.x = Math.max(left, Math.min(right, node.x));
+        node.y = Math.max(top, Math.min(bottom, node.y));
       }
     }
-    context.globalAlpha = 1;
+    for (const node of nodes) { node.ax = node.x; node.ay = node.y; }
+  }
+
+  function size() {
+    const box = hero.getBoundingClientRect();
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    width = box.width; height = box.height;
+    // Beside the headline when there is room for a graph there, behind it (faint) when not.
+    const text = hero.querySelector(".hero-text");
+    textRight = text ? Math.max(...[...text.children].map((el) => el.getBoundingClientRect().right)) - box.left : width / 2;
+    narrow = width - textRight < 300;
+    area = plate ? plate.getBoundingClientRect().top - box.top - 12 : height;
+    canvas.width = width * ratio; canvas.height = height * ratio;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    theme();
+    build();
+  }
+
+  function theme() {
+    const style = getComputedStyle(document.documentElement);
+    ink = style.getPropertyValue("--soft").trim();
+    ground = style.getPropertyValue("--ground").trim();
+    const rgb = (hex) => (hex.replace("#", "").match(/\w\w/g) || ["00", "00", "00"]).map((h) => parseInt(h, 16));
+    const [r, g, b] = rgb(ground);
+    light = 0.2126 * r + 0.7152 * g + 0.0722 * b > 140;
+    // The thread colours are made for a dark page: on a light one, use deeper shades.
+    for (const [kind, spec] of Object.entries(KINDS)) {
+      const color = style.getPropertyValue(spec.color).trim();
+      colors[kind] = light ? `rgb(${rgb(color).map((v) => Math.round(v * 0.72)).join(" ")})` : color;
+    }
+  }
+
+  // How visible a point is: faint behind the headline, clear on the right.
+  function fade(x) {
+    if (narrow) return light ? 0.3 : 0.2;
+    const t = Math.max(0, Math.min(1, (x - textRight) / 160));
+    return Math.min(1, (0.35 + 0.65 * t * t * (3 - 2 * t)) * (light ? 1.2 : 1));
+  }
+
+  function glyph(kind, x, y, r) {
+    const c = context;
+    c.beginPath();
+    if (kind === "article") {
+      const w = r * 0.9, h = r * 1.15, f = r * 0.35;
+      c.moveTo(x - w / 2, y - h / 2); c.lineTo(x + w / 2 - f, y - h / 2); c.lineTo(x + w / 2, y - h / 2 + f);
+      c.lineTo(x + w / 2, y + h / 2); c.lineTo(x - w / 2, y + h / 2); c.closePath();
+      for (let i = 0; i < 3; i++) { const ly = y - h * 0.12 + i * h * 0.22; c.moveTo(x - w * 0.3, ly); c.lineTo(x + w * 0.3, ly); }
+    } else if (kind === "post") {
+      const w = r * 1.2, h = r * 0.95, k = r * 0.2;
+      c.roundRect(x - w / 2, y - h / 2, w, h, k);
+      c.moveTo(x - w * 0.3, y - h * 0.12); c.lineTo(x + w * 0.3, y - h * 0.12);
+      c.moveTo(x - w * 0.3, y + h * 0.16); c.lineTo(x + w * 0.1, y + h * 0.16);
+    } else if (kind === "comment") {
+      const w = r * 1.25, h = r * 0.9;
+      c.roundRect(x - w / 2, y - h / 2 - r * 0.1, w, h, r * 0.3);
+      c.moveTo(x - w * 0.15, y + h / 2 - r * 0.1); c.lineTo(x - w * 0.3, y + h / 2 + r * 0.25); c.lineTo(x + w * 0.05, y + h / 2 - r * 0.1);
+    } else if (kind === "person") {
+      c.arc(x, y - r * 0.28, r * 0.3, 0, Math.PI * 2);
+      c.moveTo(x + r * 0.55, y + r * 0.55);
+      c.arc(x, y + r * 0.55, r * 0.55, 0, Math.PI, true);
+    } else if (kind === "topic") {
+      const a = r * 0.42;
+      c.moveTo(x - a * 0.35, y - a); c.lineTo(x - a * 0.55, y + a);
+      c.moveTo(x + a * 0.55, y - a); c.lineTo(x + a * 0.35, y + a);
+      c.moveTo(x - a, y - a * 0.35); c.lineTo(x + a, y - a * 0.35);
+      c.moveTo(x - a, y + a * 0.35); c.lineTo(x + a, y + a * 0.35);
+    } else {
+      const a = r * 0.5;
+      c.moveTo(x, y - a); c.lineTo(x + a, y); c.lineTo(x, y + a); c.lineTo(x - a, y); c.closePath();
+    }
+    c.stroke();
+  }
+
+  function draw(time) {
+    const c = context;
+    c.clearRect(0, 0, width, height);
+    const age = still ? 1e9 : time - born;
+    const shown = (node) => Math.max(0, Math.min(1, (age - node.order * 55) / 500));
+    for (const node of nodes) {
+      const sway = still ? 0 : 1;
+      node.x = node.ax + Math.sin(time / 2600 + node.phase) * 6 * sway;
+      node.y = node.ay + Math.cos(time / 3100 + node.phase * 1.3) * 5 * sway;
+      let lift = 0;
+      if (pointer) {
+        const d = Math.hypot(pointer.x - node.x, pointer.y - node.y);
+        lift = Math.max(0, 1 - d / 130);
+      }
+      node.lit = Math.max(lift, node.glow);
+      node.glow *= 0.95;
+    }
+    const hover = pointer && nodes.reduce((best, n) => {
+      const d = Math.hypot(pointer.x - n.x, pointer.y - n.y);
+      return d < KINDS[n.kind].r + 8 && (!best || d < best.d) ? { n, d } : best;
+    }, null);
+
+    // Links.
+    c.lineCap = "round";
+    for (const { a, b } of links) {
+      const grow = Math.min(shown(a), shown(b));
+      if (!grow) continue;
+      const lit = Math.max(a.lit, b.lit) + (hover && (hover.n === a || hover.n === b) ? 1 : 0);
+      c.globalAlpha = Math.min(1, (0.22 + 0.5 * Math.min(1, lit)) * grow * Math.min(fade(a.x), fade(b.x)));
+      c.strokeStyle = colors[b.kind];
+      c.lineWidth = 1.2 + Math.min(1, lit);
+      c.beginPath(); c.moveTo(a.x, a.y);
+      c.lineTo(a.x + (b.x - a.x) * grow, a.y + (b.y - a.y) * grow); c.stroke();
+    }
+
+    // Signals running along links.
+    for (const pulse of pulses) {
+      const t = (time - pulse.start) / 1400;
+      if (t >= 1) { pulse.done = true; pulse.to.glow = 1; continue; }
+      const e = t * t * (3 - 2 * t);
+      const x = pulse.from.x + (pulse.to.x - pulse.from.x) * e, y = pulse.from.y + (pulse.to.y - pulse.from.y) * e;
+      c.globalAlpha = 0.9 * fade(x) * Math.sin(Math.PI * t);
+      c.fillStyle = colors[pulse.to.kind];
+      c.beginPath(); c.arc(x, y, 2.6, 0, Math.PI * 2); c.fill();
+    }
+    pulses = pulses.filter((p) => !p.done);
+
+    // Nodes: a chip in the page's colour with the glyph of what it is.
+    for (const node of nodes) {
+      const grow = shown(node);
+      if (!grow) continue;
+      const spec = KINDS[node.kind];
+      const r = spec.r * (0.6 + 0.4 * grow) * (1 + 0.15 * Math.min(1, node.lit));
+      const alpha = Math.min(1, (0.55 + 0.45 * Math.min(1, node.lit)) * grow * fade(node.x));
+      c.globalAlpha = alpha;
+      c.fillStyle = ground;
+      c.beginPath(); c.arc(node.x, node.y, r + 5, 0, Math.PI * 2); c.fill();
+      if (node.lit > 0.05) {
+        c.globalAlpha = alpha * 0.25 * Math.min(1, node.lit);
+        c.fillStyle = colors[node.kind];
+        c.beginPath(); c.arc(node.x, node.y, r + 9, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = alpha;
+      }
+      c.strokeStyle = colors[node.kind];
+      c.lineWidth = 1.5;
+      c.beginPath(); c.arc(node.x, node.y, r + 5, 0, Math.PI * 2); c.stroke();
+      c.lineWidth = 1.6; c.lineJoin = "round";
+      glyph(node.kind, node.x, node.y, r);
+    }
+
+    if (hover) {
+      const { n } = hover;
+      c.globalAlpha = 1;
+      c.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      c.fillStyle = ink;
+      c.fillText(KINDS[n.kind].label.toUpperCase(), n.x + KINDS[n.kind].r + 12, n.y + 4);
+    }
+    c.globalAlpha = 1;
+  }
+
+  function pulse(time) {
+    if (time < nextPulse || !links.length) return;
+    nextPulse = time + 450 + Math.random() * 500;
+    const l = links[Math.floor(Math.random() * links.length)];
+    const [from, to] = Math.random() < 0.5 ? [l.a, l.b] : [l.b, l.a];
+    pulses.push({ from, to, start: time });
   }
 
   function frame(time) {
-    if (!start) start = time;
-    const progress = Math.min(1, (time - start) / 2200);
-    draw(1 - Math.pow(1 - progress, 3));
-    if (progress < 1) requestAnimationFrame(frame);
+    if (!visible || document.hidden) { running = false; return; }
+    if (!born) born = time;
+    if (time - born > nodes.length * 55 + 400) pulse(time);
+    draw(time);
+    requestAnimationFrame(frame);
+  }
+
+  function start() {
+    if (still || running) return;
+    running = true;
+    requestAnimationFrame(frame);
   }
 
   size();
-  if (still) draw(1); else requestAnimationFrame(frame);
-  addEventListener("resize", () => { size(); draw(1); });
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(1));
+  if (still) draw(0); else start();
+  let resizing = 0;
+  addEventListener("resize", () => {
+    clearTimeout(resizing);
+    resizing = setTimeout(() => { size(); if (still) draw(0); }, 120);
+  });
+  const redraw = () => { theme(); if (still) draw(0); };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  hero.addEventListener("pointermove", (e) => {
+    const box = hero.getBoundingClientRect();
+    pointer = { x: e.clientX - box.left, y: e.clientY - box.top };
+    if (still) draw(0);
+  });
+  hero.addEventListener("pointerleave", () => { pointer = null; if (still) draw(0); });
+  new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; if (visible) start(); }).observe(hero);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) start(); });
 })();
 </script>
 </body>
