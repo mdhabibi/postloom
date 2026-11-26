@@ -53,11 +53,18 @@ A change to the UI should come with a browser test in `tests/e2e/test_ui.py`.
   (`adapters/llm/base.py`) with tests against `tests/llm_support.FakeTransport`, then add
   the entry. Prompts and schemas stay in `prompts.py`; don't fork them per provider.
 - **Rules before models.** If something can be parsed deterministically, don't ask an LLM.
-- **Provenance on every fact.** New edges need an origin, a grade and a producer.
+- **Frozen domain, validated edges.** Domain entities are frozen dataclasses; Pydantic is
+  used only at the boundaries (model output, API input). Wiring happens only in
+  `bootstrap.py`.
+- **Provenance on every fact.** New edges need an origin, a grade and a producer. Never
+  delete history: supersede it. Automated processes never overwrite `verified` or
+  `rejected` edges. The one exception is erasure: deleting an article or a person removes
+  their history too (`erase_nodes`).
 - **The vault must stay rebuildable.** Anything new that postloom stores has to be written
   to a note (or the journal) and read back by `adapters/vault/reader.py`. Add it to the
   round-trip test in `tests/unit/adapters/test_vault_reading.py`; if deleting `index.db`
-  would lose it, it isn't done.
+  would lose it, it isn't done. Never read, overwrite or remove notes postloom didn't
+  write, and move stale notes to the trash instead of deleting them.
 - **Never commit real people's data.** Use invented names in fixtures
   (`Jane Example`, `linkedin.com/in/jane-example`).
 - **Tests describe behaviour.** Name them as sentences:
