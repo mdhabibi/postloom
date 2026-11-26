@@ -122,6 +122,9 @@ ban-relative-imports = "all"
 # ---------------------------------------------------------------- pyright
 [tool.pyright]
 include = ["src", "tests", "scripts"]
+# Generates the website tour's sound with numpy and scipy, which the project doesn't depend on;
+# run it with `uv run --with numpy --with scipy python scripts/demo/tour_audio.py`.
+exclude = ["scripts/demo/tour_audio.py"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false

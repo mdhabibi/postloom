@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>postloom tour</title>
+<meta name="description" content="A two-minute animated tour of postloom: add articles, posts and comments, search, ask, people, mentions, reply drafts, the graph, images and your data.">
+<link rel="canonical" href="https://postloom-app.vercel.app/tour">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://postloom-app.vercel.app/tour">
+<meta property="og:title" content="postloom tour">
+<meta property="og:description" content="Every part of postloom in two minutes, with a fictional library.">
+<meta property="og:image" content="https://postloom-app.vercel.app/img/og.png">
+<link rel="preload" href="fonts/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("fonts/Geist-SemiBold.woff2") format("woff2"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4Variable-Roman.ttf.woff2") format("woff2"); font-weight: 200 900; font-display: swap; }
+/* Layout: a film strip. Chapters on the left, the app on a stage with a cursor that works
+   it, and the steps of the current chapter written out under the stage. Same tokens as
+   the website, so the two read as one. */
+:root {
+  --ground: #0b0e1a; --surface: #121729; --raised: #182036; --line: #262e4a;
+  --ink: #e9ebf5; --soft: #b2b8d2; --muted: #8189aa; --accent: #93a2ff; --accent-ink: #0b0e1a;
+  --app: #0e1222; --app-side: #0b0f1d; --app-card: #151b31; --app-line: #252d4a;
+  --t1: #7c94ff; --t2: #f0727a; --t3: #f2c14e; --t4: #5fc4d9; --t5: #78c98a; --t6: #b48cf0; --t7: #e59b6a; --t8: #ee7fb4;
+  --ok: #78c98a;
+  --display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --shadow: 0 30px 80px -30px rgb(0 0 0 / 0.7);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f3f4f9; --surface: #ffffff; --raised: #eceef7; --line: #d6daea;
+    --ink: #141829; --soft: #3d4462; --muted: #5d6482; --accent: #4456d6; --accent-ink: #ffffff;
+    --shadow: 0 30px 70px -35px rgb(20 24 41 / 0.45);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #f3f4f9; --surface: #ffffff; --raised: #eceef7; --line: #d6daea;
+  --ink: #141829; --soft: #3d4462; --muted: #5d6482; --accent: #4456d6; --accent-ink: #ffffff;
+  --shadow: 0 30px 70px -35px rgb(20 24 41 / 0.45);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 400 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.wrap { width: 100%; max-width: 80rem; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ground); }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 1.2rem; height: 3.5rem; }
+.brand { display: flex; align-items: center; gap: 0.5rem; color: var(--ink); text-decoration: none; font: 600 1.1rem/1 var(--sans); }
+.brand img { width: 1.5rem; height: 1.5rem; }
+.top .back { margin-left: auto; color: var(--soft); text-decoration: none; font-size: 0.95rem; }
+.top .back:hover { color: var(--ink); }
+
+.intro { padding-block: 1.8rem 1.2rem; display: grid; gap: 0.6rem; }
+.eyebrow { font: 500 0.78rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 600 clamp(2rem, 1.4rem + 2.4vw, 3rem)/1.08 var(--display); letter-spacing: -0.01em; text-wrap: balance; }
+.intro p { margin: 0; color: var(--soft); max-width: 44rem; }
+
+/* -- tour layout ------------------------------------------------------------------- */
+.tour { display: grid; grid-template-columns: 16rem minmax(0, 1fr); gap: 1.6rem; padding-bottom: 3rem; align-items: start; }
+@media (max-width: 980px) { .tour { grid-template-columns: minmax(0, 1fr); } }
+.chapters { display: grid; gap: 0.2rem; margin: 0; padding: 0; list-style: none; counter-reset: ch; position: sticky; top: 4.5rem; }
+@media (max-width: 980px) { .chapters { position: static; grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; padding-bottom: 0.4rem; } }
+.chapters button {
+  width: 100%; display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.5rem; align-items: center; text-align: left;
+  padding: 0.5rem 0.6rem; border: 1px solid transparent; border-radius: 0.55rem; background: none; cursor: pointer; color: var(--soft); font-size: 0.93rem;
+}
+.chapters button::before { counter-increment: ch; content: counter(ch, decimal-leading-zero); font: 500 0.75rem/1 var(--mono); color: var(--muted); }
+.chapters button:hover { color: var(--ink); background: var(--surface); }
+.chapters button[aria-current="step"] { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.chapters button[aria-current="step"]::before { color: var(--accent); }
+.chapters .done::before { color: var(--ok); }
+
+.player { display: grid; gap: 0.9rem; min-width: 0; }
+
+/* -- the app window ------------------------------------------------------------------ */
+.window {
+  position: relative; border: 1px solid var(--app-line); border-radius: 0.85rem; overflow: hidden; box-shadow: var(--shadow);
+  background: var(--app); color: #e6e9f6; aspect-ratio: 16 / 10; max-width: 100%; container-type: inline-size;
+  width: min(100%, calc((100vh - 12rem) * 1.6)); justify-self: center;
+  font-size: clamp(9px, 1.45cqi, 15px);
+}
+.winbar { height: 2.4em; display: flex; align-items: center; gap: 0.45em; padding-inline: 0.9em; border-bottom: 1px solid var(--app-line); background: #0b0f1d; }
+.winbar i { width: 0.7em; height: 0.7em; border-radius: 50%; background: #2a3354; }
+.winbar span { margin-left: auto; font: 500 0.75em/1 var(--mono); letter-spacing: 0.12em; color: #7d86a8; }
+.app { position: absolute; inset: 2.4em 0 0; display: grid; grid-template-columns: 13.5em 1fr; }
+.side { background: var(--app-side); border-right: 1px solid var(--app-line); padding: 1em 0.8em; display: grid; align-content: start; gap: 0.25em; }
+.side .logo { display: flex; align-items: center; gap: 0.5em; font-weight: 600; margin-bottom: 0.6em; }
+.side .logo img { width: 1.3em; }
+.side .find { border: 1px solid var(--app-line); border-radius: 0.5em; padding: 0.45em 0.6em; color: #7d86a8; font-size: 0.85em; display: flex; justify-content: space-between; margin-bottom: 0.6em; }
+.side .find kbd { font: 500 0.85em/1 var(--mono); border: 1px solid #39436a; border-radius: 0.3em; padding: 0.15em 0.35em; color: #aab2d4; }
+.side .item { display: flex; align-items: center; gap: 0.6em; padding: 0.42em 0.6em; border-radius: 0.45em; color: #c4c9e0; font-size: 0.95em; }
+.side .item b { margin-left: auto; font-weight: 400; color: #7d86a8; font-size: 0.85em; }
+.side .item.on { background: #1d2442; color: #fff; }
+.side .item svg { width: 1em; height: 1em; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.side h6 { margin: 0.9em 0 0.2em; font: 500 0.75em/1 var(--sans); color: #7d86a8; padding-left: 0.6em; }
+.side .topic { display: flex; align-items: center; gap: 0.55em; padding: 0.3em 0.6em; font-size: 0.9em; color: #c4c9e0; }
+.side .topic i { width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--c); }
+.side .topic b { margin-left: auto; font-weight: 400; color: #7d86a8; }
+.screen { position: relative; overflow: hidden; padding: 1.6em 2em; }
+.screen > .page { display: grid; gap: 0.9em; align-content: start; animation: page 0.35s ease both; }
+@keyframes page { from { opacity: 0; transform: translateY(0.4em); } }
+.screen h2 { margin: 0; font: 600 1.7em/1.15 var(--sans); }
+.screen h3 { margin: 0; font: 600 1.05em/1.3 var(--sans); }
+.screen p { margin: 0; }
+.dim { color: #8f97b8; font-size: 0.92em; }
+.card { background: var(--app-card); border: 1px solid var(--app-line); border-radius: 0.6em; padding: 0.8em 0.95em; display: grid; gap: 0.4em; }
+.row { display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8em; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8em; }
+.btn { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.5em 0.9em; border-radius: 0.5em; border: 1px solid #34406a; background: #1a2140; color: #e6e9f6; font-weight: 600; font-size: 0.92em; transition: transform 0.15s, background 0.2s; }
+.btn.primary { background: #93a2ff; border-color: #93a2ff; color: #0b0e1a; }
+.btn.small { padding: 0.3em 0.6em; font-size: 0.82em; }
+.btn.pressed { transform: scale(0.95); }
+.chip { display: inline-flex; align-items: center; gap: 0.35em; padding: 0.15em 0.6em; border-radius: 99em; font-size: 0.8em; border: 1px solid color-mix(in srgb, var(--c, #93a2ff) 55%, transparent); color: var(--c, #93a2ff); background: color-mix(in srgb, var(--c, #93a2ff) 12%, transparent); white-space: nowrap; }
+.field { display: grid; gap: 0.3em; }
+.field label { font-weight: 600; font-size: 0.9em; }
+.box { border: 1px solid #34406a; border-radius: 0.5em; background: #0b0f1d; padding: 0.55em 0.7em; min-height: 2.4em; font-size: 0.9em; color: #dfe3f3; white-space: pre-wrap; overflow: hidden; }
+.box.tall { min-height: 6.5em; max-height: 6.5em; }
+.box.focus { border-color: #93a2ff; box-shadow: 0 0 0 2px color-mix(in srgb, #93a2ff 30%, transparent); }
+.caret::after { content: ""; display: inline-block; width: 1px; height: 1em; background: #93a2ff; vertical-align: -0.15em; margin-left: 1px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.tabs { display: inline-flex; gap: 0.25em; padding: 0.25em; border: 1px solid var(--app-line); border-radius: 0.55em; }
+.tabs span { padding: 0.35em 0.9em; border-radius: 0.4em; font-size: 0.9em; color: #aab2d4; }
+.tabs span.on { background: #93a2ff; color: #0b0e1a; font-weight: 600; }
+.later { opacity: 0; transform: translateY(0.4em); transition: opacity 0.35s, transform 0.35s; }
+.later.in { opacity: 1; transform: none; }
+.hl { box-shadow: 0 0 0 2px #93a2ff; border-radius: 0.5em; transition: box-shadow 0.3s; }
+mark { background: color-mix(in srgb, #f2c14e 30%, transparent); color: inherit; border-radius: 0.2em; padding: 0 0.1em; }
+.cite { display: inline-grid; place-items: center; min-width: 1.35em; height: 1.35em; padding: 0 0.25em; border-radius: 0.35em; background: #1d2442; color: #93a2ff; font: 600 0.72em/1 var(--mono); vertical-align: 0.15em; margin-left: 0.15em; }
+.steps { display: grid; gap: 0.35em; font-size: 0.88em; }
+.steps div { display: flex; gap: 0.6em; align-items: center; color: #8f97b8; }
+.steps div::before { content: ""; width: 0.75em; height: 0.75em; border-radius: 50%; border: 2px solid #39436a; flex: none; }
+.steps div.ok { color: #dfe3f3; }
+.steps div.ok::before { background: var(--ok); border-color: var(--ok); }
+.thread { display: grid; gap: 0.45em; }
+.msg { display: grid; grid-template-columns: 1.9em 1fr; gap: 0.55em; align-items: start; }
+.msg.reply { margin-left: 2.4em; }
+.ava { width: 1.9em; height: 1.9em; border-radius: 50%; display: grid; place-items: center; font: 600 0.72em/1 var(--sans); color: #0b0e1a; background: var(--c, #93a2ff); }
+.msg .who { font-weight: 600; font-size: 0.88em; }
+.msg .what { font-size: 0.88em; color: #c4c9e0; }
+.toast { position: absolute; right: 1.4em; bottom: 1.4em; background: #1d2442; border: 1px solid #34406a; border-left: 3px solid var(--ok); border-radius: 0.5em; padding: 0.55em 0.9em; font-size: 0.88em; animation: page 0.3s ease both; }
+.palette { position: absolute; inset: 0; background: rgb(5 7 15 / 0.55); display: grid; justify-items: center; align-content: start; padding-top: 3.5em; }
+.palette .sheet { width: min(36em, 90%); background: #121730; border: 1px solid #34406a; border-radius: 0.7em; box-shadow: 0 20px 60px -20px #000; overflow: hidden; animation: page 0.25s ease both; }
+.palette .q { padding: 0.8em 1em; border-bottom: 1px solid var(--app-line); font-size: 1.05em; }
+.palette .res { padding: 0.65em 1em; display: grid; gap: 0.25em; border-bottom: 1px solid var(--app-line); }
+.palette .res:last-child { border-bottom: 0; }
+.palette .res.on { background: #1a2140; }
+.method { font: 500 0.7em/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: #7d86a8; }
+.check { display: inline-grid; place-items: center; width: 1.05em; height: 1.05em; border-radius: 0.25em; border: 1.5px solid #93a2ff; background: #93a2ff; color: #0b0e1a; font-size: 0.75em; font-weight: 700; }
+.check.off { background: none; color: transparent; border-color: #5a648c; }
+.select { border: 1px solid #34406a; border-radius: 0.4em; padding: 0.2em 0.55em; font-size: 0.85em; color: #dfe3f3; background: #0b0f1d; }
+.mention { display: grid; grid-template-columns: auto 1fr auto; gap: 0.7em; align-items: center; padding: 0.5em 0.7em; border: 1px solid var(--app-line); border-radius: 0.5em; transition: opacity 0.3s; }
+.mention.out { opacity: 0.4; }
+.mention .ev { grid-column: 2 / -1; font-size: 0.8em; color: #8f97b8; border-left: 2px solid #34406a; padding-left: 0.6em; }
+.graphbox { position: relative; height: 22em; border: 1px solid var(--app-line); border-radius: 0.6em; background: radial-gradient(circle at 1px 1px, #1c2340 1px, transparent 0) 0 0 / 1.4em 1.4em; }
+.graphbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gnode { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 0.2em; font-size: 0.72em; color: #c4c9e0; transition: left 0.8s, top 0.8s, opacity 0.4s; white-space: nowrap; }
+.gnode i { width: 1.1em; height: 1.1em; border-radius: 50%; background: var(--c); border: 2px solid #0e1222; box-shadow: 0 0 0 1.5px var(--c); }
+.gnode.article i { background: #0e1222; box-shadow: 0 0 0 2px #e6e9f6; }
+.gnode.person i { border-radius: 0.3em; background: #c4c9e0; box-shadow: none; }
+.gnode.focus i { box-shadow: 0 0 0 3px #93a2ff, 0 0 0 7px color-mix(in srgb, #93a2ff 25%, transparent); }
+.gnode.faded { opacity: 0.18; }
+.gnode.later, .gnode.later.in { transform: translate(-50%, -50%); }
+.thumb { aspect-ratio: 4 / 3; border-radius: 0.5em; background: linear-gradient(160deg, #1b2547, #0f1430); border: 1px solid var(--app-line); position: relative; overflow: hidden; }
+.thumb .bars { position: absolute; inset: 22% 14% 16%; display: flex; align-items: end; gap: 8%; }
+.thumb .bars span { flex: 1; background: #5fc4d9; border-radius: 0.2em 0.2em 0 0; }
+.tree { font: 400 0.88em/1.7 var(--mono); color: #c4c9e0; }
+.tree b { color: #93a2ff; font-weight: 500; }
+
+/* the laptop: bezel around the screen, a base under it */
+.laptop { display: grid; justify-items: center; }
+.laptop .window { border: 0.75rem solid #05070d; border-radius: 1.2rem; }
+.base { width: min(104%, calc((100vh - 12rem) * 1.68)); height: 0.85rem; margin-top: -1px; border-radius: 0 0 1rem 1rem; background: linear-gradient(#c7ccdb, #8d93a8); position: relative; }
+.base::before { content: ""; position: absolute; left: 50%; top: 0; width: 12%; height: 45%; transform: translateX(-50%); border-radius: 0 0 0.5rem 0.5rem; background: #6f7690; }
+
+/* the desktop and the app window that opens from the dock */
+.desktop { position: absolute; inset: 0; background:
+  radial-gradient(60% 70% at 15% 20%, color-mix(in srgb, #7c94ff 45%, transparent), transparent 70%),
+  radial-gradient(50% 60% at 85% 75%, color-mix(in srgb, #b48cf0 40%, transparent), transparent 70%),
+  radial-gradient(40% 50% at 70% 15%, color-mix(in srgb, #5fc4d9 30%, transparent), transparent 70%),
+  #0a0d1c; }
+.menubar { height: 1.9em; display: flex; align-items: center; gap: 1.3em; padding-inline: 1.1em; background: rgb(10 13 28 / 0.55); backdrop-filter: blur(8px); font-size: 0.85em; color: #e6e9f6; }
+.menubar .clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+.files { position: absolute; right: 1.6em; top: 3.2em; display: grid; gap: 1.2em; }
+.file { display: grid; justify-items: center; gap: 0.3em; font-size: 0.75em; color: #fff; text-shadow: 0 1px 2px #000; }
+.file i { width: 3.2em; height: 2.5em; border-radius: 0.35em; background: linear-gradient(#73aaff, #3f78e0); }
+.dock { position: absolute; left: 50%; bottom: 0.8em; transform: translateX(-50%); display: flex; align-items: end; gap: 0.6em; padding: 0.55em 0.7em; border-radius: 1.1em; background: rgb(255 255 255 / 0.12); border: 1px solid rgb(255 255 255 / 0.18); backdrop-filter: blur(14px); }
+.tile { width: 3.3em; height: 3.3em; border-radius: 0.85em; display: grid; place-items: center; background: linear-gradient(160deg, var(--a), var(--b)); position: relative; }
+.tile svg { width: 55%; height: 55%; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tile.app-icon { background: linear-gradient(160deg, #1b2244, #0b0f1d); border: 1px solid #39436a; }
+.tile.app-icon img { width: 62%; }
+.tile.app-icon::after { content: ""; position: absolute; bottom: -0.45em; width: 0.3em; height: 0.3em; border-radius: 50%; background: #fff; opacity: 0; transition: opacity 0.3s; }
+.tile.app-icon.running::after { opacity: 0.9; }
+.tile.app-icon.label::before { content: attr(data-label); position: absolute; bottom: 4.1em; padding: 0.25em 0.7em; border-radius: 0.4em; background: rgb(20 24 41 / 0.92); color: #fff; font-size: 0.8em; white-space: nowrap; }
+.tile.app-icon.bounce { animation: bounce 0.5s ease 2; }
+@keyframes bounce { 50% { transform: translateY(-1.1em); } }
+.dock .sep { width: 1px; align-self: stretch; background: rgb(255 255 255 / 0.25); margin-inline: 0.2em; }
+.tagline { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 0.9em; text-align: center; padding: 0 12%; opacity: 0; transform: scale(0.97); transition: opacity 0.9s ease, transform 1.2s ease; background: rgb(8 10 22 / 0.55); }
+.tagline.in { opacity: 1; transform: none; }
+.tagline img { width: 5em; }
+.tagline strong { font: 600 3.4em/1.05 var(--display); color: #fff; letter-spacing: -0.01em; }
+.tagline em { color: #93a2ff; }
+.tagline span { color: #c4c9e0; font-size: 1.15em; max-width: 30em; }
+.tagline code { font: 500 0.95em/1 var(--mono); color: #93a2ff; letter-spacing: 0.04em; }
+.appwin { position: absolute; inset: 0; background: var(--app); transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease; }
+.appwin.closed { transform: scale(0.04); opacity: 0; pointer-events: none; }
+.winbar i.close { background: #f0727a; } .winbar i.min { background: #f2c14e; } .winbar i.max { background: #78c98a; }
+.ctl.sound { width: auto; padding-inline: 0.8rem; gap: 0.4rem; display: inline-flex; align-items: center; font-size: 0.9rem; }
+.ctl.sound .waves { display: none; } .ctl.sound[aria-pressed="true"] .waves { display: inline; } .ctl.sound[aria-pressed="true"] .mute { display: none; }
+
+/* cursor and caption */
+.cursor { position: absolute; left: 0; top: 0; width: 1.4em; height: 1.4em; z-index: 6; pointer-events: none; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); transform: translate(70cqi, 40cqi); filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5)); }
+.cursor svg { width: 100%; height: 100%; }
+.ripple { position: absolute; width: 2.2em; height: 2.2em; margin: -1.1em 0 0 -1.1em; border-radius: 50%; border: 2px solid #93a2ff; z-index: 5; pointer-events: none; animation: ripple 0.5s ease-out forwards; }
+@keyframes ripple { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+.caption { position: absolute; left: 50%; bottom: 1.2em; transform: translateX(-50%); z-index: 7; max-width: 86%; padding: 0.6em 1.1em; border-radius: 0.7em; background: rgb(8 10 20 / 0.88); border: 1px solid #34406a; color: #fff; font-size: 1.08em; font-weight: 500; text-align: center; backdrop-filter: blur(6px); transition: opacity 0.25s; }
+.caption:empty { opacity: 0; }
+.window.desk .caption { bottom: auto; top: 3.4em; }
+
+/* -- controls and notes ------------------------------------------------------------ */
+.controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.ctl { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 0.55rem; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.ctl:hover { border-color: var(--accent); }
+.ctl svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
+.ctl.play { width: auto; padding-inline: 1rem; gap: 0.45rem; display: inline-flex; align-items: center; font-weight: 600; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.bar { flex: 1; min-width: 10rem; display: grid; grid-auto-flow: column; gap: 3px; }
+.bar button { height: 0.4rem; border: 0; padding: 0; border-radius: 2px; background: var(--line); cursor: pointer; position: relative; overflow: hidden; }
+.bar button span { position: absolute; inset: 0; width: 0; background: var(--accent); }
+.count { font: 500 0.8rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.notes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; padding: 1.1rem 1.2rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--surface); }
+.notes h2 { margin: 0 0 0.5rem; font: 600 1.4rem/1.2 var(--display); }
+.notes ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; color: var(--soft); }
+.notes li.now { color: var(--ink); }
+.notes li.now::marker { color: var(--accent); }
+.fine { color: var(--muted); font-size: 0.88rem; }
+footer { border-top: 1px solid var(--line); padding-block: 1.6rem; color: var(--muted); font-size: 0.9rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor, .gnode, .later, .appwin, .tagline { transition: none; }
+  .tile.app-icon.bounce { animation: none; }
+  .screen > .page, .toast, .palette .sheet { animation: none; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/icon.svg" alt="">postloom</a>
+    <a class="back" href="./#install">Install postloom</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="intro">
+    <span class="eyebrow">Tour · about two minutes</span>
+    <h1>Every part of postloom, in motion.</h1>
+    <p>Watch the app being used from start to finish, or jump to the part you need. Everything shown is a fictional library: the author, the people, the organisations and the posts are invented.</p>
+  </section>
+
+  <div class="tour">
+    <ol class="chapters" id="chapters" aria-label="Chapters"></ol>
+
+    <div class="player">
+      <div class="laptop">
+      <div class="window" id="window" aria-hidden="true">
+        <div class="desktop" id="desktop">
+          <div class="menubar"><span><b>postloom</b></span><span>File</span><span>Edit</span><span>View</span><span>Window</span><span class="clock">Thu 26 Nov&nbsp;&nbsp;09:41</span></div>
+          <div class="files"><div class="file"><i></i>Talk slides</div><div class="file"><i></i>Drafts</div></div>
+          <div class="tagline" id="tagline">
+            <img src="img/icon.svg" alt="">
+            <strong>Your LinkedIn, <em>remembered.</em></strong>
+            <span>Your articles, posts, comments and the people in them, in one private library on your computer.</span>
+            <code>postloom-app.vercel.app</code>
+          </div>
+          <div class="dock" id="dock">
+            <div class="tile" style="--a:#5fa8ff;--b:#2f6fe0"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg></div>
+            <div class="tile" style="--a:#8fd8ff;--b:#2a8fd6"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/></svg></div>
+            <div class="tile" style="--a:#7fe0a8;--b:#25a464"><svg viewBox="0 0 24 24"><path d="M3 6h18v12H3zM3 7l9 6 9-6"/></svg></div>
+            <div class="tile" style="--a:#ffe38a;--b:#f0b429"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4"/></svg></div>
+            <div class="tile app-icon" id="app-icon" data-label="postloom"><img src="img/icon.svg" alt=""></div>
+            <span class="sep"></span>
+            <div class="tile" style="--a:#c9cfdf;--b:#8a93ad"><svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></div>
+          </div>
+        </div>
+        <div class="appwin" id="appwin">
+        <div class="winbar"><i class="close" data-k="close"></i><i class="min"></i><i class="max"></i><span>LOCALHOST · POSTLOOM</span></div>
+        <div class="app">
+          <aside class="side" id="side"></aside>
+          <div class="screen" id="screen"></div>
+        </div>
+        </div>
+        <div class="cursor" id="cursor"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.6L10 19z" fill="#fff" stroke="#0b0e1a" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+        <div class="caption" id="caption"></div>
+      </div>
+      <div class="base"></div>
+      </div>
+
+      <div class="controls">
+        <button class="ctl" id="prev" type="button" aria-label="Previous chapter"><svg viewBox="0 0 24 24"><path d="M7 6h2v12H7zM20 6v12l-9-6z"/></svg></button>
+        <button class="ctl play" id="play" type="button"><svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg><span>Play</span></button>
+        <button class="ctl" id="next" type="button" aria-label="Next chapter"><svg viewBox="0 0 24 24"><path d="M15 6h2v12h-2zM4 6v12l9-6z"/></svg></button>
+        <button class="ctl sound" id="sound" type="button" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="waves" d="M16 9c1.5 1.5 1.5 4.5 0 6M18.5 6.5c3 3 3 8 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="mute" d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Sound off</span></button>
+        <div class="bar" id="bar" aria-label="Chapter progress"></div>
+        <span class="count" id="count"></span>
+      </div>
+
+      <section class="notes" aria-live="polite">
+        <div>
+          <h2 id="note-title"></h2>
+          <ol id="note-steps"></ol>
+        </div>
+        <span class="fine" id="note-hint"></span>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">Made by <a href="https://github.com/mdhabibi">Dr. Mahdi Habibi</a>. The library in this tour is fictional. Not affiliated with or endorsed by LinkedIn.</div></footer>
+
+<script>
+(function () {
+  // -- the fictional library -----------------------------------------------------------
+  const TOPICS = [["LLMs", "#f2c14e", 4], ["RAG", "#5fc4d9", 3], ["AI Agents", "#78c98a", 3], ["MLOps", "#b48cf0", 2], ["Evaluation", "#f0727a", 2]];
+  const ARTICLES = [
+    ["Choosing a cache threshold without guessing", "Mar 4", ["LLMs", "RAG"], "Caching in practice · part 2", 14],
+    ["Semantic caching cut our LLM bill by 38%", "Feb 18", ["LLMs", "MLOps"], "Caching in practice · part 1", 22],
+    ["Evaluating RAG without a labelled set", "Jan 29", ["RAG", "Evaluation"], null, 9],
+    ["Agents in production: what broke first", "Jan 8", ["AI Agents", "MLOps"], null, 17],
+  ];
+  const PEOPLE = [
+    ["Lena Okafor", "Staff ML Engineer at Northwind Analytics", "#f0727a", 9, 3],
+    ["Samir Haddad", "Data platform lead", "#5fc4d9", 6, 3],
+    ["Ines Kowal", "Research engineer, Copperline Labs", "#78c98a", 4, 2],
+    ["Tomas Arends", "Founder, a small AI studio", "#f2c14e", 3, 2],
+    ["Hana Lindqvist", "PhD student in information retrieval", "#b48cf0", 2, 1],
+  ];
+  const color = (topic) => (TOPICS.find((t) => t[0] === topic) || [0, "#93a2ff"])[1];
+  const initials = (name) => name.split(" ").map((p) => p[0]).join("");
+  const ICONS = {
+    Home: '<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z"/>',
+    Library: '<path d="M6 3h9l4 4v14H6zM9 11h7M9 15h7"/>',
+    Add: '<path d="M12 5v14M5 12h14"/>',
+    Graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l2 8M16 10l-5 6"/>',
+    People: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c.5-4 3-6 6-6s5.5 2 6 6M16 5a3 3 0 010 6M18 14c2 .8 3 3 3 6"/>',
+    Mentions: '<path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.3"/>',
+    Settings: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  };
+
+  // -- the engine: a pause-aware clock, a cursor, captions -------------------------------
+  const win = document.getElementById("window");
+  const screenEl = document.getElementById("screen");
+  const sideEl = document.getElementById("side");
+  const cursor = document.getElementById("cursor");
+  const caption = document.getElementById("caption");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const appwin = document.getElementById("appwin");
+  const appIcon = document.getElementById("app-icon");
+  const tagline = document.getElementById("tagline");
+  // Every click and keystroke is logged, so a recording can lay the same sounds under it.
+  const events = (window.tourEvents = []);
+  const log = (name) => events.push({ name, t: performance.now() });
+
+  // -- sound: off until the viewer turns it on (browsers allow audio only after a click) --
+  const sound = { on: false, ctx: null, buffers: {}, music: null };
+  async function soundOn() {
+    if (!sound.ctx) {
+      sound.ctx = new AudioContext();
+      for (const name of ["click", "key-1", "key-2", "key-3"]) {
+        try {
+          const data = await (await fetch(`audio/${name}.wav`)).arrayBuffer();
+          sound.buffers[name] = await sound.ctx.decodeAudioData(data);
+        } catch { /* a missing sound is not worth breaking the tour for */ }
+      }
+      sound.music = new Audio("audio/tour-music.mp3");
+      sound.music.loop = true;
+      sound.music.volume = 0.32;
+    }
+    sound.on = true;
+    await sound.ctx.resume();
+    if (!paused) sound.music.play().catch(() => {});
+  }
+  function soundOff() { sound.on = false; if (sound.music) sound.music.pause(); }
+  function sfx(name, gain = 0.6, rate = 1) {
+    log(name.startsWith("key") ? "key" : name);
+    if (!sound.on || !sound.buffers[name]) return;
+    const source = sound.ctx.createBufferSource();
+    const level = sound.ctx.createGain();
+    source.buffer = sound.buffers[name];
+    source.playbackRate.value = rate;
+    level.gain.value = gain;
+    source.connect(level).connect(sound.ctx.destination);
+    source.start();
+  }
+  const keystroke = () => sfx(`key-${1 + Math.floor(Math.random() * 3)}`, 0.35, 0.92 + Math.random() * 0.16);
+  class Stopped extends Error {}
+  let run = 0, paused = true, current = 0, elapsed = 0, speed = 1;
+
+  function sleep(ms) {
+    const mine = run;
+    if (speed > 10) return mine === run ? Promise.resolve() : Promise.reject(new Stopped());
+    return new Promise((resolve, reject) => {
+      let left = ms, last = performance.now();
+      (function tick(now) {
+        if (mine !== run) return reject(new Stopped());
+        if (!paused) left -= (now - last) * speed;
+        last = now;
+        if (left <= 0) resolve(); else requestAnimationFrame(tick);
+      })(last);
+    });
+  }
+  const $ = (selector) => screenEl.querySelector(selector);
+  const $$ = (selector) => [...screenEl.querySelectorAll(selector)];
+  function page(html) { screenEl.innerHTML = `<div class="page">${html}</div>`; }
+  function overlay(html) { const d = document.createElement("div"); d.innerHTML = html; const el = d.firstElementChild; screenEl.append(el); return el; }
+  function place(x, y) { cursor.style.transform = `translate(${x}px, ${y}px)`; }
+  async function point(target) {
+    const el = typeof target === "string" ? win.querySelector(target) : target;
+    if (!el) return;
+    const w = win.getBoundingClientRect(), r = el.getBoundingClientRect();
+    place(r.left - w.left + Math.min(r.width * 0.5, 40), r.top - w.top + r.height * 0.55);
+    await sleep(750);
+  }
+  async function click(target) {
+    const el = typeof target === "string" ? win.querySelector(target) : target;
+    await point(el);
+    const w = win.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const ring = document.createElement("div");
+    ring.className = "ripple";
+    ring.style.left = `${r.left - w.left + Math.min(r.width * 0.5, 40)}px`;
+    ring.style.top = `${r.top - w.top + r.height * 0.55}px`;
+    win.append(ring);
+    setTimeout(() => ring.remove(), 600);
+    sfx("click", 0.7);
+    el.classList.add("pressed");
+    await sleep(220);
+    el.classList.remove("pressed");
+  }
+  async function type(target, text, perChar = 28) {
+    const el = typeof target === "string" ? $(target) : target;
+    el.classList.add("focus", "caret");
+    if (speed > 10) { el.textContent = text; el.classList.remove("caret"); return; }
+    const step = Math.max(1, Math.round(text.length / 60));
+    for (let i = 0; i <= text.length; i += step) { el.textContent = text.slice(0, i); if (i) keystroke(); await sleep(perChar); }
+    el.textContent = text;
+    el.classList.remove("caret");
+  }
+  async function paste(target, text) {
+    const el = typeof target === "string" ? $(target) : target;
+    el.classList.add("focus");
+    await sleep(150);
+    keystroke(); await sleep(90); keystroke();  // Ctrl/Cmd + V
+    el.textContent = text;
+    await sleep(350);
+    el.classList.remove("focus");
+  }
+  function show(selector) { const els = typeof selector === "string" ? $$(selector) : [selector]; els.forEach((e) => e.classList.add("in")); }
+  async function reveal(selector, gap = 280) { for (const el of $$(selector)) { el.classList.add("in"); await sleep(gap); } }
+  function toast(text) { const t = overlay(`<div class="toast">${text}</div>`); return t; }
+  function say(n) {
+    const chapter = CHAPTERS[current];
+    caption.textContent = chapter.steps[n] || "";
+    [...document.querySelectorAll("#note-steps li")].forEach((li, i) => li.classList.toggle("now", i === n));
+  }
+  function side(active) {
+    const items = ["Home", "Library", "Add", "Graph", "People", "Mentions", "Settings"];
+    sideEl.innerHTML = `<div class="logo"><img src="img/icon.svg" alt="">postloom</div>
+      <div class="find" data-k="find">Search or ask <kbd>Ctrl K</kbd></div>
+      ${items.map((n) => `<div class="item${n === active ? " on" : ""}" data-nav="${n}"><svg viewBox="0 0 24 24">${ICONS[n]}</svg>${n}${n === "People" ? "<b>24</b>" : n === "Mentions" ? "<b>11</b>" : ""}</div>`).join("")}
+      <h6>Topics</h6>
+      ${TOPICS.map(([n, c, k]) => `<div class="topic" style="--c:${c}"><i></i>${n}<b>${k}</b></div>`).join("")}`;
+  }
+  const nav = (name) => sideEl.querySelector(`[data-nav="${name}"]`);
+
+  // -- opening the app from the dock, and quitting it at the end ----------------------
+  function windowState(open) {
+    const w = win.getBoundingClientRect(), r = appIcon.getBoundingClientRect();
+    appwin.style.transformOrigin = `${r.left - w.left + r.width / 2}px ${r.top - w.top + r.height / 2}px`;
+    appwin.classList.toggle("closed", !open);
+    win.classList.toggle("desk", !open);
+    appIcon.classList.toggle("running", open);
+  }
+  async function intro() {
+    tagline.classList.remove("in");
+    windowState(false);
+    side("Home"); page(home());
+    place(win.clientWidth * 0.3, win.clientHeight * 0.35);
+    say(0);
+    await sleep(900);
+    await point(appIcon);
+    appIcon.classList.add("label");
+    await sleep(500);
+    await click(appIcon);
+    await sleep(110);
+    await click(appIcon);
+    appIcon.classList.remove("label");
+    appIcon.classList.add("bounce");
+    await sleep(900);
+    appIcon.classList.remove("bounce");
+    windowState(true);
+    log("mark:opened");
+    await sleep(900);
+  }
+  async function outro(step) {
+    say(step);
+    log("mark:closing");
+    await click(appwin.querySelector('[data-k="close"]'));
+    windowState(false);
+    await sleep(900);
+    caption.textContent = "";
+    place(win.clientWidth * 0.82, win.clientHeight * 0.4);
+    tagline.classList.add("in");
+    log("mark:tagline");
+    await sleep(5200);
+  }
+  async function go(name) { await click(nav(name)); side(name); }
+
+  // -- the chapters ------------------------------------------------------------------
+  const CHAPTERS = [
+    {
+      title: "Add an article",
+      steps: [
+        "postloom is an app on your computer. Open it like any other.",
+        "Click Add and choose Article.",
+        "Paste the article, then the post that announced it.",
+        "Click Add article: postloom restores the formatting, picks topics and indexes it.",
+        "It is now a note in your library, filed under its topics and series.",
+      ],
+      hint: "Needs a model for topics and formatting. Posts work without one.",
+      async run() {
+        await intro();
+        say(1); await go("Add");
+        page(`<h2>Add</h2><div class="tabs"><span class="on">Article</span><span>Post</span></div>
+          <div class="field"><label>The article</label><div class="box tall" data-k="body"></div></div>
+          <div class="field"><label>The post that announced it <span class="dim">optional</span></label><div class="box" data-k="post"></div></div>
+          <div class="row"><span class="btn primary" data-k="go">Add article</span></div>
+          <div class="card later" data-k="progress"><div class="steps">
+            <div>Reading the article</div><div>Restoring headings, lists and code</div><div>Choosing topics</div><div>Indexing for search</div>
+          </div></div>`);
+        say(2);
+        await click($('[data-k="body"]'));
+        await paste('[data-k="body"]', "Choosing a cache threshold without guessing\n\nLast month we cached answers by similarity. Too low a threshold and users got the wrong answer; too high and the cache did nothing. Here is how we picked 0.86 from our own logs…");
+        await click($('[data-k="post"]'));
+        await paste('[data-k="post"]', "Part 2 of Caching in practice is out: how we picked a cache threshold from our own logs, without guessing. #llm #caching");
+        say(3);
+        await click($('[data-k="go"]'));
+        $$(".field").forEach((f) => f.remove());
+        $('[data-k="go"]').parentElement.remove();
+        show('[data-k="progress"]');
+        for (const d of $$(".steps div")) { await sleep(520); d.classList.add("ok"); }
+        await sleep(400);
+        say(4);
+        page(article(0, true));
+        toast("Added to your library");
+        await sleep(2600);
+      },
+    },
+    {
+      title: "Add a post and its comments",
+      steps: [
+        "Choose Post and paste a post that stands on its own.",
+        "Paste its comment section, copied from LinkedIn.",
+        "postloom works out who answered whom.",
+        "Everyone who commented becomes a person in your library.",
+      ],
+      hint: "Comments can be added again later; postloom skips what it already has.",
+      async run() {
+        side("Add");
+        page(`<h2>Add</h2><div class="tabs"><span>Article</span><span class="on" data-k="tab">Post</span></div>
+          <div class="field"><label>The post</label><div class="box" data-k="post"></div></div>
+          <div class="field"><label>Paste the comment section</label><div class="box tall" data-k="comments"></div></div>
+          <div class="row"><span class="btn primary" data-k="go">Add post</span></div>`);
+        say(0);
+        await click($('[data-k="tab"]'));
+        await click($('[data-k="post"]'));
+        await paste('[data-k="post"]', "Three things I learned speaking at Fjord AI Meetup last week. Thanks to Lena Okafor and Northwind Analytics for hosting.");
+        say(1);
+        await click($('[data-k="comments"]'));
+        await paste('[data-k="comments"]', "Lena Okafor · 1st\nStaff ML Engineer at Northwind Analytics\nGreat talk! Did the eval set include multilingual queries?\nReply · 2w\n\nAlex Morgan · Author\nNot yet, that's next on the list.\n\nSamir Haddad · 2nd\nData platform lead\nWould love the slides…");
+        await click($('[data-k="go"]'));
+        say(2);
+        page(`<div class="dim">Post · 3 comments · 2 people</div>
+          <h2>Three things I learned speaking at Fjord AI Meetup</h2>
+          <div class="card thread">
+            <div class="msg later"><span class="ava" style="--c:#f0727a">LO</span><div><div class="who">Lena Okafor <span class="dim">Staff ML Engineer at Northwind Analytics</span></div><div class="what">Great talk! Did the eval set include multilingual queries?</div></div></div>
+            <div class="msg reply later"><span class="ava" style="--c:#93a2ff">AM</span><div><div class="who">You <span class="dim">answering Lena Okafor</span></div><div class="what">Not yet, that's next on the list.</div></div></div>
+            <div class="msg later"><span class="ava" style="--c:#5fc4d9">SH</span><div><div class="who">Samir Haddad <span class="dim">Data platform lead</span> <span class="chip" style="--c:#f2c14e">waiting for your reply</span></div><div class="what">Would love the slides…</div></div></div>
+          </div>`);
+        await reveal(".msg", 650);
+        say(3);
+        await sleep(600);
+        await point(".msg:first-child .ava");
+        await sleep(1800);
+      },
+    },
+    {
+      title: "Find it in your library",
+      steps: [
+        "Library lists everything you wrote, newest first.",
+        "Filter by topic, type or series.",
+        "Open an article to read it, with its discussion.",
+      ],
+      hint: "Large libraries load page by page, so it stays fast.",
+      async run() {
+        side("Home"); page(home());
+        say(0); await go("Library");
+        page(library());
+        await sleep(900);
+        say(1);
+        await click($('[data-k="topic-RAG"]'));
+        $$(".lib").forEach((card, i) => { if (!ARTICLES[i][2].includes("RAG")) card.style.display = "none"; });
+        $('[data-k="topic-RAG"]').classList.add("hl");
+        await sleep(1200);
+        say(2);
+        await click($(".lib"));
+        page(article(0));
+        await sleep(2200);
+      },
+    },
+    {
+      title: "Edit the details",
+      steps: [
+        "Click Edit details on any article or post.",
+        "Fix the title, change topics, set the series and its part.",
+        "Save: the note in your vault changes too.",
+      ],
+      hint: "Your edits are yours: postloom never overwrites them when it re-reads an article.",
+      async run() {
+        side("Library"); page(article(0));
+        say(0);
+        await click($('[data-k="edit"]'));
+        page(`<h2>Edit article details</h2>
+          <div class="field"><label>Title</label><div class="box" data-k="title">Choosing a cache threshold without guessing</div></div>
+          <div class="field"><label>Topics</label><div class="row" data-k="topics"><span class="chip" style="--c:#f2c14e">LLMs ×</span><span class="chip" style="--c:#5fc4d9" data-k="rag">RAG ×</span><span class="btn small" data-k="add">Add topic</span></div></div>
+          <div class="grid2"><div class="field"><label>Series</label><div class="box">Caching in practice</div></div><div class="field"><label>Part</label><div class="box">2</div></div></div>
+          <div class="row"><span class="btn primary" data-k="save">Save changes</span><span class="btn">Cancel</span></div>`);
+        say(1);
+        await click($('[data-k="title"]'));
+        await type('[data-k="title"]', "How we chose a cache threshold from our own logs", 24);
+        await click($('[data-k="rag"]'));
+        $('[data-k="rag"]').remove();
+        await click($('[data-k="add"]'));
+        $('[data-k="add"]').insertAdjacentHTML("beforebegin", '<span class="chip" style="--c:#b48cf0">MLOps ×</span>');
+        await sleep(500);
+        say(2);
+        await click($('[data-k="save"]'));
+        page(`<div class="dim">Article · Mar 4 · Caching in practice, part 2</div><h2>How we chose a cache threshold from our own logs</h2>
+          <div class="row"><span class="chip" style="--c:#f2c14e">LLMs</span><span class="chip" style="--c:#b48cf0">MLOps</span></div>
+          <div class="card"><div class="tree">vault/<br>└ articles/<br>&nbsp;&nbsp;└ <b>how-we-chose-a-cache-threshold.md</b> <span class="dim">updated</span></div></div>`);
+        toast("Saved");
+        await sleep(2600);
+      },
+    },
+    {
+      title: "Search everything",
+      steps: [
+        "Press Ctrl K (⌘K on a Mac) anywhere.",
+        "Type what you remember, in your own words.",
+        "Results match by keyword and by meaning, and show the passage that matched.",
+      ],
+      hint: "Search runs on your computer and costs nothing.",
+      async run() {
+        side("Home"); page(home());
+        say(0);
+        await click(sideEl.querySelector('[data-k="find"]'));
+        const pal = overlay(`<div class="palette"><div class="sheet"><div class="q caret" data-k="q"></div><div data-k="res"></div></div></div>`);
+        say(1);
+        await type(pal.querySelector('[data-k="q"]'), "when the cache gave wrong answers", 45);
+        say(2);
+        const res = pal.querySelector('[data-k="res"]');
+        const hits = [
+          ["Choosing a cache threshold without guessing", "Too low a threshold and users got <mark>the wrong answer</mark>; too high and the cache did nothing.", "meaning + keyword"],
+          ["Comments on Semantic caching cut our LLM bill", "Samir Haddad: did you ever see <mark>stale answers</mark> after a model update?", "meaning"],
+          ["Semantic caching cut our LLM bill by 38%", "We invalidate the <mark>cache</mark> when the prompt template changes.", "keyword"],
+        ];
+        for (const [i, [t, p, m]] of hits.entries()) {
+          res.insertAdjacentHTML("beforeend", `<div class="res${i === 0 ? " on" : ""}"><span class="method">${m}</span><strong>${t}</strong><span class="dim">${p}</span></div>`);
+          await sleep(380);
+        }
+        await point(res.querySelector(".res"));
+        await sleep(2400);
+      },
+    },
+    {
+      title: "Ask questions",
+      steps: [
+        "Ask about one article, or about your whole library.",
+        "The answer cites the passages behind each claim.",
+        "Open a source to check it. If nothing matches, postloom says so instead of guessing.",
+      ],
+      hint: "Answers come only from your own articles, posts and comments.",
+      async run() {
+        side("Library"); page(article(0));
+        say(0);
+        await click($('[data-k="ask"]'));
+        page(`<div class="dim">Ask about this article</div><h3>Choosing a cache threshold without guessing</h3>
+          <div class="box focus" data-k="q"></div>
+          <div class="card later" data-k="a"><div data-k="text"></div></div>
+          <div class="grid3 later" data-k="src">
+            <div class="card" data-k="s1"><span class="method">[1] Section</span><span>Picking the number</span></div>
+            <div class="card"><span class="method">[2] Comment</span><span>Lena Okafor</span></div>
+            <div class="card"><span class="method">[3] Comment</span><span>Samir Haddad</span></div>
+          </div>`);
+        await type('[data-k="q"]', "What did people ask about the threshold?", 40);
+        say(1);
+        show('[data-k="a"]');
+        const text = $('[data-k="text"]');
+        const parts = ["You settled on 0.86 after replaying a week of logs", '<span class="cite">1</span>', ". Lena asked whether it holds for multilingual queries", '<span class="cite">2</span>', ", and Samir asked how often you re-check it after a model update", '<span class="cite">3</span>', "."];
+        for (const p of parts) { text.insertAdjacentHTML("beforeend", p); await sleep(380); }
+        show('[data-k="src"]');
+        say(2);
+        await sleep(500);
+        await click($('[data-k="s1"]'));
+        $('[data-k="s1"]').classList.add("hl");
+        await sleep(2200);
+      },
+    },
+    {
+      title: "Get to know your audience",
+      steps: [
+        "People lists everyone who engaged with your work.",
+        "Open a person: every conversation with them, across all your posts.",
+        "Keep private notes and tags. Delete a person completely if they ask.",
+      ],
+      hint: "People are recognised by their LinkedIn profile link, so a name change doesn't split them.",
+      async run() {
+        side("Home"); page(home());
+        say(0); await go("People");
+        page(`<h2>People</h2><p class="dim">24 people, most engaged first.</p>
+          <div class="card" style="padding:0">${PEOPLE.map(([n, h, c, m, a], i) => `<div class="row" data-k="p${i}" style="padding:.6em .9em;border-bottom:1px solid var(--app-line)"><span class="ava" style="--c:${c}">${initials(n)}</span><div><strong>${n}</strong><div class="dim">${h}</div></div><span class="dim" style="margin-left:auto">${m} messages · ${a} articles</span></div>`).join("")}</div>`);
+        await sleep(900);
+        say(1);
+        await click($('[data-k="p0"]'));
+        page(`<div class="row"><span class="ava" style="--c:#f0727a;width:2.6em;height:2.6em">LO</span><div><h2>Lena Okafor</h2><div class="dim">Staff ML Engineer at Northwind Analytics · linkedin.com/in/lena-okafor</div></div></div>
+          <div class="grid3"><div class="card"><span class="method">Messages</span><strong>9</strong></div><div class="card"><span class="method">Articles</span><strong>3</strong></div><div class="card"><span class="method">First seen</span><strong>Jan 8</strong></div></div>
+          <div class="card"><span class="method">Conversations</span>
+            <div class="dim">Choosing a cache threshold · “Does it hold for multilingual queries?”</div>
+            <div class="dim">Three things I learned at Fjord AI Meetup · “Great talk!”</div>
+            <div class="dim">Agents in production · “Which tool call failed most?”</div></div>
+          <div class="field"><label>Notes</label><div class="box" data-k="notes"></div></div>
+          <div class="row"><span class="chip" data-k="tag" style="--c:#78c98a">speaker</span><span class="btn small primary" data-k="save">Save notes</span></div>`);
+        say(2);
+        await click($('[data-k="notes"]'));
+        await type('[data-k="notes"]', "Met at Fjord AI Meetup. Interested in multilingual evaluation; ask her to review part 3.", 22);
+        await click($('[data-k="save"]'));
+        toast("Notes saved");
+        await sleep(2200);
+      },
+    },
+    {
+      title: "Confirm who and what you mention",
+      steps: [
+        "postloom finds the people, organisations, events and links your post names.",
+        "Untick what doesn't belong, or fix a category.",
+        "Add: they join your graph, linked to the post. Nothing enters it before you say so.",
+      ],
+      hint: "Each suggestion shows the sentence it came from.",
+      async run() {
+        side("Add");
+        page(`<h2>Found in this post</h2><p class="dim">Untick what doesn't belong, fix a name or its category, then add the rest.</p>
+          <div class="mention" data-k="m0"><span class="check">✓</span><strong>Lena Okafor</strong><span class="select">Person</span><div class="ev">Thanks to Lena Okafor and Northwind Analytics for hosting.</div></div>
+          <div class="mention" data-k="m1"><span class="check">✓</span><strong>Northwind Analytics</strong><span class="select" data-k="cat">Person</span><div class="ev">Thanks to Lena Okafor and Northwind Analytics for hosting.</div></div>
+          <div class="mention" data-k="m2"><span class="check">✓</span><strong>Fjord AI Meetup</strong><span class="select">Event</span><div class="ev">Three things I learned speaking at Fjord AI Meetup last week.</div></div>
+          <div class="mention" data-k="m3"><span class="check" data-k="tick">✓</span><strong>Thanks</strong><span class="select">Other</span><div class="ev">Thanks to Lena Okafor…</div></div>
+          <div class="row"><span class="btn primary" data-k="add">Add 3 to your graph</span></div>`);
+        say(0);
+        await reveal(".mention", 120);
+        await sleep(800);
+        say(1);
+        await click($('[data-k="tick"]'));
+        $('[data-k="tick"]').classList.add("off");
+        $('[data-k="m3"]').classList.add("out");
+        await click($('[data-k="cat"]'));
+        $('[data-k="cat"]').textContent = "Organisation";
+        await sleep(500);
+        say(2);
+        await click($('[data-k="add"]'));
+        await go("Mentions");
+        page(`<h2>Mentions</h2><p class="dim">11 people, organisations and events in your writing.</p>
+          <div class="grid3">
+            <div class="card"><span class="method">Organisation</span><strong>Northwind Analytics</strong><span class="dim">2 posts · 1 person</span></div>
+            <div class="card"><span class="method">Event</span><strong>Fjord AI Meetup</strong><span class="dim">1 post</span></div>
+            <div class="card"><span class="method">Person</span><strong>Lena Okafor</strong><span class="dim">mentioned in 2 posts</span></div>
+            <div class="card"><span class="method">Organisation</span><strong>Copperline Labs</strong><span class="dim">1 article</span></div>
+            <div class="card"><span class="method">Method</span><strong>LLM-as-a-judge</strong><span class="dim">2 articles</span></div>
+            <div class="card"><span class="method">Link</span><strong>example.org/fjord-slides</strong><span class="dim">1 post</span></div>
+          </div>`);
+        toast("Confirmed");
+        await sleep(2400);
+      },
+    },
+    {
+      title: "Reply without losing anyone",
+      steps: [
+        "Home shows the comments still waiting for your reply.",
+        "Draft reply writes one in your voice, from the article and the whole thread.",
+        "Edit it, copy it, and post it yourself. postloom never posts for you.",
+      ],
+      hint: "Use a stronger model for drafts in Settings, Models.",
+      async run() {
+        side("Home"); page(home());
+        say(0);
+        await point($('[data-k="waiting"]'));
+        await sleep(700);
+        await click($('[data-k="draft"]'));
+        say(1);
+        page(`<div class="dim">Reply to Samir Haddad · on Three things I learned at Fjord AI Meetup</div>
+          <div class="card"><div class="msg"><span class="ava" style="--c:#5fc4d9">SH</span><div><div class="who">Samir Haddad</div><div class="what">Would love the slides, and did the threshold trick work for the agents demo?</div></div></div></div>
+          <div class="field"><label>Your reply</label><div class="box tall" data-k="draft"></div></div>
+          <div class="row"><span class="btn primary" data-k="copy">Copy reply</span><span class="btn">Redraft</span></div>`);
+        await type('[data-k="draft"]', "Thanks Samir! Slides are linked in the post. For the agents demo we kept the same 0.86 threshold, but only for read-only tool calls; anything that writes skips the cache. Part 3 goes into why.", 16);
+        say(2);
+        await sleep(500);
+        await click($('[data-k="copy"]'));
+        toast("Copied. Paste it on LinkedIn.");
+        await sleep(2400);
+      },
+    },
+    {
+      title: "See it as a graph",
+      steps: [
+        "Articles, topics, people and mentions, connected.",
+        "Focus on anyone to see their neighbourhood.",
+        "Accept or dismiss links a model suggested. Links from your own text are facts.",
+      ],
+      hint: "Export the same graph for Neo4j, Gephi or SPARQL in Settings.",
+      async run() {
+        side("Home"); page(home());
+        say(0); await go("Graph");
+        page(graph());
+        await reveal(".gnode", 70);
+        await sleep(600);
+        say(1);
+        const lena = $('[data-n="lena"]');
+        await click(lena);
+        $$(".gnode").forEach((n) => n.classList.toggle("faded", !["lena", "a0", "a3", "post", "northwind", "fjord"].includes(n.dataset.n)));
+        lena.classList.add("focus");
+        $$("line").forEach((l) => l.style.opacity = l.dataset.lena ? 1 : 0.12);
+        await sleep(1600);
+        say(2);
+        $$(".gnode").forEach((n) => n.classList.remove("faded", "focus"));
+        $$("line").forEach((l) => l.style.opacity = 1);
+        const card = overlay(`<div class="toast" style="border-left-color:#93a2ff;bottom:auto;top:1.4em"><div class="method">Suggested link · 0.81 similar</div><strong>Evaluating RAG</strong> ↔ <strong>Choosing a cache threshold</strong><div class="row" style="margin-top:.5em"><span class="btn small primary" data-k="accept">Accept</span><span class="btn small">Dismiss</span></div></div>`);
+        await sleep(500);
+        await click(card.querySelector('[data-k="accept"]'));
+        $('[data-k="suggest"]').setAttribute("stroke-dasharray", "0");
+        $('[data-k="suggest"]').setAttribute("stroke", "#93a2ff");
+        card.remove();
+        toast("Linked");
+        await sleep(2200);
+      },
+    },
+    {
+      title: "Images and videos",
+      steps: [
+        "Add images or videos to any article or post.",
+        "Describe with AI writes what an image shows.",
+        "Captions, descriptions and subtitles all become searchable.",
+      ],
+      hint: "Images stay in your vault, next to the note.",
+      async run() {
+        side("Library"); page(article(1));
+        say(0);
+        await click($('[data-k="media"]'));
+        page(`<h3>Semantic caching cut our LLM bill by 38%</h3>
+          <div class="grid2"><div class="thumb later" data-k="img"><div class="bars"><span style="height:90%"></span><span style="height:72%"></span><span style="height:58%"></span><span style="height:55%;background:#78c98a"></span></div></div>
+          <div style="display:grid;gap:.6em;align-content:start"><div class="field"><label>Caption</label><div class="box" data-k="cap"></div></div>
+          <div class="field"><label>Description</label><div class="box tall" data-k="desc"></div></div>
+          <span class="btn" data-k="ai">Describe with AI</span></div></div>`);
+        show('[data-k="img"]');
+        await sleep(600);
+        await click($('[data-k="cap"]'));
+        await type('[data-k="cap"]', "Monthly LLM spend before and after caching", 26);
+        say(1);
+        await click($('[data-k="ai"]'));
+        await type('[data-k="desc"]', "Bar chart of monthly spend: three months between $4.1k and $5.2k, then a drop to $3.2k in the month caching shipped (green bar).", 14);
+        say(2);
+        await click(sideEl.querySelector('[data-k="find"]'));
+        const pal = overlay(`<div class="palette"><div class="sheet"><div class="q" data-k="q"></div><div class="res on"><span class="method">image · meaning</span><strong>Monthly LLM spend before and after caching</strong><span class="dim"><mark>a drop to $3.2k</mark> in the month caching shipped</span></div></div></div>`);
+        await type(pal.querySelector('[data-k="q"]'), "chart where the cost went down", 40);
+        await sleep(2200);
+      },
+    },
+    {
+      title: "Your data, your model",
+      steps: [
+        "Pick a model in Settings: Gemini, OpenAI, OpenRouter, local Ollama and more, or none.",
+        "Everything is a Markdown folder you can open in Obsidian and back up.",
+        "Export the whole graph for Neo4j, Gephi or a triple store.",
+        "Quit when you're done. Your library stays on your computer.",
+      ],
+      hint: "Keys are saved only on your computer. A monthly budget can cap what models cost.",
+      async run() {
+        side("Home"); page(home());
+        say(0); await go("Settings");
+        page(`<h2>Settings</h2>
+          <div class="grid3">${[["Google Gemini", "Free tier to start"], ["OpenAI", "GPT models"], ["Ollama", "Free, fully private"], ["OpenRouter", "One key, many models"], ["Other compatible", "LM Studio, Groq…"], ["None", "Posts and search only"]].map(([n, d], i) => `<div class="card" data-k="pv${i}"><strong>${n}</strong><span class="dim">${d}</span></div>`).join("")}</div>
+          <div class="card later" data-k="vault"><span class="method">Your vault</span><div class="tree">/Users/alex/Postloom/vault/<br>├ articles/ <span class="dim">4 notes</span><br>├ posts/ <span class="dim">9 notes</span><br>├ people/ <span class="dim">24 notes</span><br>└ media/</div></div>`);
+        await click($('[data-k="pv2"]'));
+        $('[data-k="pv2"]').classList.add("hl");
+        await sleep(700);
+        say(1);
+        show('[data-k="vault"]');
+        await sleep(1700);
+        say(2);
+        page(`<h2>Export your graph</h2><p class="dim">Every node and link, with where each link came from.</p>
+          <div class="grid2">${[["RDF (Turtle)", "Triple stores and SPARQL"], ["RDF (JSON-LD)", "The same RDF as JSON"], ["Cypher for Neo4j", "cypher-shell -f, or Neo4j Browser"], ["GraphML", "Gephi, yEd, Cytoscape, NetworkX"]].map(([n, d], i) => `<div class="card" data-k="f${i}"><strong>${n}</strong><span class="dim">${d}</span></div>`).join("")}</div>
+          <div class="row"><span class="btn primary" data-k="export">Export the graph</span></div>`);
+        await click($('[data-k="f2"]'));
+        $('[data-k="f2"]').classList.add("hl");
+        await click($('[data-k="export"]'));
+        toast("Saved postloom-graph.cypher to your downloads.");
+        await sleep(2200);
+        await outro(3);
+      },
+    },
+  ];
+
+  // -- screens reused by several chapters -------------------------------------------
+  function home() {
+    return `<h2>Home</h2><p class="dim">4 articles, 9 posts, 61 messages from 24 people.</p>
+      <div class="grid3"><div class="card" data-k="waiting"><span class="method">Waiting for your reply</span><strong style="font-size:1.6em">3</strong></div><div class="card"><span class="method">Suggested links</span><strong style="font-size:1.6em">2</strong></div><div class="card"><span class="method">Spent this month</span><strong style="font-size:1.6em">$0.42</strong></div></div>
+      <div class="card"><span class="method">Waiting for your reply</span>
+        <div class="row"><span class="ava" style="--c:#5fc4d9">SH</span><div style="flex:1;min-width:0"><strong>Samir Haddad</strong> <span class="dim">on Fjord AI Meetup</span><div class="dim">Would love the slides, and did the threshold trick work for…</div></div><span class="btn small" data-k="draft">Draft reply</span></div>
+        <div class="row"><span class="ava" style="--c:#78c98a">IK</span><div style="flex:1;min-width:0"><strong>Ines Kowal</strong> <span class="dim">on Evaluating RAG</span><div class="dim">How big was the judge model?</div></div><span class="btn small">Draft reply</span></div></div>`;
+  }
+  function library() {
+    return `<h2>Library</h2>
+      <div class="row"><span class="box" style="flex:1;min-height:auto">Search titles</span><span class="select">Articles and posts</span><span class="select">Newest first</span></div>
+      <div class="row">${TOPICS.map(([n, c]) => `<span class="chip" data-k="topic-${n}" style="--c:${c}">${n}</span>`).join("")}</div>
+      <div class="grid2">${ARTICLES.map(([t, d, tp, s, m]) => `<div class="card lib"><span class="dim">${d}${s ? " · " + s : ""}</span><strong>${t}</strong><div class="row">${tp.map((x) => `<span class="chip" style="--c:${color(x)}">${x}</span>`).join("")}<span class="dim" style="margin-left:auto">${m} messages</span></div></div>`).join("")}</div>`;
+  }
+  function article(i, fresh) {
+    const [t, d, tp, s, m] = ARTICLES[i];
+    return `<div class="dim">Article · ${d}${s ? " · " + s : ""}${fresh ? ' · <span style="color:var(--ok)">just added</span>' : ""}</div>
+      <h2>${t}</h2>
+      <div class="row">${tp.map((x) => `<span class="chip" style="--c:${color(x)}">${x}</span>`).join("")}<span class="dim">${fresh ? 0 : m} messages</span></div>
+      <div class="row"><span class="btn primary" data-k="ask">Ask about this article</span><span class="btn" data-k="edit">Edit details</span><span class="btn" data-k="media">Add images or videos</span></div>
+      <div class="card"><h3>Picking the number</h3><p class="dim">Last month we cached answers by similarity. Too low a threshold and users got the wrong answer; too high and the cache did nothing. We replayed a week of real questions…</p></div>
+      <div class="card"><h3>What we would do again</h3><p class="dim">Log every miss with its nearest cached question, then pick the threshold where wrong answers stop, not where hits peak…</p></div>`;
+  }
+  function graph() {
+    const N = [
+      ["llms", "LLMs", 50, 46, "topic", "#f2c14e"], ["rag", "RAG", 76, 30, "topic", "#5fc4d9"], ["agents", "AI Agents", 22, 70, "topic", "#78c98a"],
+      ["a0", "Choosing a cache threshold", 52, 22, "article"], ["a1", "Semantic caching cut our bill", 30, 30, "article"],
+      ["a2", "Evaluating RAG", 80, 58, "article"], ["a3", "Agents in production", 40, 78, "article"],
+      ["post", "Fjord AI Meetup post", 66, 80, "article"],
+      ["lena", "Lena Okafor", 64, 52, "person"], ["samir", "Samir Haddad", 18, 46, "person"], ["ines", "Ines Kowal", 88, 82, "person"],
+      ["northwind", "Northwind Analytics", 84, 14, "thing", "#e59b6a"], ["fjord", "Fjord AI Meetup", 50, 94, "thing", "#ee7fb4"],
+    ];
+    const E = [["a0", "llms"], ["a0", "rag"], ["a1", "llms"], ["a2", "rag"], ["a3", "agents"], ["a1", "a0"], ["post", "a3"],
+      ["lena", "a0", 1], ["lena", "a3", 1], ["lena", "post", 1], ["samir", "a1"], ["samir", "post"], ["ines", "a2"], ["ines", "post"],
+      ["post", "northwind", 0, "northwind"], ["post", "fjord"], ["lena", "northwind", 1], ["post", "fjord", 1]];
+    const at = Object.fromEntries(N.map((n) => [n[0], n]));
+    const lines = E.map(([a, b, lena]) => `<line x1="${at[a][2]}%" y1="${at[a][3]}%" x2="${at[b][2]}%" y2="${at[b][3]}%" stroke="#3a4570" stroke-width="1.3"${lena ? ' data-lena="1"' : ""} style="transition:opacity .4s"/>`).join("")
+      + `<line data-k="suggest" x1="${at.a2[2]}%" y1="${at.a2[3]}%" x2="${at.a0[2]}%" y2="${at.a0[3]}%" stroke="#93a2ff" stroke-width="1.5" stroke-dasharray="5 5"/>`;
+    return `<h2>Graph</h2><div class="row dim"><span class="chip" style="--c:#f2c14e">Topic</span><span class="chip" style="--c:#e6e9f6">Article</span><span class="chip" style="--c:#c4c9e0">Person</span><span class="chip" style="--c:#e59b6a">Mentioned</span><span>- - suggested</span></div>
+      <div class="graphbox"><svg>${lines}</svg>${N.map(([id, label, x, y, kind, c]) => `<div class="gnode later ${kind}" data-n="${id}" style="left:${x}%;top:${y}%;--c:${c || "#93a2ff"}"><i></i>${label}</div>`).join("")}</div>`;
+  }
+
+  // -- the player -----------------------------------------------------------------------
+  const list = document.getElementById("chapters");
+  const bar = document.getElementById("bar");
+  const playBtn = document.getElementById("play");
+  list.innerHTML = CHAPTERS.map((c, i) => `<li><button type="button" data-i="${i}">${c.title}</button></li>`).join("");
+  bar.innerHTML = CHAPTERS.map((c, i) => `<button type="button" data-i="${i}" aria-label="Chapter ${i + 1}: ${c.title}"><span></span></button>`).join("");
+  const fills = [...bar.querySelectorAll("span")];
+  const ESTIMATE = 15000;
+
+  function setPlaying(on) {
+    paused = !on;
+    if (sound.music && sound.on) { if (on) sound.music.play().catch(() => {}); else sound.music.pause(); }
+    playBtn.innerHTML = on
+      ? '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Pause</span>'
+      : '<svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg><span>Play</span>';
+  }
+  function notes(i) {
+    const c = CHAPTERS[i];
+    document.getElementById("note-title").textContent = c.title;
+    document.getElementById("note-steps").innerHTML = c.steps.map((s) => `<li>${s}</li>`).join("");
+    document.getElementById("note-hint").textContent = c.hint;
+    document.getElementById("count").textContent = `${String(i + 1).padStart(2, "0")} / ${CHAPTERS.length}`;
+    list.querySelectorAll("button").forEach((b, j) => {
+      b.toggleAttribute("aria-current", j === i);
+      if (j === i) b.setAttribute("aria-current", "step");
+      b.classList.toggle("done", j < i);
+    });
+    fills.forEach((f, j) => { f.style.width = j < i ? "100%" : "0"; });
+  }
+  async function start(i, { autoplay = true } = {}) {
+    run++;
+    current = i; elapsed = 0;
+    notes(i);
+    caption.textContent = "";
+    screenEl.innerHTML = "";
+    tagline.classList.remove("in");
+    if (i > 0) windowState(true);
+    const mine = run;
+    if (still) {
+      // Reduced motion: jump to the chapter's end state; the steps are listed below.
+      speed = 1000;
+      try { await CHAPTERS[i].run(); } catch (e) { if (!(e instanceof Stopped)) throw e; }
+      speed = 1;
+      caption.textContent = "";
+      fills[i].style.width = "100%";
+      return;
+    }
+    setPlaying(autoplay);
+    try {
+      await CHAPTERS[i].run();
+      if (mine !== run) return;
+      fills[i].style.width = "100%";
+      if (i + 1 < CHAPTERS.length) start(i + 1, { autoplay: !paused });
+      else setPlaying(false);
+    } catch (e) {
+      if (!(e instanceof Stopped)) throw e;
+    }
+  }
+  (function progress(now) {
+    if (!paused && !still) {
+      elapsed += 16;
+      fills[current].style.width = `${Math.min(96, (elapsed / ESTIMATE) * 100)}%`;
+    }
+    requestAnimationFrame(progress);
+  })();
+
+  list.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) start(+b.dataset.i, { autoplay: true }); });
+  bar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) start(+b.dataset.i, { autoplay: true }); });
+  document.getElementById("prev").addEventListener("click", () => start(Math.max(0, current - 1), { autoplay: !paused }));
+  document.getElementById("next").addEventListener("click", () => start(Math.min(CHAPTERS.length - 1, current + 1), { autoplay: !paused }));
+  const soundBtn = document.getElementById("sound");
+  soundBtn.addEventListener("click", async () => {
+    const on = soundBtn.getAttribute("aria-pressed") !== "true";
+    soundBtn.setAttribute("aria-pressed", String(on));
+    soundBtn.querySelector("span").textContent = on ? "Sound on" : "Sound off";
+    if (on) await soundOn(); else soundOff();
+  });
+  playBtn.addEventListener("click", () => {
+    if (still) { start(Math.min(CHAPTERS.length - 1, current + 1)); return; }
+    setPlaying(paused);
+  });
+  addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea")) return;
+    if (e.key === " ") { e.preventDefault(); playBtn.click(); }
+    if (e.key === "ArrowRight") document.getElementById("next").click();
+    if (e.key === "ArrowLeft") document.getElementById("prev").click();
+    if (e.key === "m") soundBtn.click();
+  });
+  // A chapter can be linked to: /tour#5 opens the fifth.
+  side("Home");
+  windowState(false);
+  const fromHash = parseInt(location.hash.slice(1), 10);
+  const first = fromHash >= 1 && fromHash <= CHAPTERS.length ? fromHash - 1 : 0;
+  if (still) { playBtn.querySelector("span").textContent = "Next"; start(first); }
+  else {
+    // Start when the stage is on screen; pause when it scrolls away or the tab hides.
+    let started = false;
+    new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !started) { started = true; start(first); }
+      else if (!entry.isIntersecting && started && !paused) setPlaying(false);
+    }, { threshold: 0.4 }).observe(win);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) setPlaying(false); });
+  }
+})();
+</script>
+</body>
+</html>
