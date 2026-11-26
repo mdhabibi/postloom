@@ -1,15 +1,24 @@
+<div align="center">
+
+<img src="site/img/icon.svg" width="72" height="72" alt="">
+
 # postloom
 
-**Your LinkedIn, remembered.** A private, local-first memory of your articles, posts, every
-comment under them and the people who wrote them: search, chat, a knowledge graph and reply
-drafts, with any AI model or none.
+**Your LinkedIn, remembered.**
+
+A private, local-first memory of your articles, posts, every comment under them and the
+people who wrote them: search, chat, a knowledge graph and reply drafts, with any AI model
+or none.
 
 [![CI](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml/badge.svg)](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/postloom)](https://pypi.org/project/postloom/)
-[![Python](https://img.shields.io/pypi/pyversions/postloom)](https://pypi.org/project/postloom/)
+[![Python 3.11 to 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab)](#install)
+[![Mac, Windows, Linux](https://img.shields.io/badge/runs%20on-Mac%20%7C%20Windows%20%7C%20Linux-555)](#install)
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue)](LICENSE.md)
 
-[Website](https://mdhabibi.github.io/postloom/) · [Install](#install) · [What's new](CHANGELOG.md)
+[**Website**](https://mdhabibi.github.io/postloom/) · [**Install**](#install) ·
+[**User guide**](docs/guide.md) · [**What's new**](CHANGELOG.md)
+
+</div>
 
 You publish a post or an article, and a conversation starts in the comments. A week later
 it's all buried in the feed. postloom keeps it: paste in your post or article, and it becomes
@@ -50,39 +59,75 @@ wrote.
 
 ## Install
 
-You don't need Python or anything else first, and nothing needs administrator rights.
-Copy one line, paste it, press Enter. The [website](https://mdhabibi.github.io/postloom/#install)
-shows the same in four illustrated steps.
+Four steps, about two minutes. You don't need Python or anything else first, and nothing
+needs an administrator password. After that, postloom is an app with its own icon.
 
-**Mac** (press <kbd>⌘ Space</kbd>, type *Terminal*, press Enter) or **Linux** (open a
-terminal):
+### Mac
 
-```bash
-curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh
-```
+1. **Open Terminal.** Press <kbd>⌘</kbd> and <kbd>Space</kbd> together, type **Terminal**
+   and press <kbd>Return</kbd>.
+2. **Copy the install line** (the copy button is at the right of the box):
 
-**Windows** (open the Start menu, type *PowerShell*, press Enter):
+   ```bash
+   curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh
+   ```
 
-```powershell
-irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
-```
+3. **Paste it into Terminal and press Return.** Click in the Terminal window, press
+   <kbd>⌘</kbd> <kbd>V</kbd>, then <kbd>Return</kbd>. Text scrolls by while postloom
+   installs.
+4. **Wait for postloom to open in your browser.** You can close Terminal then. Next time,
+   open postloom from Launchpad or Applications, like any app.
 
-It takes a minute or two and opens postloom in your browser. From then on, open it from
-the **Postloom** icon: Launchpad or Spotlight on a Mac, the Start menu or the desktop on
-Windows, the applications menu on Linux. You won't need the terminal again.
+### Windows
 
-- **Update:** run the same line again. Your data is never touched.
-- **Stop:** choose **Quit postloom** at the bottom of the sidebar.
-- **Uninstall:** run the line below for your computer. Your data folder is kept; delete it
-  yourself if you want.
+1. **Open PowerShell.** Click Start, type **PowerShell** and press <kbd>Enter</kbd>.
+2. **Copy the install line:**
 
-```bash
-curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh -s -- --uninstall
-```
+   ```powershell
+   irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
+   ```
 
-```powershell
-$env:POSTLOOM_UNINSTALL = 1; irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
-```
+3. **Paste it into PowerShell and press Enter.** Right-click inside the window (or press
+   <kbd>Ctrl</kbd> <kbd>V</kbd>), then press <kbd>Enter</kbd>.
+4. **Wait for postloom to open in your browser.** You can close PowerShell then. Next time,
+   open postloom from the Start menu or the desktop icon.
+
+### Linux
+
+1. **Open a terminal** (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>T</kbd> on most systems).
+2. **Copy the install line:**
+
+   ```bash
+   curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh
+   ```
+
+3. **Paste it** with <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd> and press <kbd>Enter</kbd>.
+4. **Wait for postloom to open in your browser.** Next time, open it from your applications
+   menu.
+
+Stuck? [Tell us what you see](https://github.com/mdhabibi/postloom/issues/new/choose).
+
+<details>
+<summary><b>Update, quit or uninstall</b></summary>
+
+- **Update:** do the same steps again. Your data is never touched.
+- **Quit:** choose **Quit postloom** at the bottom of the sidebar.
+- **Uninstall:** run the line for your computer the same way. Your data folder is kept;
+  delete it yourself if you want.
+
+  Mac or Linux:
+
+  ```bash
+  curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh -s -- --uninstall
+  ```
+
+  Windows:
+
+  ```powershell
+  $env:POSTLOOM_UNINSTALL = 1; irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
+  ```
+
+</details>
 
 The installer uses [uv](https://docs.astral.sh/uv/), which downloads its own copy of Python
 for postloom, so it never changes the Python on your computer. Everything else postloom
