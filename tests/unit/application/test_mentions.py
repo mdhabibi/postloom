@@ -381,3 +381,26 @@ def test_chat_knows_what_is_mentioned_where(tmp_path: Path) -> None:
         people = c.ask_question().execute("Who did I thank in my posts?")
         assert any("Robin Sample" in s.text for s in people.sources if s.kind == "mentions")
     assert post
+
+
+def test_links_say_what_the_text_says_about_them() -> None:
+    from postloom.application.use_cases.mentions import link_context
+
+    text = (
+        "Live explorer:\n\n https://lnkd.in/eAbCdEfG\n\n"
+        "See the code at https://github.com/x/y today"
+    )
+    assert link_context(text, "https://lnkd.in/eAbCdEfG") == "Live explorer:"
+    assert link_context(text, "https://github.com/x/y") == "See the code at today"
+    assert link_context("https://a.example", "https://a.example") == ""
+
+
+def test_two_links_with_the_same_words_stay_two_links(tmp_path: Path) -> None:
+    post = add_post(tmp_path)
+    with open_home(tmp_path) as c:
+        for url in ("https://github.com/example/one", "https://github.com/example/two"):
+            c.confirm_mentions().execute(post, [Accepted("Code", "link", url=url)])
+        assert sorted(e.url or "" for e in c.repository.list_entities()) == [
+            "https://github.com/example/one",
+            "https://github.com/example/two",
+        ]

@@ -321,6 +321,7 @@ def test_doctor_checks_every_model_with_a_real_call(
     assert "Extraction model: small (structured output)" in out
     assert "Reply model: big (text)" in out
     assert "every note is readable" in out
+    assert "0 posts" in out and "mentioned entries" in out
     assert backend.calls == [("json", "small"), ("text", "big")]  # each model once per kind
 
 
