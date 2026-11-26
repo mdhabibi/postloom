@@ -13,7 +13,7 @@
     rdfs:label "postloom vocabulary" ;
     rdfs:comment "Classes and relations of a postloom library: articles, posts, comments, the people in them and what they mention, with the provenance of every relation." ;
     owl:versionInfo "1" ;
-    dcterms:creator "Mahdi Habibi" ;
+    dcterms:creator "Dr. Mahdi Habibi" ;
     rdfs:seeAlso <https://github.com/mdhabibi/postloom> .
 
 pl:Topic

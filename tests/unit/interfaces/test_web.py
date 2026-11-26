@@ -104,7 +104,7 @@ def test_index_page_is_served(tmp_path: Path) -> None:
 
 def test_about_names_the_author_license_and_repository(tmp_path: Path) -> None:
     about = client_for(tmp_path).get("/api/about").json
-    assert about["author"] == "Mahdi Habibi"
+    assert about["author"] == "Dr. Mahdi Habibi"
     assert about["license"] == "FSL-1.1-ALv2"
     assert about["license_text"].startswith("# Functional Source License")
     assert about["source"] == "https://github.com/mdhabibi/postloom"
