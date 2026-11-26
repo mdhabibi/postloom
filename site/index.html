@@ -188,17 +188,38 @@ figcaption b { color: var(--soft); font-weight: 500; }
 .providers { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.2rem 0 0; padding: 0; list-style: none; }
 .providers li { font: 500 0.8rem/1 var(--mono); padding: 0.4rem 0.55rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--soft); }
 
-/* install */
-.install { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
-.terminal { border: 1px solid var(--line); border-radius: 0.8rem; background: var(--ground); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
-.terminal header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
-.terminal header strong { font-size: 1rem; }
-.terminal header span { color: var(--muted); font-size: 0.88rem; }
-.terminal pre { margin: 0; padding: 1.1rem 1rem; overflow-x: auto; font: 400 0.9rem/1.5 var(--mono); color: var(--ink); }
-.terminal pre::before { content: "$ "; color: var(--muted); }
-.terminal footer { display: flex; justify-content: flex-end; padding: 0 1rem 1rem; margin-top: auto; }
-.copy { font: 500 0.85rem/1 var(--sans); padding: 0.5rem 0.8rem; }
-.after { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2rem; color: var(--soft); font-size: 0.98rem; }
+/* install: one computer at a time, as numbered steps */
+.systems { display: inline-flex; gap: 0.25rem; padding: 0.3rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--ground); margin-bottom: 1.5rem; }
+.systems button {
+  font: 600 1rem/1 var(--sans); padding: 0.65rem 1.2rem; border: 0; border-radius: 0.5rem;
+  background: none; color: var(--soft); cursor: pointer;
+}
+.systems button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 0; max-width: 50rem; }
+.steps li {
+  counter-increment: step; position: relative; padding: 1.1rem 0 1.25rem 3.4rem; color: var(--soft);
+  border-top: 1px solid var(--line);
+}
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: 1rem; width: 2.2rem; height: 2.2rem;
+  display: grid; place-items: center; border-radius: 50%; background: var(--ground); border: 1px solid var(--line);
+  font: 600 1rem/1 var(--mono); color: var(--ink);
+}
+.steps li strong { display: block; color: var(--ink); font-size: 1.1rem; margin-bottom: 0.2rem; }
+.steps b { color: var(--ink); }
+kbd {
+  display: inline-block; min-width: 1.6em; padding: 0.05em 0.45em; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 0.35rem; background: var(--ground); color: var(--ink); font: 500 0.9em/1.4 var(--sans); text-align: center;
+}
+.line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.7rem; }
+.line code {
+  flex: 1 1 22rem; min-width: 0; padding: 0.85rem 1rem; border: 1px solid var(--line); border-radius: 0.6rem;
+  background: var(--ground); color: var(--ink); font: 400 0.92rem/1.5 var(--mono);
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: all;
+}
+.copy { padding: 0.85rem 1.3rem; }
+.stuck { margin-top: 1.5rem; color: var(--soft); font-size: 0.98rem; max-width: 50rem; }
+.after { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2.5rem; color: var(--soft); font-size: 0.98rem; }
 .after strong { color: var(--ink); display: block; margin-bottom: 0.25rem; }
 
 /* faq */
@@ -223,7 +244,7 @@ footer.site a { color: var(--soft); }
 @media (max-width: 900px) {
   .fig, .fig.flip { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
   .fig.flip .fig-text { order: 0; }
-  .problem-grid, .promises, .install, .after { grid-template-columns: minmax(0, 1fr); }
+  .problem-grid, .promises, .after { grid-template-columns: minmax(0, 1fr); }
   .band { padding-block: 4.5rem; }
 }
 </style>
@@ -423,23 +444,45 @@ footer.site a { color: var(--soft); }
     <div class="wrap">
       <div class="head">
         <p class="label">Install</p>
-        <h2>One line. No Python, no database, no admin rights.</h2>
-        <p class="lede">Open a terminal, paste the line for your computer, press Enter. In a minute or two postloom opens in your browser, and from then on it is an app with its own icon.</p>
+        <h2>Four steps, about two minutes.</h2>
+        <p class="lede">You copy one line and paste it into a window your computer already has. No Python, no database and no administrator password. After that, postloom is an app with its own icon.</p>
       </div>
-      <div class="install">
-        <div class="terminal">
-          <header><strong>Mac or Linux</strong><span>Mac: press ⌘ Space, type Terminal</span></header>
-          <pre id="cmd-unix">curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh</pre>
-          <footer><button class="button copy" type="button" data-copy="cmd-unix" id="copy-unix">Copy</button></footer>
-        </div>
-        <div class="terminal">
-          <header><strong>Windows</strong><span>Start menu, type PowerShell</span></header>
-          <pre id="cmd-win">irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex</pre>
-          <footer><button class="button copy" type="button" data-copy="cmd-win" id="copy-win">Copy</button></footer>
-        </div>
+      <div class="systems" role="tablist" aria-label="Your computer">
+        <button type="button" role="tab" id="tab-mac" aria-controls="steps-mac" aria-selected="true">Mac</button>
+        <button type="button" role="tab" id="tab-windows" aria-controls="steps-windows" aria-selected="false" tabindex="-1">Windows</button>
+        <button type="button" role="tab" id="tab-linux" aria-controls="steps-linux" aria-selected="false" tabindex="-1">Linux</button>
       </div>
+
+      <ol class="steps" id="steps-mac" role="tabpanel" aria-labelledby="tab-mac">
+        <li><strong>Open Terminal.</strong> Press <kbd>⌘</kbd> and <kbd>Space</kbd> together, type <b>Terminal</b> and press <kbd>Return</kbd>. A window with a line of text appears.</li>
+        <li><strong>Copy the install line.</strong>
+          <div class="line"><code id="cmd-mac">curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh</code>
+          <button class="button primary copy" type="button" data-copy="cmd-mac" id="copy-mac">Copy</button></div></li>
+        <li><strong>Paste it into Terminal and press Return.</strong> Click in the Terminal window, press <kbd>⌘</kbd> <kbd>V</kbd>, then <kbd>Return</kbd>. Text scrolls by while postloom installs.</li>
+        <li><strong>Wait for postloom to open in your browser.</strong> You can close Terminal then. Next time, open postloom from Launchpad or Applications, like any app.</li>
+      </ol>
+
+      <ol class="steps" id="steps-windows" role="tabpanel" aria-labelledby="tab-windows" hidden>
+        <li><strong>Open PowerShell.</strong> Click Start, type <b>PowerShell</b> and press <kbd>Enter</kbd>. A blue or black window appears.</li>
+        <li><strong>Copy the install line.</strong>
+          <div class="line"><code id="cmd-windows">irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex</code>
+          <button class="button primary copy" type="button" data-copy="cmd-windows" id="copy-windows">Copy</button></div></li>
+        <li><strong>Paste it into PowerShell and press Enter.</strong> Right-click inside the window (or press <kbd>Ctrl</kbd> <kbd>V</kbd>), then press <kbd>Enter</kbd>. Text scrolls by while postloom installs.</li>
+        <li><strong>Wait for postloom to open in your browser.</strong> You can close PowerShell then. Next time, open postloom from the Start menu or the desktop icon.</li>
+      </ol>
+
+      <ol class="steps" id="steps-linux" role="tabpanel" aria-labelledby="tab-linux" hidden>
+        <li><strong>Open a terminal.</strong> On most systems, press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>T</kbd>, or find Terminal in your applications.</li>
+        <li><strong>Copy the install line.</strong>
+          <div class="line"><code id="cmd-linux">curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh</code>
+          <button class="button primary copy" type="button" data-copy="cmd-linux" id="copy-linux">Copy</button></div></li>
+        <li><strong>Paste it and press Enter.</strong> Press <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd> in the terminal, then <kbd>Enter</kbd>.</li>
+        <li><strong>Wait for postloom to open in your browser.</strong> Next time, open it from your applications menu.</li>
+      </ol>
+
+      <p class="stuck">Stuck, or something looks wrong? <a href="https://github.com/mdhabibi/postloom/issues/new/choose">Tell us what you see</a>, and if you can, ask someone who has used a terminal before to sit with you for these two minutes.</p>
       <div class="after">
-        <p><strong>Update</strong>Run the same line again. Your library is never touched.</p>
+        <p><strong>Update</strong>Do the same steps again. Your library is never touched.</p>
         <p><strong>Connect a model</strong>Settings walks you through it: a free Gemini key, any other provider, or a local model.</p>
         <p><strong>What it costs</strong>postloom is free. A month of daily use with a hosted model costs about $1.40; with Ollama, nothing.</p>
       </div>
@@ -505,6 +548,32 @@ for (const button of document.querySelectorAll("[data-copy]")) {
     setTimeout(() => { button.textContent = "Copy"; }, 2400);
   });
 }
+
+// Install steps for the visitor's computer, with the others a click away.
+(function () {
+  const tabs = [...document.querySelectorAll(".systems [role=tab]")];
+  function show(tab) {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    }
+  }
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => show(tab));
+    tab.addEventListener("keydown", (e) => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (!step) return;
+      const next = tabs[(tabs.indexOf(tab) + step + tabs.length) % tabs.length];
+      show(next);
+      next.focus();
+    });
+  }
+  const agent = navigator.userAgent;
+  const mine = /Windows/.test(agent) ? "tab-windows" : /Linux|X11/.test(agent) && !/Android/.test(agent) ? "tab-linux" : "tab-mac";
+  show(document.getElementById(mine));
+})();
 
 // The hero's loom: colored warp threads, with a weft woven across them once on load.
 (function () {
