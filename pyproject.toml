@@ -78,8 +78,8 @@ pattern = '(\]\(|src=")(site/img/)'
 replacement = '\1https://raw.githubusercontent.com/mdhabibi/postloom/main/\2'
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
-pattern = '\]\(([A-Z]+\.md)\)'
-replacement = '](https://github.com/mdhabibi/postloom/blob/main/\1)'
+pattern = '\]\(((?:docs/)?[A-Za-z_]+\.md)(#[^)]*)?\)'
+replacement = '](https://github.com/mdhabibi/postloom/blob/main/\1\2)'
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/postloom"]

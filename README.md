@@ -1,6 +1,8 @@
 # postloom
 
-**A local-first knowledge graph and chat for your LinkedIn articles, posts, comments and the people behind them.**
+**Your LinkedIn, remembered.** A private, local-first memory of your articles, posts, every
+comment under them and the people who wrote them: search, chat, a knowledge graph and reply
+drafts, with any AI model or none.
 
 [![CI](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml/badge.svg)](https://github.com/mdhabibi/postloom/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/postloom)](https://pypi.org/project/postloom/)
@@ -15,9 +17,6 @@ a connected note in your own graph, linked to its topics, its series, the links 
 you used, and every comment and reply. Then you can chat with anything you wrote and its
 discussion, see who engages with your work, and draft replies grounded in what you actually
 wrote.
-
-> **Status: alpha.** Articles, posts, search, chat, comment threads, people, reply drafts, related
-> article links and the graph view work end to end. See the [roadmap](#roadmap).
 
 ![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](site/img/home.png)
 
@@ -40,8 +39,8 @@ wrote.
   that is also a valid [Obsidian](https://obsidian.md) vault. It is the source of truth:
   edit a note and postloom reads the change; lose the index and postloom rebuilds itself
   from the folder. Backing up that one folder backs up everything.
-- **A graph you can trust.** Links parsed from your content are marked *verified*; links an AI
-  suggests stay *asserted* until you accept them. Nothing you decided is ever overwritten,
+- **A graph you can trust.** Links postloom reads from your own text are facts; links an AI
+  suggests stay suggestions until you accept them. Nothing you decided is ever overwritten,
   and history is kept instead of deleted.
 - **Answers you can check.** Chat answers only from your own articles, posts and comments,
   cites the passage behind every claim, and says "not found" instead of guessing.
@@ -52,7 +51,8 @@ wrote.
 ## Install
 
 You don't need Python or anything else first, and nothing needs administrator rights.
-Copy one line, paste it, press Enter:
+Copy one line, paste it, press Enter. The [website](https://mdhabibi.github.io/postloom/#install)
+shows the same in four illustrated steps.
 
 **Mac** (press <kbd>⌘ Space</kbd>, type *Terminal*, press Enter) or **Linux** (open a
 terminal):
@@ -73,10 +73,16 @@ Windows, the applications menu on Linux. You won't need the terminal again.
 
 - **Update:** run the same line again. Your data is never touched.
 - **Stop:** choose **Quit postloom** at the bottom of the sidebar.
-- **Uninstall:** add `-s -- --uninstall` to the Mac/Linux line (`... install.sh | sh -s --
-  --uninstall`), or on Windows run
-  `$env:POSTLOOM_UNINSTALL = 1; irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex`.
-  Your data folder is kept; delete it yourself if you want.
+- **Uninstall:** run the line below for your computer. Your data folder is kept; delete it
+  yourself if you want.
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/mdhabibi/postloom/main/install.sh | sh -s -- --uninstall
+```
+
+```powershell
+$env:POSTLOOM_UNINSTALL = 1; irm https://raw.githubusercontent.com/mdhabibi/postloom/main/install.ps1 | iex
+```
 
 The installer uses [uv](https://docs.astral.sh/uv/), which downloads its own copy of Python
 for postloom, so it never changes the Python on your computer. Everything else postloom
@@ -86,7 +92,7 @@ first use: there is no database server to install.
 **For developers:** `uvx postloom start` runs it from PyPI, `uv tool install postloom` keeps
 it installed, and `uv sync && uv run postloom start` runs a clone.
 
-## First steps
+## Getting started
 
 postloom opens in your browser (dark by default; switch to light at the bottom of the
 sidebar). Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> anywhere to search your
@@ -104,7 +110,7 @@ articles and people, ask a question, or jump to a page. On first run:
    and ask across everything you've written. Answers cite the sections they come from, and
    when nothing relevant exists postloom says so instead of guessing.
 
-### Choosing a provider
+## Choosing a model
 
 | Provider | Key | Good for |
 |---|---|---|
@@ -131,242 +137,33 @@ real numbers):
 
 Search, related-article suggestions, the graph and the people pages cost nothing: they
 run on your computer. (On Intel Macs, where the local embedding runtime isn't available,
-postloom uses your provider's embeddings for search instead, or keywords.) Nothing runs in the background; a model is only called when you
-click something.
+postloom uses your provider's embeddings for search instead, or keywords.) Nothing runs in
+the background; a model is only called when you click something.
 
 **Local models with Ollama.** Choose Ollama in Settings. postloom checks whether
 [Ollama](https://ollama.com) is installed and running (and starts it for you), suggests a
 model for your computer's memory (Qwen 3.5 in 4B, 9B or 27B), downloads it with a progress
-bar and uses it for every task. Models you already pulled are offered too. Reading comments and chat work well with mid-size models.
-Restoring long articles needs a capable model (14B parameters or more, so 32 GB of memory
-helps) and can take several minutes. postloom sizes Ollama's context for every request and
-refuses, with a clear message, texts too long for the limit you set, instead of letting
-them be silently cut off.
+bar and uses it for every task. Models you already pulled are offered too. Reading
+comments and chat work well with mid-size models. Restoring long articles needs a capable
+model (14B parameters or more, so 32 GB of memory helps) and can take several minutes.
+postloom sizes Ollama's context for every request and refuses, with a clear message, texts
+too long for the limit you set, instead of letting them be silently cut off.
 
-### Comments and replies
+## What you can do
 
-On an article's page, click **Add comments**, then paste the comment section of your
-post. Open the post on LinkedIn, expand all comments and replies, select the whole
-section and copy it. postloom splits it into messages and works out who is answering
-whom, including long back-and-forths with one person. Before anything is saved you can
-check each message, fix where a reply belongs, mark your own replies, and add people's
-profile links so they're recognised next time. Pasting the same section again later only
-adds the new messages. Set **Your name on LinkedIn** in Settings so your replies are
-recognised automatically.
+- **Comments and replies:** paste a comment section; postloom works out who answered whom,
+  and drafts replies in your voice from the article and the whole thread.
+- **People:** everyone who engaged with you, across all your posts, with your private notes.
+- **Mentions:** the people, organisations, events and links your writing names, confirmed
+  by you before they enter your graph.
+- **Images and videos:** found by your captions, by what a model sees in them and by
+  subtitles.
+- **Ask questions:** answers only from your own library, with sources you can open.
+- **The graph:** articles, topics, series, people and mentions, focused on whatever you pick.
+- **Your vault:** plain Markdown you can open in Obsidian, edit, back up or move.
+- **Command line:** everything the app does, scriptable.
 
-### Reply drafts
-
-Every comment has a **Draft reply** button. postloom writes a reply in your voice from your
-article, the whole conversation up to that message, what you know about the person
-(their headline, your notes, your earlier exchanges on other articles) and a few of your
-earlier replies as examples of your tone. Tell it how to change the next draft ("shorter",
-"mention part 4") and click **Redraft**. postloom never posts anything: edit the draft,
-copy it and reply on LinkedIn, then paste the comments again to save your real reply.
-
-### People
-
-**People** lists everyone who has commented on your posts, most engaged first. A person's
-page shows their headline (and earlier ones), your private notes, and every conversation
-you've had with them, grouped by article. Add someone's LinkedIn profile link once and
-postloom merges their comments into one identity and recognises them on every future
-post. Each person also gets a note in `vault/people/`, so they appear in Obsidian's graph.
-
-A person's page has its own chat, limited to your notes about them and the conversations
-you had: "What does Jane care about?", "Is there anything I haven't answered?".
-
-**Delete this person**, at the bottom of their page, erases their profile, your notes and
-every message they wrote, from postloom and from your vault. Use it when someone asks you
-to remove their data. Conversations they took part in stay readable, and your own replies
-stay as you wrote them.
-
-### Mentions: people, organisations and more
-
-When you add a post or an article, postloom looks for what it names: people,
-organisations, places, events, projects and products, datasets, methods and links (links
-need no model). It shows them as **Found in this post**, each with the sentence that names
-it, and suggests topics, including new ones when none of yours fit. Untick what doesn't
-belong, fix a name or category, and click **Add**: nothing goes into your graph before
-you do. Names that aren't in your text are never suggested, and neither are you.
-
-Confirmed mentions appear on the post, on **Mentions** (grouped by category, with what
-still waits for review) and in the graph. A person you mention is the same person as the
-one who comments, so their page shows both. Open any entry to rename it (the old name is
-kept, so it's recognised next time), change its category, add a link, merge it into
-another entry, or delete it. Chat uses them too: "Where did I mention Example Labs?",
-"Which companies have I written about?", "Who did I thank?".
-
-### Images and videos
-
-Add the pictures, slides and videos you posted, when you add a post or an article or
-later on its page (drop them on **Images and videos**). They are copied into your vault,
-under `vault/media/`, so they travel with it and Obsidian shows them.
-
-What makes them findable is words: write a caption saying what each one shows, and with a
-model connected, **Describe with AI** has it look at an image and write down what it
-shows and every word written in it (a chart's numbers, a slide's text). For a video, add
-its subtitle file (`.vtt` or `.srt`, the one you uploaded to LinkedIn), and what is said in
-it becomes searchable. Search then finds "the slide with the latency numbers", shows the
-picture with the result, and chat can answer from it.
-
-Describing an image costs a fraction of a cent with a hosted model. On Ollama it needs a
-model that can see (gemma3, for example); postloom says so instead of letting a text-only
-model guess. Images up to 25 MB and videos up to 1 GB are accepted.
-
-### Asking questions
-
-Press `Ctrl K` (or `/`) and ask. postloom answers only from your library and cites its
-sources, so you can open the passage behind each claim:
-
-- *"How do I know if my cache serves wrong answers?"* finds the passages by meaning.
-- *"What did Jane ask me?"* looks Jane up and reads your conversations with her.
-- *"Which articles are in the caching series?"* and *"How many articles have I written
-  about RAG?"* are answered from the graph, not guessed from similar text.
-- Follow-up questions keep their subject.
-
-If nothing in your library matches, postloom says so without calling the model, so a
-wrong question costs nothing. An answer that cites no source is marked as unverified.
-
-### Fixing and organising
-
-- **Edit details** on an article fixes its title, summary, topics, series, date and link.
-  The article keeps its identity, comments and links when you retitle it. On a post it
-  fixes the topics, date and link; edit the post's note to change its text.
-- **Delete** removes an article with its post and comments, or a post with its comments.
-- **Settings → Topics** adds, renames and removes topics. Renaming a topic to the name of
-  another one merges them.
-- Adding a post again updates it; it is recognised by its link or its text.
-- Adding an article you already have updates it, even if its title changed. A different
-  article that happens to have the same title is kept separately; nothing is replaced on
-  the strength of a title.
-
-### Related articles and the graph
-
-When you add an article, postloom compares it by meaning with everything you've written
-and suggests links to the closest ones. Each article page lists them under **Related
-articles**: **Accept** keeps a link, **Dismiss** hides it for good, and you can link any
-two articles by hand. Only links you accept are written to your vault (as `related:` in
-the article note), so Obsidian's graph shows your decisions, not a model's guesses.
-
-**Graph** (in the sidebar) shows your articles, topics, series and the people who
-discussed them. Suggested links are dashed until you review them; the list under the
-graph lets you go through them all at once. Hover a node to see its neighbours, click it
-to see what it is and **Open** it or **Focus here**, drag to pan and scroll to zoom.
-
-A large library would make one unreadable ball, so the graph shows at most 160 nodes at
-a time: the most connected ones, or, once you focus on an article, topic, person or
-anything you mention (type its name in **Focus on**), that node and its connections. The
-period choice (last 3 or 12 months) narrows it further, and the address keeps the focus,
-so you can bookmark it.
-
-### A large library
-
-Every list is built to stay tidy at hundreds of articles and thousands of people. The
-sidebar keeps the busiest topics and your newest writing; **Library** has everything,
-with search, kind, topic and sort. **People** and **Mentions** can be searched, filtered
-and sorted, and long lists grow 50 at a time with **Show more**. Screens are answered from
-a snapshot of the library kept in memory until something changes, so they open in a
-fraction of a second.
-
-### Your vault
-
-Your data lives in `~/Postloom` (change it with `--home` or `POSTLOOM_HOME`). The `vault`
-folder inside is plain Markdown: open it in [Obsidian](https://obsidian.md) to browse your
-articles as a graph.
-
-The vault is the source of truth, and `index.db` next to it is only a fast copy:
-
-- **Edit notes freely.** Change an article's text or title, its `topics` or `related`
-  links, a person's notes or tags, a mention's name, category or aliases (in
-  `vault/mentions/`), or a comment. postloom notices the edit, shows a banner
-  and reads it; topics and links you change in a note count as your decisions.
-- **Lose the index, lose nothing.** Delete `index.db` (or move the vault to another
-  computer) and postloom rebuilds everything on the next start, including which links
-  you accepted or dismissed and when.
-- **Nothing is guessed or destroyed.** A note postloom can't read (say, broken YAML) is
-  named and your edits wait until it's fixed. Notes that no longer match anything are
-  moved to `vault/.postloom/trash`, never deleted. Notes you create yourself are left
-  alone.
-- The hidden `vault/.postloom` folder holds `edges.jsonl`, a plain-text record of where
-  each link came from. It travels with the vault.
-
-To delete an article or a person, use the app: it removes every trace, which deleting a
-single note can't.
-
-### Command line
-
-Everything the app does is also available from the terminal (in a clone of the repository,
-put `uv run` in front):
-
-```bash
-postloom ingest article.txt post.txt --date 2026-10-12   # add an article
-postloom post post.txt --url https://www.linkedin.com/posts/...  # add a stand-alone post
-postloom search "how do I know if my cache serves wrong answers" --explain
-postloom reindex                                         # after upgrading
-postloom links --explain                                 # how similar your articles are
-postloom usage                                           # this month's calls and cost
-postloom sync                                            # read your vault again
-postloom doctor                                          # check provider, models, search, vault
-```
-
-`doctor` makes one tiny real call with each model you configured (a fraction of a cent), so
-a wrong model name or a key without credits shows up there and not while you add an article.
-
-### Settings
-
-Everything is set in the app. Environment variables win over saved settings, which is
-handy for servers and scripts.
-
-| Setting | Environment variable | Default |
-|---|---|---|
-| Data folder | `POSTLOOM_HOME` | `~/Postloom` |
-| Provider | `POSTLOOM_PROVIDER` | chosen in the app |
-| API key | `POSTLOOM_API_KEY`, or the provider's own (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) | saved in the app |
-| Server address (Ollama, custom) | `POSTLOOM_BASE_URL` | the provider's |
-| Models per task | `POSTLOOM_EXTRACTION_MODEL`, `POSTLOOM_COMMENTS_MODEL`, `POSTLOOM_CHAT_MODEL`, `POSTLOOM_REPLY_MODEL` | the provider's defaults |
-| Search embeddings | `POSTLOOM_EMBEDDINGS` (`local`, `provider` or `off`) | `local` |
-| Language of your writing (local search model) | `POSTLOOM_LOCAL_EMBEDDING_MODEL` | English (`BAAI/bge-small-en-v1.5`); choose **Many languages** in Settings for `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | calibrated per embedding model |
-| Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | calibrated per embedding model |
-| Monthly budget in US dollars | `POSTLOOM_MONTHLY_BUDGET` | none |
-| Largest context for Ollama models | `POSTLOOM_OLLAMA_CONTEXT` | `32768` tokens |
-| Your name on LinkedIn (recognises your replies) | `POSTLOOM_OWNER_NAME` | set in the app |
-
-Prices for models postloom doesn't know can be added to `config.json` as
-`"prices": {"model-id": [input, output]}` in dollars per million tokens.
-
-## How it works
-
-```
-paste article + post (+ banner)
-  -> extraction (cheap LLM): clean Markdown, title, summary, topics, entities, series
-  -> rules: hashtags, links, ids, post->article edge, "Part N"
-  -> vault/*.md (source of truth)  +  graph index (nodes, edges, provenance)
-
-edit a note in Obsidian, or lose index.db
-  -> postloom reads the vault back -> the index matches the notes again
-
-ask a question (about everything, one article or one person)
-  -> people, topics and series named in it are looked up in the graph
-  -> hybrid search (keywords + embeddings) over articles, posts and comments
-  -> answer with citations, "not found" without a model call, or a reply draft you approve
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind it.
-
-## Roadmap
-
-postloom 0.1.0 is the first public release. Next:
-
-- [ ] Double-click installers for Mac and Windows, signed so no security warning appears
-      ([#23](https://github.com/mdhabibi/postloom/issues/23))
-- [ ] A Docker image, for running postloom on a home server
-
-Something missing? [Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
-What has changed in each version is in the [changelog](CHANGELOG.md).
-
-## Contributing
-
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The [user guide](docs/guide.md) explains each of them in detail, with every setting.
 
 ## Privacy
 
@@ -379,11 +176,33 @@ index and your vault.
 
 When you use a hosted model, the text a feature needs (the article you add, the comments
 you paste, the passages behind an answer, an image you ask it to describe) is sent to that
-provider under its terms. Check
-them: free tiers may use your data for training. Search embeddings run on your computer by
-default, and with Ollama nothing leaves your computer at all.
+provider under its terms. Check them: free tiers may use your data for training. Search
+embeddings run on your computer by default, and with Ollama nothing leaves your computer
+at all.
 
 postloom is not affiliated with or endorsed by LinkedIn.
+
+## Documentation
+
+- [User guide](docs/guide.md): every feature and setting
+- [Architecture](ARCHITECTURE.md): how postloom is built, and why
+- [Changelog](CHANGELOG.md): what changed in each version
+- [Contributing](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md) and
+  [security policy](SECURITY.md)
+
+## Roadmap
+
+postloom 0.1.0 is the first public release. Next:
+
+- Double-click installers for Mac and Windows, signed so no security warning appears
+  ([#23](https://github.com/mdhabibi/postloom/issues/23))
+- A Docker image, for running postloom on a home server
+
+Something missing? [Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
