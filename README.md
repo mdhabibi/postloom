@@ -27,6 +27,11 @@ you used, and every comment and reply. Then you can chat with anything you wrote
 discussion, see who engages with your work, and draft replies grounded in what you actually
 wrote.
 
+
+https://github.com/user-attachments/assets/0b2f2c29-c153-4e21-a0fa-3c1486bf95ab
+
+*A two-minute tour with a fictional library. [Watch it on the website](https://postloom-app.vercel.app/tour), chapter by chapter.*
+
 ![postloom home: messages waiting for your reply, suggested links, this month's cost, your articles and most engaged people](site/img/home.png)
 
 <p align="center">
