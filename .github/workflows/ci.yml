@@ -35,7 +35,7 @@ jobs:
       embeddings: ${{ steps.decide.outputs.embeddings }}
       full: ${{ steps.decide.outputs.full }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: decide
@@ -65,8 +65,8 @@ jobs:
   lint:
     runs-on: ${{ (!github.event.repository.private || vars.RUNNER == '') && 'ubuntu-latest' || vars.RUNNER }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --group dev
@@ -94,8 +94,8 @@ jobs:
       matrix:
         python-version: ${{ fromJSON(github.event_name == 'push' && '["3.12"]' || '["3.11", "3.14"]') }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
@@ -120,8 +120,8 @@ jobs:
         os: ${{ fromJSON(needs.scope.outputs.full == 'true' && '["macos-latest", "macos-15-intel", "windows-latest"]' || '["macos-latest", "windows-latest"]') }}
         python-version: ${{ fromJSON(needs.scope.outputs.full == 'true' && '["3.11", "3.13"]' || '["3.12"]') }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
@@ -141,8 +141,8 @@ jobs:
     if: needs.scope.outputs.embeddings == 'true'
     runs-on: ${{ (!github.event.repository.private || vars.RUNNER == '') && 'ubuntu-latest' || vars.RUNNER }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --group dev
@@ -156,8 +156,8 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ${{ (!github.event.repository.private || vars.RUNNER == '') && 'ubuntu-latest' || vars.RUNNER }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync --group dev
@@ -185,7 +185,7 @@ jobs:
     env:
       POSTLOOM_SOURCE: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install, open, update and uninstall
         if: runner.os != 'Windows'
         env:
