@@ -11,6 +11,8 @@ data is stored; postloom upgrades your data folder itself when it starts.
 - The README is a shorter front page (what postloom is, install, getting started, models,
   privacy), and everything it can do, screen by screen, is in the new
   [user guide](docs/guide.md).
+- The README opens centred with the logo, and installs in the same four steps per computer
+  as the website; update and uninstall are folded away.
 
 ## [0.1.0] - unreleased
 
