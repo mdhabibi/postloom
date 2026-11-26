@@ -297,7 +297,7 @@ def ontology() -> list[Triple]:
         ),
     )
     add(onto, OWL + "versionInfo", text("1"))
-    add(onto, DCTERMS + "creator", text("Mahdi Habibi"))
+    add(onto, DCTERMS + "creator", text("Dr. Mahdi Habibi"))
     add(onto, RDFS + "seeAlso", IRI("https://github.com/mdhabibi/postloom"))
     for name, label, equivalents, comment in _CLASSES:
         cls = pl(name)

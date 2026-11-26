@@ -528,7 +528,7 @@ def test_about_shows_the_author_license_and_source(page: Page) -> None:
     visit(page, "#/")
     page.get_by_role("link", name="About postloom").click()
     expect(page.locator("h1")).to_have_text("postloom")
-    expect(page.get_by_role("link", name="Mahdi Habibi")).to_have_attribute(
+    expect(page.get_by_role("link", name="Dr. Mahdi Habibi")).to_have_attribute(
         "href", "https://github.com/mdhabibi"
     )
     expect(page.get_by_role("link", name="github.com/mdhabibi/postloom")).to_be_visible()

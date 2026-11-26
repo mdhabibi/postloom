@@ -6,7 +6,7 @@ license = "FSL-1.1-ALv2"
 dynamic = ["readme"]
 license-files = ["LICENSE.md"]
 requires-python = ">=3.11"
-authors = [{ name = "Mahdi Habibi" }]
+authors = [{ name = "Dr. Mahdi Habibi" }]
 keywords = [
     "linkedin", "local-first", "knowledge-graph", "graph-rag", "rag", "llm", "ollama",
     "obsidian", "personal-knowledge-management", "semantic-search", "privacy",
