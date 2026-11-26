@@ -63,7 +63,10 @@ def link_target(value: object) -> str | None:
 
 def render_note(meta: Meta, body: str) -> str:
     clean = {k: v for k, v in meta.items() if v not in (None, [], "")}
-    front = yaml.safe_dump(clean, sort_keys=False, allow_unicode=True, width=1000)
+    # types-pyyaml 6.0.12.20261122 types `width` as partly unknown; the call is fine.
+    front = yaml.safe_dump(  # pyright: ignore[reportUnknownMemberType]
+        clean, sort_keys=False, allow_unicode=True, width=1000
+    )
     return f"---\n{front}---\n\n{body.rstrip()}\n"
 
 
