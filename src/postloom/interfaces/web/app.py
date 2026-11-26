@@ -245,7 +245,8 @@ def create_app(
                 "license": info.license,
                 "license_summary": info.license_summary,
                 "license_text": info.license_text,
-                "homepage": info.homepage,
+                "source": info.source,
+                "website": info.website,
                 "issues": info.issues,
                 "changelog": info.changelog,
                 "credits": [

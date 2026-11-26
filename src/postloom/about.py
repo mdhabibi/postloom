@@ -13,6 +13,7 @@ from pathlib import Path
 from postloom import __version__
 
 REPOSITORY = "https://github.com/mdhabibi/postloom"
+WEBSITE = "https://mdhabibi.github.io/postloom/"
 LICENSE_SUMMARY = (
     "postloom is fair source. You can read, run, change and share the code for anything "
     "except offering a competing commercial product or service; using it for your own "
@@ -78,7 +79,9 @@ class About:
     license: str
     license_summary: str
     license_text: str
-    homepage: str
+    source: str
+    """The code on GitHub."""
+    website: str
     issues: str
     changelog: str
     credits: tuple[Credit, ...]
@@ -98,7 +101,8 @@ def about() -> About:
             license=meta["License-Expression"] or "FSL-1.1-ALv2",
             license_summary=LICENSE_SUMMARY,
             license_text=text,
-            homepage=urls.get("Homepage", REPOSITORY),
+            source=urls.get("Source", REPOSITORY),
+            website=urls.get("Homepage", WEBSITE),
             issues=urls.get("Issues", f"{REPOSITORY}/issues"),
             changelog=urls.get("Changelog", f"{REPOSITORY}/blob/main/CHANGELOG.md"),
             credits=CREDITS,
@@ -113,6 +117,7 @@ def about() -> About:
             LICENSE_SUMMARY,
             _source_license(),
             REPOSITORY,
+            WEBSITE,
             f"{REPOSITORY}/issues",
             f"{REPOSITORY}/blob/main/CHANGELOG.md",
             CREDITS,
