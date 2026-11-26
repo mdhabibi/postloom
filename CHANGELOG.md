@@ -13,7 +13,7 @@ data is stored; postloom upgrades your data folder itself when it starts.
   [user guide](docs/guide.md).
 - The README opens centred with the logo, and installs in the same four steps per computer
   as the website; update and uninstall are folded away.
-- The website moved to [postloom-gamma.vercel.app](https://postloom-gamma.vercel.app/),
+- The website moved to [postloom-app.vercel.app](https://postloom-app.vercel.app/),
   with security headers and caching (`site/vercel.json`); the GitHub Pages workflow is gone.
 
 ## [0.1.0] - unreleased

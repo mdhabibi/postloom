@@ -13,7 +13,7 @@ from pathlib import Path
 from postloom import __version__
 
 REPOSITORY = "https://github.com/mdhabibi/postloom"
-WEBSITE = "https://postloom-gamma.vercel.app/"
+WEBSITE = "https://postloom-app.vercel.app/"
 LICENSE_SUMMARY = (
     "postloom is fair source. You can read, run, change and share the code for anything "
     "except offering a competing commercial product or service; using it for your own "
