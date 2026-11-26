@@ -348,19 +348,10 @@ postloom is not affiliated with or endorsed by LinkedIn.
 - [Contributing](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md) and
   [security policy](SECURITY.md)
 
-## Roadmap
-
-postloom 0.1.0 is the first public release. Next:
-
-- Double-click installers for Mac and Windows, signed so no security warning appears
-  ([#23](https://github.com/mdhabibi/postloom/issues/23))
-- A Docker image, for running postloom on a home server
-
-Something missing? [Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
-
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Something missing?
+[Suggest an idea](https://github.com/mdhabibi/postloom/issues/new?template=idea.yml).
 
 ## License
 
