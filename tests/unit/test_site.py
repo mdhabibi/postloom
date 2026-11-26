@@ -36,7 +36,7 @@ def test_everything_the_page_loads_is_part_of_the_site() -> None:
     html, links = parsed()
     loads = links.loads + re.findall(r'url\("([^"]+)"\)', html)
     assert loads
-    canonical = "https://mdhabibi.github.io/postloom/"
+    canonical = "https://postloom-gamma.vercel.app/"
     for path in loads:
         if path == canonical:
             continue
@@ -55,6 +55,6 @@ def test_in_page_links_point_at_sections_that_exist() -> None:
 
 def test_a_shared_link_shows_a_preview() -> None:
     html, _ = parsed()
-    image = "https://mdhabibi.github.io/postloom/img/og.png"
+    image = "https://postloom-gamma.vercel.app/img/og.png"
     assert f'<meta property="og:image" content="{image}">' in html
     assert (SITE / "img" / "og.png").is_file()

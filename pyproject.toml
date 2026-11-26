@@ -45,7 +45,7 @@ dependencies = [
 postloom = "postloom.interfaces.cli.main:main"
 
 [project.urls]
-Homepage = "https://mdhabibi.github.io/postloom/"
+Homepage = "https://postloom-gamma.vercel.app/"
 Source = "https://github.com/mdhabibi/postloom"
 Issues = "https://github.com/mdhabibi/postloom/issues"
 Changelog = "https://github.com/mdhabibi/postloom/blob/main/CHANGELOG.md"
