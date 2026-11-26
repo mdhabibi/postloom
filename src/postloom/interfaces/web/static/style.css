@@ -753,6 +753,7 @@ textarea::placeholder, input::placeholder { color: var(--muted); opacity: 1; }
 
 .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 0.6rem; margin: 0.9rem 0 1rem; }
 .provider-card {
+  align-content: start;
   position: relative; display: grid; gap: 0.25rem; padding: 0.8rem 0.9rem 0.8rem 2.4rem;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); cursor: pointer;
   transition: border-color 150ms var(--ease), background 150ms var(--ease);
@@ -1022,3 +1023,6 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
 .sidebar-foot { box-shadow: 0 -10px 14px -12px rgb(0 0 0 / 0.45); }
+
+.settings-section > label.check { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.4rem 0; color: var(--text); font-size: var(--ui-sm); line-height: 1.45; }
+.settings-section > label.check input { margin-top: 0.2rem; flex: none; }

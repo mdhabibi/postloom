@@ -327,6 +327,28 @@ graph library, and the same library always gets the same picture because startin
 positions come from id hashes. Colours are applied through the CSSOM, never `style`
 attributes, so the strict CSP stays intact.
 
+## Graph export
+
+`ExportGraph` takes a snapshot of the index (every node, and the live edges or the whole
+edge history) and hands it to a `GraphFormat` port. The formats live in `adapters/export`
+and use only the standard library:
+
+- `rdf.py`: Turtle and JSON-LD from one small triple model. Nodes are typed with a
+  postloom class and its schema.org (or SKOS) class; relations are `pl:` properties mapped
+  to schema.org and Dublin Core by `rdfs:subPropertyOf` / `owl:inverseOf`. Live edges are
+  plain triples; every recorded edge is also a reified `pl:EdgeRecord` (`rdf:Statement`,
+  `prov:Entity`) with origin, grade, producer and PROV-O times. RDF 1.1 reification
+  rather than RDF-star, so any triple store loads it. The vocabulary is generated from the
+  same code and published as `site/ns.ttl` (a test keeps them equal).
+- `property_graph.py`: the same library as a labeled property graph, which `cypher.py`
+  (UNWIND batches that MERGE on `id` and on a per-record `key`, so loading is idempotent)
+  and `graphml.py` (Neo4j APOC's `labels` convention, Gephi's `label`) write.
+
+Tests parse both RDF serializations with rdflib and check they are isomorphic, run SPARQL
+over the result, read the GraphML with NetworkX, and round-trip every Cypher string
+literal, using a library whose texts hold quotes, backslashes, new lines and control
+characters.
+
 ## Chat (grounded answers)
 
 `AskQuestion` only ever shows the model numbered sources from the user's own library, and
@@ -471,3 +493,4 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-11-24 | The desktop icon runs `postloom open`, which starts a background server once | Two servers on one data folder would write the same database and vault. A short-lived launcher also keeps working when clicked again, where a long-running macOS app would only be re-focused. |
 | 2026-11-16 | Stand-alone posts are items of their own, without a model if need be | Most creators write many more posts than articles. A post is saved and searchable without a model (topics are chosen by a cheap call when one is connected, and a failed call still saves the post), so the main thing people have works on day one. |
 | 2026-11-15 | Requests borrow the wired container | Saving settings rewires the app; closing the old database under a running request made that request fail. |
+| 2026-11-26 | Export to RDF, Cypher and GraphML instead of running a graph database | Experts get their own tools (SPARQL, Neo4j, Gephi) on their data while the app stays a one-command install; provenance travels as reified statements and relationship properties. |

@@ -13,6 +13,7 @@ from postloom import __version__, how_to_run
 from postloom.about import about
 from postloom.application.defaults import DEFAULT_TOPICS
 from postloom.application.errors import ApplicationError, BudgetExceededError, ProviderError
+from postloom.application.ports.graph_export import ExportOptions
 from postloom.application.use_cases import (
     IndexResult,
     IngestArticleCommand,
@@ -39,6 +40,7 @@ from postloom.interfaces.desktop.shortcuts import (
 
 ContainerFactory = Callable[[Settings], Container]
 DEFAULT_PORT = 8765
+EXPORT_FORMATS = ("turtle", "jsonld", "cypher", "graphml")
 
 
 def _build(settings: Settings) -> Container:
@@ -76,6 +78,8 @@ def main(argv: Sequence[str] | None = None, *, make_container: ContainerFactory 
             return _usage(settings, opened)
         if args.command == "links":
             return _links(args, settings, opened)
+        if args.command == "export":
+            return _export(args, settings, opened)
         if args.command == "search":
             return _search(args, settings, opened)
         if args.command == "start":
@@ -169,6 +173,33 @@ def _parser() -> argparse.ArgumentParser:
 
     commands.add_parser(
         "usage", parents=[common], help="Show this month's model calls, tokens and cost."
+    )
+    export = commands.add_parser(
+        "export",
+        parents=[common],
+        help="Export the graph for other tools: RDF, Neo4j (Cypher), Gephi (GraphML).",
+        description=(
+            "Write every node and relation, with its provenance, in a format other graph "
+            "tools read. turtle and jsonld: RDF for triple stores and SPARQL; cypher: a "
+            "script for Neo4j; graphml: Gephi, yEd, Cytoscape, NetworkX."
+        ),
+    )
+    export.add_argument("format", choices=EXPORT_FORMATS, help="The file format.")
+    export.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="File to write (default: postloom-graph-<date>.<ext> here; - for the terminal).",
+    )
+    export.add_argument(
+        "--history",
+        action="store_true",
+        help="Also include superseded and rejected relations, marked as such.",
+    )
+    export.add_argument(
+        "--no-text",
+        action="store_true",
+        help="Leave out what was written (bodies, comments, notes): structure, names and dates.",
     )
     commands.add_parser(
         "sync",
@@ -376,6 +407,23 @@ def _links(args: argparse.Namespace, settings: Settings, make_container: Contain
             first, second = titles.get(pair.first, pair.first), titles.get(pair.second, pair.second)
             print(f" {mark} {pair.similarity:.3f}  {_clip(first)}  <->  {_clip(second)}")
     print("Review suggestions on each article's page, or in the graph view.")
+    return 0
+
+
+def _export(args: argparse.Namespace, settings: Settings, make_container: ContainerFactory) -> int:
+    options = ExportOptions(text=not args.no_text, history=args.history)
+    with make_container(settings) as container:
+        export = container.export_graph().execute(args.format, options)
+    output = cast(Path | None, args.output)
+    if output is not None and str(output) == "-":
+        sys.stdout.buffer.write(export.content)
+        sys.stdout.flush()
+        return 0
+    target = output or Path(export.filename)
+    target.write_bytes(export.content)
+    print(
+        f"Wrote {_count(export.nodes, 'node')} and {_count(export.edges, 'relation')} to {target}."
+    )
     return 0
 
 

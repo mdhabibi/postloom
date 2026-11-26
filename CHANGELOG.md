@@ -7,6 +7,13 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+### Added
+- **Export your graph** (Settings, or `postloom export`) as RDF in Turtle or JSON-LD
+  (schema.org, SKOS and PROV-O, with every link's provenance as a reified statement), as a
+  Cypher script for Neo4j, or as GraphML for Gephi, yEd, Cytoscape and NetworkX. Choose
+  whether to include what was written and the history of replaced and dismissed links.
+  The vocabulary is published at https://postloom-app.vercel.app/ns.
+
 ### Changed
 - The README is a shorter front page (what postloom is, install, getting started, models,
   privacy), and everything it can do, screen by screen, is in the new

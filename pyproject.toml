@@ -59,6 +59,8 @@ dev = [
     "types-pyyaml>=6.0",
     "pre-commit>=3.7",
     "playwright==1.65.2",
+    "rdflib>=7.6.0",
+    "networkx>=3.6.1",
 ]
 
 [build-system]

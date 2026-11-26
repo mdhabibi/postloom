@@ -1157,3 +1157,19 @@ def test_videos_can_be_streamed_in_parts(tmp_path: Path) -> None:
     assert part.status == 206
     assert part.body == video[100:200]
     assert part.headers["content-type"] == "video/mp4"
+
+
+def test_the_graph_exports_as_a_download(tmp_path: Path) -> None:
+    client, article_id = with_discussion(tmp_path)
+    formats = client.get("/api/export/formats").json["formats"]
+    assert [f["id"] for f in formats] == ["turtle", "jsonld", "cypher", "graphml"]
+
+    reply = client.get("/api/export?format=cypher")
+    assert reply.status == 200
+    assert reply.headers["content-disposition"].startswith('attachment; filename="postloom-graph-')
+    assert f"{{id: '{article_id}'" in reply.text
+    assert "Jane Example" in reply.text
+
+    bare = client.get("/api/export?format=turtle&text=0").text
+    assert "schema:articleBody" not in bare and "pl:EdgeRecord" in bare
+    assert client.get("/api/export?format=rdfxml").status == 400

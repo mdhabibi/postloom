@@ -466,3 +466,21 @@ def test_the_icon_explains_a_data_folder_it_may_not_read(
     assert title == "postloom can't open your data folder"
     assert str(tmp_path / "data") in message
     assert "Operation not permitted" in log.read_text()
+
+
+def test_export_writes_the_graph_to_a_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = str(tmp_path / "home")
+    main(["--home", home, "init"], make_container=fake_container)
+    article, post = write_inputs(tmp_path)
+    main(["--home", home, "ingest", article, post], make_container=fake_container)
+    target = tmp_path / "graph.graphml"
+
+    code = main(
+        ["--home", home, "export", "graphml", "-o", str(target)], make_container=fake_container
+    )
+
+    assert code == 0
+    assert target.read_bytes().startswith(b"<?xml")
+    assert f"to {target}." in capsys.readouterr().out

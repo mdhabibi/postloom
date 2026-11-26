@@ -14,6 +14,7 @@ from types import TracebackType
 
 from postloom import how_to_run
 from postloom.adapters.clock import SystemClock
+from postloom.adapters.export import graph_formats
 from postloom.adapters.llm.base import LlmBackend
 from postloom.adapters.llm.chat import LlmChat
 from postloom.adapters.llm.content import (
@@ -85,6 +86,7 @@ from postloom.application.use_cases import (
     UpdateArticle,
     UpdatePerson,
 )
+from postloom.application.use_cases.export_graph import ExportGraph
 from postloom.application.use_cases.media import ManageMedia
 from postloom.application.use_cases.mentions import ConfirmMentions, FindMentions, ManageEntities
 from postloom.application.use_cases.posts import DeletePost, IngestPost, UpdatePost
@@ -282,6 +284,9 @@ class Container:
 
     def graph(self) -> GraphOverview:
         return GraphOverview(self.repository)
+
+    def export_graph(self) -> ExportGraph:
+        return ExportGraph(self.repository, graph_formats(), self.clock)
 
     def search(self) -> SearchContent:
         return SearchContent(self.search_index, self.repository, self.embedder, self.min_similarity)

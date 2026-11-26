@@ -1,0 +1,280 @@
+@prefix pl: <https://postloom-app.vercel.app/ns#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix schema: <https://schema.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://postloom-app.vercel.app/ns>
+    a owl:Ontology ;
+    rdfs:label "postloom vocabulary" ;
+    rdfs:comment "Classes and relations of a postloom library: articles, posts, comments, the people in them and what they mention, with the provenance of every relation." ;
+    owl:versionInfo "1" ;
+    dcterms:creator "Mahdi Habibi" ;
+    rdfs:seeAlso <https://github.com/mdhabibi/postloom> .
+
+pl:Topic
+    a owl:Class ;
+    rdfs:label "Topic" ;
+    rdfs:comment "One of the author's own subjects." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf skos:Concept .
+
+pl:Series
+    a owl:Class ;
+    rdfs:label "Series" ;
+    rdfs:comment "A multi-part series of articles." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:CreativeWorkSeries .
+
+pl:Article
+    a owl:Class ;
+    rdfs:label "Article" ;
+    rdfs:comment "A long-form LinkedIn article." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:Article .
+
+pl:Post
+    a owl:Class ;
+    rdfs:label "Post" ;
+    rdfs:comment "A feed post: announcing an article, or standing on its own." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:SocialMediaPosting .
+
+pl:Comment
+    a owl:Class ;
+    rdfs:label "Comment" ;
+    rdfs:comment "A comment or reply under a post." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:Comment .
+
+pl:Person
+    a owl:Class ;
+    rdfs:label "Person" ;
+    rdfs:comment "Someone who commented or was mentioned; the author is one too." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:Person .
+
+pl:Entity
+    a owl:Class ;
+    rdfs:label "Mentioned thing" ;
+    rdfs:comment "An organisation, place, event, project, dataset, method or link the author's writing names, confirmed by the author." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf schema:Thing .
+
+pl:EdgeRecord
+    a owl:Class ;
+    rdfs:label "Edge record" ;
+    rdfs:comment "One recorded relation with its provenance; superseded and rejected ones too." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subClassOf rdf:Statement, prov:Entity .
+
+pl:Grade
+    a owl:Class ;
+    rdfs:label "Grade" ;
+    rdfs:comment "How far a relation is trusted." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> .
+
+pl:Origin
+    a owl:Class ;
+    rdfs:label "Origin" ;
+    rdfs:comment "Which mechanism produced a relation." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> .
+
+pl:belongsTo
+    a owl:ObjectProperty ;
+    rdfs:label "belongs to" ;
+    rdfs:comment "Filed under a topic." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range pl:Topic ;
+    rdfs:subPropertyOf schema:about .
+
+pl:partOf
+    a owl:ObjectProperty ;
+    rdfs:label "part of" ;
+    rdfs:comment "A part of a series." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Article ;
+    rdfs:range pl:Series ;
+    rdfs:subPropertyOf schema:isPartOf .
+
+pl:announces
+    a owl:ObjectProperty ;
+    rdfs:label "announces" ;
+    rdfs:comment "The post that shared an article." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Post ;
+    rdfs:range pl:Article ;
+    rdfs:subPropertyOf schema:sharedContent .
+
+pl:commentedOn
+    a owl:ObjectProperty ;
+    rdfs:label "commented on" ;
+    rdfs:comment "The post (or article) a comment is under." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Comment ;
+    owl:inverseOf schema:comment .
+
+pl:repliedTo
+    a owl:ObjectProperty ;
+    rdfs:label "replied to" ;
+    rdfs:comment "The message a reply answers." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Comment ;
+    rdfs:range pl:Comment ;
+    rdfs:subPropertyOf schema:parentItem .
+
+pl:authored
+    a owl:ObjectProperty ;
+    rdfs:label "authored" ;
+    rdfs:comment "Who wrote a comment." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Person ;
+    rdfs:range pl:Comment ;
+    owl:inverseOf schema:author .
+
+pl:relatedTo
+    a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:label "related to" ;
+    rdfs:comment "Articles about the same thing; symmetric, stored once per pair." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:domain pl:Article ;
+    rdfs:range pl:Article ;
+    rdfs:subPropertyOf dcterms:relation .
+
+pl:linksTo
+    a owl:ObjectProperty ;
+    rdfs:label "links to" ;
+    rdfs:comment "A link in the text to another of the author's articles." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range pl:Article ;
+    rdfs:subPropertyOf schema:citation .
+
+pl:mentions
+    a owl:ObjectProperty ;
+    rdfs:label "mentions" ;
+    rdfs:comment "A person or thing the text names, confirmed by the author." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:subPropertyOf schema:mentions .
+
+pl:origin
+    a owl:ObjectProperty ;
+    rdfs:label "origin" ;
+    rdfs:comment "How a relation was made." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range pl:Origin .
+
+pl:grade
+    a owl:ObjectProperty ;
+    rdfs:label "grade" ;
+    rdfs:comment "How far a relation is trusted." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range pl:Grade .
+
+pl:producer
+    a owl:DatatypeProperty ;
+    rdfs:label "producer" ;
+    rdfs:comment "Who made it: \"user\", \"parser\", \"llm:<model>\"." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:evidence
+    a owl:DatatypeProperty ;
+    rdfs:label "evidence" ;
+    rdfs:comment "The passage or reason behind a relation." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:weight
+    a owl:DatatypeProperty ;
+    rdfs:label "weight" ;
+    rdfs:comment "Strength, e.g. cosine similarity." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:double .
+
+pl:headline
+    a owl:DatatypeProperty ;
+    rdfs:label "headline" ;
+    rdfs:comment "A person's LinkedIn headline, latest seen." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:note
+    a owl:DatatypeProperty ;
+    rdfs:label "note" ;
+    rdfs:comment "The author's private notes about a person." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:isAuthor
+    a owl:DatatypeProperty ;
+    rdfs:label "is the author" ;
+    rdfs:comment "The person whose library this is." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:boolean .
+
+pl:provisional
+    a owl:DatatypeProperty ;
+    rdfs:label "provisional" ;
+    rdfs:comment "Known by name only, no LinkedIn profile yet." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:boolean .
+
+pl:category
+    a owl:DatatypeProperty ;
+    rdfs:label "category" ;
+    rdfs:comment "What kind of thing an entity is." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:vaultPath
+    a owl:DatatypeProperty ;
+    rdfs:label "vault path" ;
+    rdfs:comment "Where a file is, inside the vault." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:postedLabel
+    a owl:DatatypeProperty ;
+    rdfs:label "posted" ;
+    rdfs:comment "LinkedIn's relative age, e.g. \"2w\"." ;
+    rdfs:isDefinedBy <https://postloom-app.vercel.app/ns> ;
+    rdfs:range xsd:string .
+
+pl:Verified
+    a pl:Grade ;
+    rdfs:label "verified" ;
+    rdfs:comment "Confirmed by a deterministic rule or by the author." .
+
+pl:Asserted
+    a pl:Grade ;
+    rdfs:label "asserted" ;
+    rdfs:comment "Stated by a model or a heuristic, not reviewed yet." .
+
+pl:Rejected
+    a pl:Grade ;
+    rdfs:label "rejected" ;
+    rdfs:comment "Reviewed by the author and declined; kept so it isn't suggested again." .
+
+pl:Structural
+    a pl:Origin ;
+    rdfs:label "structural" ;
+    rdfs:comment "Parsed deterministically from the content." .
+
+pl:Taxonomy
+    a pl:Origin ;
+    rdfs:label "taxonomy" ;
+    rdfs:comment "A model classified content into the author's own topics." .
+
+pl:Semantic
+    a pl:Origin ;
+    rdfs:label "semantic" ;
+    rdfs:comment "Similarity of meaning (embeddings) above a threshold." .
+
+pl:Manual
+    a pl:Origin ;
+    rdfs:label "manual" ;
+    rdfs:comment "Made by the author, in the app or in the vault." .
