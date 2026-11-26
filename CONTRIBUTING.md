@@ -26,12 +26,13 @@ A change to the UI should come with a browser test in `tests/e2e/test_ui.py`.
 
 ## Releasing
 
-1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new version heading and
-   set the same version in `pyproject.toml`.
-2. Merge that, then tag the merge commit and push the tag:
-   `git tag v0.2.0 && git push origin v0.2.0`.
+1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a heading
+   `## [X.Y.Z] - unreleased`, set the same version in `pyproject.toml`, and merge that.
+2. On an up-to-date `main`, run `sh scripts/release.sh X.Y.Z`. It runs the checks, puts
+   today's date in the heading, commits, tags `vX.Y.Z` and pushes.
 3. The release workflow checks the tag, the version and the changelog, builds and
-   smoke-tests the package, publishes it to PyPI and creates the GitHub release.
+   smoke-tests the package, publishes it to PyPI and creates the GitHub release with the
+   changelog's notes.
 
 ## Ground rules
 
