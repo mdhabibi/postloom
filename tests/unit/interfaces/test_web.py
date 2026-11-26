@@ -108,7 +108,7 @@ def test_about_names_the_author_license_and_repository(tmp_path: Path) -> None:
     assert about["license"] == "FSL-1.1-ALv2"
     assert about["license_text"].startswith("# Functional Source License")
     assert about["source"] == "https://github.com/mdhabibi/postloom"
-    assert about["website"] == "https://mdhabibi.github.io/postloom/"
+    assert about["website"] == "https://postloom-gamma.vercel.app/"
     assert about["issues"].endswith("/issues")
     assert {"Geist", "Source Serif 4"} <= {c["name"] for c in about["credits"]}
 
