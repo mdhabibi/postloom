@@ -267,4 +267,4 @@ ask a question (about everything, one article or one person)
   -> answer with citations, "not found" without a model call, or a reply draft you approve
 ```
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for the design and the reasoning behind it.
+See [the architecture](architecture.md) for the design and the reasoning behind it.

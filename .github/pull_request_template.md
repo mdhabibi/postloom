@@ -9,4 +9,4 @@
 - [ ] `CHANGELOG.md` has a line under `## [Unreleased]` if users will notice it
 - [ ] No real people's names, comments or other personal data in tests, screenshots or examples
 
-By opening this pull request you agree to the terms in [CONTRIBUTING.md](../CONTRIBUTING.md#your-contributions-and-the-license).
+By opening this pull request you agree to the terms in [CONTRIBUTING.md](CONTRIBUTING.md#contributions-and-the-license).
