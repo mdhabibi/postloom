@@ -63,6 +63,11 @@ class Item:
     comment_facts: list[int] = field(default_factory=list[int])
     id: str = ""
 
+    @property
+    def text(self) -> str:
+        """What is pasted as the post: the post itself, or the article's announcement."""
+        return self.body if self.kind == "post" else self.announcement
+
 
 def plan(seed: int = 7) -> list[Item]:
     """Every article and post, dated across a year, with the facts placed in them."""
@@ -96,12 +101,54 @@ def _article(theme: Theme, n: int, day: date, rng: random.Random) -> Item:
         sections.append(f"## {heading}\n\n" + " ".join(lines))
     title = theme.titles[n]
     body = "\n\n".join(sections)
-    announcement = f"New article: {title}.\n\n{rng.choice(theme.filler)} Link in the comments."
+    announcement = f"New article: {title}.\n\n{story(rng)} {story(rng)} Link in the comments."
     item = Item(theme, "article", day, title, body, announcement)
     item.facts = facts
     if n == 0:
         item.comment_facts = [0]
     return item
+
+
+WHO = ("my manager", "a new teammate", "our designer", "a customer", "the on-call engineer",
+       "a student", "our CFO", "a friend from university", "the support lead",
+       "an intern")  # fmt: skip
+WHERE = ("a design review", "a long train ride", "our Monday stand-up", "a customer call",
+         "a hackathon", "a late incident review", "a meetup in Ghent", "a coffee chat",
+         "a planning day", "a podcast recording")  # fmt: skip
+SINCE = ("the spring release", "the migration", "the last audit", "our seed round",
+         "the team offsite", "the new dashboard", "the outage in May", "the reorg",
+         "the pilot with two clients", "the summer break")  # fmt: skip
+TOOLS = ("a whiteboard", "two notebooks", "one long thread", "a spreadsheet", "three diagrams")
+
+
+def story(rng: random.Random) -> str:
+    """Two sentences only this post has, so no two posts look like edits of each other."""
+    who, where, since, tool = (
+        rng.choice(WHO),
+        rng.choice(WHERE),
+        rng.choice(SINCE),
+        rng.choice(TOOLS),
+    )
+    days, tries = rng.randint(2, 40), rng.randint(2, 19)
+    first = rng.choice(
+        (
+            f"{who.capitalize()} brought this up during {where}.",
+            f"It started with {who} asking a sharp question at {where}.",
+            f"During {where}, {who} challenged how we did this.",
+            f"{days} days after {since}, {who} noticed something odd.",
+            f"I first heard about it from {who}, right after {since}.",
+        )
+    )
+    second = rng.choice(
+        (
+            f"We needed {tries} attempts and {tool} before anything worked.",
+            f"Since {since} we have changed course {tries} times.",
+            f"Sorting it out took {tool}, {days} days and more coffee than I admit.",
+            f"My notes from {where} still have {tries} crossed-out ideas.",
+            f"Looking back, {tool} would have saved us {days} days.",
+        )
+    )
+    return f"{first} {second}"
 
 
 LEADS = (
@@ -117,8 +164,9 @@ LEADS = (
 
 
 def _post(theme: Theme, n: int, day: date, rng: random.Random) -> Item:
-    opening = f"{LEADS[n]} {theme.posts[n % len(theme.posts)]}"
-    lines = rng.sample(theme.filler, 2)
+    subject = theme.posts[n] if n < len(theme.posts) else f"Back to {theme.phrase} for a moment."
+    opening = f"{LEADS[n]} {subject}"
+    lines = [story(rng), story(rng), rng.choice(theme.filler)]
     item = Item(theme, "post", day, opening, "")
     if n == 2:
         lines.insert(1, theme.facts[4].text)

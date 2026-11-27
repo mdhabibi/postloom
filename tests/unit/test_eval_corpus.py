@@ -5,6 +5,9 @@ from collections import Counter
 from scripts.eval.corpus import PEOPLE, THEMES
 from scripts.eval.library import plan
 
+from postloom.application.use_cases.posts import SAME_TEXT
+from postloom.domain.text import containment
+
 
 def test_every_fact_is_in_exactly_one_item() -> None:
     items = plan()
@@ -29,6 +32,13 @@ def test_the_year_has_thirty_articles_and_eighty_distinct_posts() -> None:
     assert kinds == {"article": 30, "post": 80}
     assert len({it.body for it in items if it.kind == "post"}) == 80
     assert all(it.comments for it in items)
+
+
+def test_no_post_looks_like_an_edit_of_another() -> None:
+    """postloom treats a post that mostly repeats an earlier one as an edit of it."""
+    texts = [it.body if it.kind == "post" else it.announcement for it in plan()]
+    worst = max(containment(a, b) for i, a in enumerate(texts) for b in texts[:i])
+    assert worst < SAME_TEXT
 
 
 def test_commenters_are_the_invented_people() -> None:

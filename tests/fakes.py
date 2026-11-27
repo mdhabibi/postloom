@@ -20,6 +20,7 @@ from postloom.adapters.llm.base import (
     Usage,
 )
 from postloom.adapters.llm.http import JsonObject
+from postloom.application.errors import ProviderUnavailableError
 from postloom.application.ports.chat import ChatMessage
 from postloom.application.ports.embeddings import DocumentText, Vector
 from postloom.application.ports.extraction import (
@@ -128,6 +129,30 @@ def part3_extraction(**overrides: object) -> ExtractedContent:
     }
     data.update(overrides)
     return ExtractedContent.model_validate(data)
+
+
+@dataclass
+class FakeReranker:
+    """Scores a passage high when it contains one of ``relevant``, low otherwise; records
+    the passages it read. ``broken`` makes it fail like a model that can't be loaded."""
+
+    relevant: tuple[str, ...] = ()
+    broken: bool = False
+    read: list[str] = field(default_factory=list[str])
+
+    @property
+    def name(self) -> str:
+        return "fake-reranker"
+
+    @property
+    def relevant_score(self) -> float:
+        return 0.0
+
+    def scores(self, query: str, passages: Sequence[str]) -> list[float]:
+        if self.broken:
+            raise ProviderUnavailableError("The fake reranker is broken.")
+        self.read += passages
+        return [5.0 if any(r in p for r in self.relevant) else -5.0 for p in passages]
 
 
 @dataclass

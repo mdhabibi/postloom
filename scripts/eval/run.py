@@ -24,10 +24,12 @@ import argparse
 import json
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from postloom.adapters.llm.local_reranker import LocalReranker
 from postloom.application.ports.embeddings import EmbeddingProvider
+from postloom.application.ports.reranker import Reranker
 from postloom.application.ports.search_index import ChunkHit
 from postloom.application.use_cases.search_content import article_for
 from postloom.bootstrap import Container, build_container
@@ -92,14 +94,12 @@ def embedder_for(name: str, models: Path) -> EmbeddingProvider:
     return LocalEmbeddings(models, model)
 
 
-def measure(home: Path, embedder: EmbeddingProvider) -> list[Result]:
-    started = time.monotonic()
-    asked = build(home, embedder)
-    print(
-        f"Built the library in {time.monotonic() - started:.0f} s; asking {len(asked)} questions."
-    )
+def measure(
+    home: Path, embedder: EmbeddingProvider, asked: list[Question], reranker: Reranker | None
+) -> list[Result]:
     results: list[Result] = []
-    with build_container(Settings.load(home), embedder=embedder, chat=FakeChat()) as c:
+    settings = replace(Settings.load(home), reranking=reranker is not None)
+    with build_container(settings, embedder=embedder, chat=FakeChat(), reranker=reranker) as c:
         ask = c.ask_question()
         for q in asked:
             given: list[str] = []
@@ -213,27 +213,37 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path(".eval"))
     args = parser.parse_args()
     embedder = embedder_for(args.embedder, args.models)
-    results = measure(args.home, embedder)
+    started = time.monotonic()
+    asked = build(args.home, embedder)
+    print(f"Built the library in {time.monotonic() - started:.0f} s.")
+    variants: dict[str, Reranker | None] = {"similarity cut-off": None}
+    if args.embedder == "local":
+        variants["local reranker"] = LocalReranker(args.models)
     args.out.mkdir(parents=True, exist_ok=True)
-    text = report(results, embedder.name)
+    sections: list[str] = []
+    for label, reranker in variants.items():
+        results = measure(args.home, embedder, asked, reranker)
+        sections.append(report(results, f"{embedder.name}, {label} decides 'not found'"))
+        rows = [
+            {
+                "kind": r.question.kind,
+                "question": r.question.text,
+                "gold": sorted(r.question.gold),
+                "given": list(r.given),
+                "found": r.found,
+                "recall": r.recall,
+                "complete": r.complete,
+                "first": r.first,
+                "vector_rank": r.vector_rank,
+                "vector_score": r.vector_score,
+                "keyword_rank": r.keyword_rank,
+            }
+            for r in results
+        ]
+        name = label.replace(" ", "-")
+        (args.out / f"results-{name}.json").write_text(json.dumps(rows, indent=1), "utf-8")
+    text = "\n".join(sections)
     (args.out / "report.md").write_text(text, encoding="utf-8")
-    rows = [
-        {
-            "kind": r.question.kind,
-            "question": r.question.text,
-            "gold": sorted(r.question.gold),
-            "given": list(r.given),
-            "found": r.found,
-            "recall": r.recall,
-            "complete": r.complete,
-            "first": r.first,
-            "vector_rank": r.vector_rank,
-            "vector_score": r.vector_score,
-            "keyword_rank": r.keyword_rank,
-        }
-        for r in results
-    ]
-    (args.out / "results.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
     print(text)
 
 

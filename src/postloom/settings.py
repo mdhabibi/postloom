@@ -14,6 +14,7 @@ config.json layout (all keys optional)::
       "models": {"anthropic": {"reply": "claude-sonnet-5-5"}},
       "embeddings": "local",                # or "provider", or "off" (keywords only)
       "local_embedding_model": "BAAI/bge-small-en-v1.5",
+      "reranking": true,                    # a local model decides "not found" (English)
       "min_similarity": 0.7, "related_similarity": 0.8,
       "monthly_budget_usd": 5,
       "prices": {"my-model": [0.5, 1.5]},   # USD per million tokens, input and output
@@ -51,6 +52,7 @@ MODEL_ENVS = {
 EMBEDDINGS_ENV = "POSTLOOM_EMBEDDINGS"
 LOCAL_EMBEDDING_MODEL_ENV = "POSTLOOM_LOCAL_EMBEDDING_MODEL"
 MIN_SIMILARITY_ENV = "POSTLOOM_MIN_SIMILARITY"
+RERANKING_ENV = "POSTLOOM_RERANKING"
 RELATED_SIMILARITY_ENV = "POSTLOOM_RELATED_SIMILARITY"
 BUDGET_ENV = "POSTLOOM_MONTHLY_BUDGET"
 OLLAMA_CONTEXT_ENV = "POSTLOOM_OLLAMA_CONTEXT"
@@ -104,6 +106,9 @@ class Settings:
     local_embedding_model: str = DEFAULT_LOCAL_MODEL
     min_similarity: float | None = None
     related_similarity: float | None = None
+    reranking: bool = True
+    """With the local English search model, a local cross-encoder decides whether the
+    library holds an answer (AskQuestion). Off: the similarity cutoff decides."""
     monthly_budget_usd: float | None = None
     prices: Mapping[str, Price] = field(default_factory=dict[str, Price])
     ollama_context: int = DEFAULT_CONTEXT_LIMIT
@@ -248,6 +253,7 @@ class Settings:
             or _str(saved.get("local_embedding_model"))
             or DEFAULT_LOCAL_MODEL,
             min_similarity=_float(_env(MIN_SIMILARITY_ENV) or saved.get("min_similarity")),
+            reranking=_switch(_env(RERANKING_ENV), saved.get("reranking"), default=True),
             related_similarity=_float(
                 _env(RELATED_SIMILARITY_ENV) or saved.get("related_similarity")
             ),
@@ -295,6 +301,15 @@ def _str(value: object) -> str | None:
 
 def _dict(value: object) -> dict[str, Any]:
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
+
+
+def _switch(env: str | None, saved: object, *, default: bool) -> bool:
+    """An on/off setting: "0", "false", "off" or "no" turn it off."""
+    if env:
+        return env.strip().casefold() not in {"0", "false", "off", "no"}
+    if isinstance(saved, bool):
+        return saved
+    return default
 
 
 def _float(value: object) -> float | None:

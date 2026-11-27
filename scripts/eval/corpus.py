@@ -938,6 +938,23 @@ UNANSWERABLE: tuple[str, ...] = (
     "How did we migrate from Oracle to PostgreSQL?",
     "What did I write about quantum computing hardware?",
     "Who asked about salary negotiation tips?",
+    # Close to the library's subjects, the hard case for "not found".
+    "What did I write about Kubernetes operators for Kafka?",
+    "Did anyone recommend a laptop for running models locally?",
+    "What did I say about speech recognition for call centres?",
+    "Who asked about graph neural networks for fraud detection?",
+    "What did I post about reinforcement learning from human feedback?",
+    "What did commenters say about data labelling vendors and their prices?",
+    "How did we handle GDPR deletion requests in the vector store?",
+    "What did I write about forecasting sales with time series models?",
+    "Did anyone mention Rust for model serving?",
+    "What did I say about running models on mobile phones?",
+    "Who talked about hiring junior ML engineers?",
+    "What is my opinion on the EU AI Act?",
+    "Which conference did I speak at in Berlin?",
+    "What did I write about recommendation systems for news sites?",
+    "Did anyone comment on my podcast interview?",
+    "What did I say about automating spreadsheets with macros?",
 )
 
 GENERIC_COMMENTS: tuple[str, ...] = (

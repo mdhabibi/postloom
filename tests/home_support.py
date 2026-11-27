@@ -22,6 +22,7 @@ from tests.fakes import (
     FakeImageDescriber,
     FakeMentionFinder,
     FakePostClassifier,
+    FakeReranker,
     FakeThreadParser,
     FixedClock,
     part3_extraction,
@@ -47,6 +48,7 @@ def open_home(
     post_classifier: FakePostClassifier | None = None,
     mention_finder: FakeMentionFinder | None = None,
     image_describer: FakeImageDescriber | None = None,
+    reranker: FakeReranker | None = None,
     **extraction: Any,
 ) -> Container:
     return build_container(
@@ -58,6 +60,7 @@ def open_home(
         post_classifier=post_classifier or FakePostClassifier(),
         mention_finder=mention_finder,
         image_describer=image_describer,
+        reranker=reranker,
         clock=clock or FixedClock(),
     )
 

@@ -31,6 +31,7 @@ from postloom.adapters.llm.local_embeddings import (
     LocalEmbeddings,
     local_embeddings_installed,
 )
+from postloom.adapters.llm.local_reranker import LocalReranker
 from postloom.adapters.llm.providers import PRICES, build_backend
 from postloom.adapters.storage.cached import CachedRepository
 from postloom.adapters.storage.database import SqliteDatabase
@@ -57,6 +58,7 @@ from postloom.application.ports import (
 )
 from postloom.application.ports.extraction import MentionFinder, PostClassifier
 from postloom.application.ports.media import ImageDescriber, MediaStore
+from postloom.application.ports.reranker import Reranker
 from postloom.application.ports.reviews import ReviewStore
 from postloom.application.ports.thread_parser import ThreadParser
 from postloom.application.ports.usage import Task
@@ -143,6 +145,7 @@ class Container:
     image_describer: ImageDescriber | None = None
     """Says what an image shows, so it can be searched; needs a model."""
     min_similarity: float = 0.0
+    reranker: Reranker | None = None
     related_similarity: float = 0.75
     monthly_budget_usd: float | None = None
     english_only_search: bool = False
@@ -262,7 +265,13 @@ class Container:
         self._needs(self.chat)
         assert self.chat is not None
         return AskQuestion(
-            self.chat, self.search_index, self.repository, self.embedder, self.min_similarity
+            self.chat,
+            self.search_index,
+            self.repository,
+            self.embedder,
+            self.min_similarity,
+            reranker=self.reranker,
+            clock=self.clock,
         )
 
     def draft_reply(self) -> DraftReply:
@@ -360,6 +369,7 @@ def build_container(
     post_classifier: PostClassifier | None = None,
     mention_finder: MentionFinder | None = None,
     image_describer: ImageDescriber | None = None,
+    reranker: Reranker | None = None,
     clock: Clock | None = None,
 ) -> Container:
     """Wire the app from settings. Anything passed explicitly wins (tests, embedding apps).
@@ -419,6 +429,13 @@ def build_container(
     if embedder is None:
         embedder = _default_embedder(settings, gateway)
     cutoffs = settings.cutoffs_for(embedder.name if embedder else "")
+    english_only = (
+        isinstance(embedder, LocalEmbeddings)
+        and settings.local_embedding_model in ENGLISH_ONLY_MODELS
+    )
+    if reranker is None and english_only and settings.reranking:
+        # The reranker reads English; with other languages the similarity cutoff decides.
+        reranker = LocalReranker(settings.models_dir)
 
     journal = FileEdgeJournal(settings.vault_dir)
     container = Container(
@@ -447,8 +464,8 @@ def build_container(
         min_similarity=cutoffs.search,
         related_similarity=cutoffs.related,
         monthly_budget_usd=settings.monthly_budget_usd,
-        english_only_search=isinstance(embedder, LocalEmbeddings)
-        and settings.local_embedding_model in ENGLISH_ONLY_MODELS,
+        english_only_search=english_only,
+        reranker=reranker,
         not_configured=setup_hint(settings),
         closers=(database.close,),
     )
