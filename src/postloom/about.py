@@ -56,6 +56,12 @@ CREDITS: tuple[Credit, ...] = (
         "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     ),
     Credit(
+        "ms-marco-MiniLM-L-6-v2",
+        "decides whether your library holds an answer",
+        "Apache-2.0",
+        "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2",
+    ),
+    Credit(
         "FastEmbed",
         "runs those models on your computer, by Qdrant",
         "Apache-2.0",

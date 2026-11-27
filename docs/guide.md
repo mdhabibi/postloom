@@ -95,10 +95,17 @@ sources, so you can open the passage behind each claim:
 - *"What did Jane ask me?"* looks Jane up and reads your conversations with her.
 - *"Which articles are in the caching series?"* and *"How many articles have I written
   about RAG?"* are answered from the graph, not guessed from similar text.
+- *"What did I write about agents in March?"*, *"...last month?"*, *"...since spring?"*
+  answers from what you published then.
+- *"What have people said about pricing?"* draws on up to 16 posts and articles, one
+  passage each, so a broad answer sees more of the conversation.
 - Follow-up questions keep their subject.
 
-If nothing in your library matches, postloom says so without calling the model, so a
-wrong question costs nothing. An answer that cites no source is marked as unverified.
+If nothing in your library answers, postloom says so without calling the model, so a
+wrong question costs nothing. With the English search model, that decision is made by a
+small model on your computer that reads your question with the best passages (it is
+downloaded with your first question, about 80 MB). An answer that cites no source is
+marked as unverified. [How well this works](benchmark.md), measured.
 
 ## Fixing and organising
 
@@ -242,6 +249,7 @@ handy for servers and scripts.
 | Search embeddings | `POSTLOOM_EMBEDDINGS` (`local`, `provider` or `off`) | `local` |
 | Language of your writing (local search model) | `POSTLOOM_LOCAL_EMBEDDING_MODEL` | English (`BAAI/bge-small-en-v1.5`); choose **Many languages** in Settings for `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
 | Minimum similarity for a meaning-based match | `POSTLOOM_MIN_SIMILARITY` | calibrated per embedding model |
+| A local model decides "not found" (English search) | `POSTLOOM_RERANKING` (`0` to turn off) | on |
 | Similarity needed to suggest a related article | `POSTLOOM_RELATED_SIMILARITY` | calibrated per embedding model |
 | Monthly budget in US dollars | `POSTLOOM_MONTHLY_BUDGET` | none |
 | Largest context for Ollama models | `POSTLOOM_OLLAMA_CONTEXT` | `32768` tokens |

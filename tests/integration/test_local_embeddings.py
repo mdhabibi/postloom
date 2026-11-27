@@ -37,3 +37,19 @@ def test_local_vectors_are_unit_length_and_meaningful() -> None:
     assert abs(dot(query, query) - 1.0) < 1e-4
     assert dot(query, cache) > dot(query, leak) > dot(query, pasta)
     assert model.name == "local:BAAI/bge-small-en-v1.5"
+
+
+def test_local_reranker_tells_an_answer_from_a_shared_subject() -> None:
+    from postloom.adapters.llm.local_reranker import LocalReranker
+
+    reranker = LocalReranker(CACHE)
+    answer, near, pasta = reranker.scores(
+        "What similarity threshold do we use for cache hits?",
+        [
+            "We serve a cached answer when the cosine similarity is above 0.86.",
+            "Caching cut our bill, and the team liked the dashboards.",
+            "Boil the pasta and stir in tomato sauce with basil.",
+        ],
+    )
+    assert answer > near > pasta
+    assert answer >= reranker.relevant_score > pasta

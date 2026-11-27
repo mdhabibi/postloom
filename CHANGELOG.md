@@ -7,6 +7,31 @@ data is stored; postloom upgrades your data folder itself when it starts.
 
 ## [Unreleased]
 
+## [0.2.0] - unreleased
+
+Answers that draw on more of your library, measured. On a new benchmark of a fictional
+year of writing (144 questions; [docs/benchmark.md](docs/benchmark.md)), questions with
+an answer find the right article or post 78% of the time, up from 53%, and questions
+without one get "not found" 79% of the time, up from 67%.
+
+### Added
+- Questions about a period ("in March", "last month", "since spring", "between May and
+  July", "Q2 2026") are answered from what was published then.
+- Broad questions ("what have people said about...") draw on up to 16 articles and
+  posts instead of 8.
+- With the English search model, a small local model (~80 MB, downloaded with the first
+  question) reads the question with the best passages to decide whether your library
+  holds an answer. Turn it off with `"reranking": false` or `POSTLOOM_RERANKING=0`.
+- A retrieval benchmark (`scripts/eval`), run on GitHub whenever the retrieval code
+  changes.
+
+### Changed
+- Questions across the library find passages by keyword and by meaning together, merged
+  by reciprocal rank fusion, and take the best passage of as many articles and posts as
+  fit before a second one of any.
+- A passage close in meaning counts as evidence from a lower similarity than before; the
+  decision that nothing answers is now made separately (see above).
+
 ## [0.1.0] - 2026-11-26
 
 The first public release.

@@ -349,6 +349,7 @@ postloom is not affiliated with or endorsed by LinkedIn.
 
 - [User guide](docs/guide.md): every feature and setting
 - [Architecture](docs/architecture.md): how postloom is built, and why
+- [Benchmark](docs/benchmark.md): how well answers find the right passages, measured
 - [Changelog](CHANGELOG.md): what changed in each version
 - [Contributing](.github/CONTRIBUTING.md), [code of conduct](.github/CODE_OF_CONDUCT.md) and
   [security policy](.github/SECURITY.md)

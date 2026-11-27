@@ -362,21 +362,44 @@ each kind of question gets the sources that can answer it:
      and series named in the question are looked up in the graph. "What did Jane ask?"
      gets Jane's facts and conversations; "which articles are in this series?" gets the
      list, in order. This is the graph doing what similarity search can't.
-  2. *Passages* from articles, posts and comment threads: by meaning above the calibrated
-     cutoff, and by keyword when the passage contains at least half of the question's
-     distinctive words (`domain/text.significant_terms`). The second rule matters because
-     any common word matches something, and "what" is not evidence. A follow-up is also
-     searched together with the question before it.
+  2. *Passages* from articles, posts and comment threads. The 40 best by meaning and the
+     40 best by keyword are merged by reciprocal rank fusion. A passage is evidence when
+     its similarity is within `EVIDENCE_MARGIN` (0.13) of the calibrated cutoff, or when
+     it contains at least half of the question's distinctive words
+     (`domain/text.significant_terms`): any common word matches something, and "what" is
+     not evidence. Selection is breadth first: the best passage of each article or post,
+     then second passages while there is room (8 sources; 16, one per item, for broad
+     questions). A period in the question (`domain/periods.period_in`, deterministic)
+     limits candidates to what was published then. A follow-up is also searched
+     together with the question before it.
   3. *An overview* of the library (articles with dates, topics, series and comment counts;
      the most active people), added when there is other evidence or when the question is
      about the library itself.
 
-Guard rails are deterministic. If nothing qualifies, the answer is "not found" without
-calling the model: no cost, and no confident answer built on unrelated text. Citations like
+Guard rails. If nothing qualifies, the answer is "not found" without calling the model:
+no cost, and no confident answer built on unrelated text. Whether anything qualifies is
+decided by a `Reranker` port: with the English local search model, `LocalReranker` (a
+cross-encoder, `ms-marco-MiniLM-L-6-v2` through fastembed) reads the question with the 30
+best candidates, and the best score must reach a threshold chosen on the retrieval
+benchmark. Without it (other languages, provider embeddings, or `reranking` off, or the
+model can't be downloaded), at least one candidate must reach the calibrated similarity
+cutoff or the keyword rule. Citations like
 `[2]` are parsed back; numbers that match no source are removed from the text, the UI shows
 only the sources that were used, and an answer that cites nothing is flagged as unverified.
 The prompt forbids outside knowledge and tells the model to keep voices apart: what a
 commenter wrote is their view, not the author's.
+
+## Retrieval benchmark
+
+`scripts/eval` measures the step above on a fictional year of writing built through the
+use cases (30 articles, 80 posts, ~800 comments, facts placed in known items, near misses
+that share the words) and 144 questions asked in other words, including 24 the library
+can't answer. `AskQuestion.sources()` gives what the model would see without calling it,
+so the score is about retrieval, deterministic and model-independent. The **Retrieval
+benchmark** workflow runs it with the real local models whenever retrieval code changes;
+`compare.py` records alternative strategies side by side. Every number in the selection
+above (pool size, margin, breadth, reranker and threshold) was chosen there; the results
+are in [benchmark.md](benchmark.md).
 
 ## Discussions
 
@@ -494,3 +517,4 @@ once the author has replied on LinkedIn, pasting the comments again saves the re
 | 2026-11-16 | Stand-alone posts are items of their own, without a model if need be | Most creators write many more posts than articles. A post is saved and searchable without a model (topics are chosen by a cheap call when one is connected, and a failed call still saves the post), so the main thing people have works on day one. |
 | 2026-11-15 | Requests borrow the wired container | Saving settings rewires the app; closing the old database under a running request made that request fail. |
 | 2026-11-26 | Export to RDF, Cypher and GraphML instead of running a graph database | Experts get their own tools (SPARQL, Neo4j, Gephi) on their data while the app stays a one-command install; provenance travels as reified statements and relationship properties. |
+| 2026-11-28 | Fused retrieval and a cross-encoder for "not found", chosen on a benchmark | One similarity cut-off was deciding both what counts as evidence and whether anything answers; too strict for questions asked in other words, too loose for near-topic ones. Measured: 53% to 78% of answerable questions found, 67% to 79% of unanswerable ones correctly empty. |
