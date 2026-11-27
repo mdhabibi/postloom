@@ -176,6 +176,17 @@ class AskQuestion:
         else:
             items = self._library_items(question, _previous_question(history))
         sources = _fit([Source(n, *item) for n, item in enumerate(items, start=1)])
+        return self._answer(question, sources, history)
+
+    def sources(self, question: str, *, history: Sequence[ChatMessage] = ()) -> list[Source]:
+        """What a question about the whole library would be answered from, in the order
+        the model sees it, without asking the model. The benchmark measures this."""
+        items = self._library_items(question.strip(), _previous_question(history))
+        return _fit([Source(n, *item) for n, item in enumerate(items, start=1)])
+
+    def _answer(
+        self, question: str, sources: list[Source], history: Sequence[ChatMessage]
+    ) -> Answer:
         if not sources:
             return Answer(NOT_FOUND, (), grounded=False)
 

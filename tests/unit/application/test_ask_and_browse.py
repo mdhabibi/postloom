@@ -164,6 +164,17 @@ def test_library_questions_use_relevant_passages(tmp_path: Path) -> None:
     assert "Temporal leakage" in world.chat.last_prompt
 
 
+def test_sources_are_what_the_model_would_see_without_asking_it(tmp_path: Path) -> None:
+    world = World(tmp_path)
+    world.add(LEAKAGE)
+    ask = world.ask(min_similarity=0.0)
+    sources = ask.sources("random split on time ordered data")
+    assert any("Temporal leakage" in s.section for s in sources)
+    assert world.chat.calls == []
+    ask.execute("random split on time ordered data")
+    assert all(s.text in world.chat.last_prompt for s in sources)
+
+
 def test_nothing_relevant_means_not_found_without_calling_the_model(tmp_path: Path) -> None:
     world = World(tmp_path)
     world.add(LEAKAGE)
