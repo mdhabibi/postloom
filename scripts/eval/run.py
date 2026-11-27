@@ -23,11 +23,15 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from postloom.application.ports.embeddings import EmbeddingProvider
-from postloom.bootstrap import build_container
+from postloom.application.ports.search_index import ChunkHit
+from postloom.application.use_cases.search_content import article_for
+from postloom.bootstrap import Container, build_container
+from postloom.domain.text import plain_letters
 from postloom.settings import Settings
 from scripts.eval.library import Question, build
 from tests.fakes import FakeChat, FakeEmbedder
@@ -46,6 +50,11 @@ class Result:
     question: Question
     given: tuple[str, ...]
     """Articles and posts given to the model, in order, without repeats."""
+    vector_rank: int | None = None
+    """Where the first right item ranks in plain vector search (top 50), before cut-offs."""
+    vector_score: float | None = None
+    keyword_rank: int | None = None
+    """The same for keyword search."""
 
     @property
     def right(self) -> list[str]:
@@ -97,8 +106,33 @@ def measure(home: Path, embedder: EmbeddingProvider) -> list[Result]:
             for source in ask.sources(q.text):
                 if source.article_id is not None and source.article_id not in given:
                     given.append(source.article_id)
-            results.append(Result(q, tuple(given)))
+            # Where the right items sit before any cut-off, to see what ranking could gain.
+            vector = embedder.embed_query(plain_letters(q.text))
+            by_vector = _ranked(c, c.search_index.vector_search(vector, embedder.name, 50))
+            by_words = _ranked(c, c.search_index.keyword_search(q.text, 50))
+            v_rank, v_score = _first(by_vector, q.gold)
+            k_rank, _ = _first(by_words, q.gold)
+            results.append(Result(q, tuple(given), v_rank, v_score, k_rank))
     return results
+
+
+def _ranked(c: Container, hits: Sequence[ChunkHit]) -> list[tuple[str, float]]:
+    """Items in the order their best passage ranks, with that passage's score."""
+    out: list[tuple[str, float]] = []
+    for hit in hits:
+        item = article_for(c.repository, hit.node)
+        if item is not None and item not in [i for i, _ in out]:
+            out.append((item, hit.score))
+    return out
+
+
+def _first(
+    ranked: list[tuple[str, float]], gold: frozenset[str]
+) -> tuple[int | None, float | None]:
+    for rank, (item, score) in enumerate(ranked, start=1):
+        if item in gold:
+            return rank, score
+    return None, None
 
 
 def report(results: list[Result], embedder: str) -> str:
@@ -124,6 +158,17 @@ def report(results: list[Result], embedder: str) -> str:
         )
     scored = [r for r in results if r.question.kind != "absent"]
     absent = [r for r in results if r.question.kind == "absent"]
+    single = [r for r in results if r.question.kind in ("fact", "comment")]
+    within = [r.vector_rank for r in single if r.vector_rank is not None]
+    lines += [
+        "",
+        "Before any cut-off, plain vector search ranks the right item for one-source "
+        f"questions: first in {_pct(sum(1 for x in within if x == 1), len(single))}, "
+        f"top 5 in {_pct(sum(1 for x in within if x <= 5), len(single))}, "
+        f"top 20 in {_pct(sum(1 for x in within if x <= 20), len(single))}, "
+        f"top 50 in {_pct(len(within), len(single))}. Keyword search alone finds it in the "
+        f"top 20 for {_pct(sum(1 for r in single if (r.keyword_rank or 99) <= 20), len(single))}.",
+    ]
     lines += [
         "",
         f"Answerable questions found: {_pct(sum(r.found for r in scored), len(scored))}. "
@@ -169,6 +214,9 @@ def main() -> None:
             "recall": r.recall,
             "complete": r.complete,
             "first": r.first,
+            "vector_rank": r.vector_rank,
+            "vector_score": r.vector_score,
+            "keyword_rank": r.keyword_rank,
         }
         for r in results
     ]
