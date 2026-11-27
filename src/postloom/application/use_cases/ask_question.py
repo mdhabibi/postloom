@@ -12,8 +12,9 @@ author's library, and each kind of question gets the sources that can answer it:
      facts, not a guess from similar-sounding text.
   2. *Passages.* Sections of articles, posts and comment threads, found by meaning and by
      keyword and merged by reciprocal rank fusion. A passage counts as evidence when it
-     is close in meaning or contains most of the question's distinctive words; at most
-     two come from one article or post, so an answer draws on several. A question about
+     is close in meaning or contains most of the question's distinctive words. The best
+     passage of each article or post comes first, a second one only while there is room,
+     so an answer draws on as many of them as possible. A question about
      a period ("in March", "last month", "since spring") is answered from what was
      published then. A broad question ("what have people said about...") gets more
      sources, one per article or post. A follow-up question is also searched together
@@ -71,7 +72,8 @@ MAX_SOURCES = 8
 BROAD_SOURCES = 16
 """For questions about everything said on a subject, where completeness matters more."""
 PER_ITEM = 2
-"""Passages from one article or post, at most, so an answer draws on several."""
+"""Passages from one article or post, at most: the best passage of each comes first, a
+second only while there is room, so an answer draws on as many as possible."""
 POOL = 40
 """Candidates taken from each search method before fusing them."""
 PERIOD_POOL = 400
@@ -444,17 +446,17 @@ class AskQuestion:
             return []
         broad = bool(_BROAD.search(question))
         limit, per_item = (BROAD_SOURCES, 1) if broad else (MAX_SOURCES, PER_ITEM)
-        taken: list[ChunkHit] = []
-        per: dict[NodeId | None, int] = {}
-        for candidate in evidence:
-            item = candidate.item
-            if per.get(item, 0) >= per_item:
-                continue
-            per[item] = per.get(item, 0) + 1
-            taken.append(candidate.hit)
-            if len(taken) == limit:
-                break
-        return taken
+        # Breadth first: the best passage of as many articles and posts as fit, then
+        # second passages of the best of them while there is room.
+        taken: list[_Candidate] = []
+        for round_ in range(per_item):
+            seen: dict[NodeId, int] = {}
+            for candidate in evidence:
+                seen[candidate.item] = seen.get(candidate.item, 0) + 1
+                if seen[candidate.item] == round_ + 1 and len(taken) < limit:
+                    taken.append(candidate)
+        order = {id(c): n for n, c in enumerate(evidence)}
+        return [c.hit for c in sorted(taken, key=lambda c: order[id(c)])]
 
     def _period(self, question: str) -> Period | None:
         if self._clock is None:
