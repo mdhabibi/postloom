@@ -181,10 +181,23 @@ def report(results: list[Result], embedder: str) -> str:
     for r in results:
         if not r.complete:
             got = len(r.right)
+            where = ""
+            if r.vector_rank is not None:
+                where = f"; vector rank {r.vector_rank} at {r.vector_score:.3f}"
+            if r.keyword_rank is not None:
+                where += f"; keyword rank {r.keyword_rank}"
             lines.append(
                 f"- [{r.question.kind}] {r.question.text} "
-                f"({got} of {len(r.question.gold)} right; {len(r.given)} given)"
+                f"({got} of {len(r.question.gold)} right; {len(r.given)} given{where})"
             )
+    found = [r for r in single if r.found and r.vector_score is not None]
+    if found:
+        scores = sorted(r.vector_score or 0 for r in found)
+        lines += [
+            "",
+            f"Similarity of the right item when found: lowest {scores[0]:.3f}, "
+            f"median {scores[len(scores) // 2]:.3f}.",
+        ]
     return "\n".join(lines) + "\n"
 
 
