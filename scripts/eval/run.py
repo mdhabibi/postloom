@@ -24,12 +24,10 @@ import argparse
 import json
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
-from postloom.adapters.llm.local_reranker import LocalReranker
 from postloom.application.ports.embeddings import EmbeddingProvider
-from postloom.application.ports.reranker import Reranker
 from postloom.application.ports.search_index import ChunkHit
 from postloom.application.use_cases.search_content import article_for
 from postloom.bootstrap import Container, build_container
@@ -95,11 +93,11 @@ def embedder_for(name: str, models: Path) -> EmbeddingProvider:
 
 
 def measure(
-    home: Path, embedder: EmbeddingProvider, asked: list[Question], reranker: Reranker | None
+    home: Path, embedder: EmbeddingProvider, asked: list[Question], reranker: object
 ) -> list[Result]:
     results: list[Result] = []
-    settings = replace(Settings.load(home), reranking=reranker is not None)
-    with build_container(settings, embedder=embedder, chat=FakeChat(), reranker=reranker) as c:
+    # postloom 0.1.0, for the before/after comparison: no reranker, no settings for it.
+    with build_container(Settings.load(home), embedder=embedder, chat=FakeChat()) as c:
         ask = c.ask_question()
         for q in asked:
             given: list[str] = []
@@ -216,9 +214,7 @@ def main() -> None:
     started = time.monotonic()
     asked = build(args.home, embedder)
     print(f"Built the library in {time.monotonic() - started:.0f} s.")
-    variants: dict[str, Reranker | None] = {"similarity cut-off": None}
-    if args.embedder == "local":
-        variants["local reranker"] = LocalReranker(args.models)
+    variants: dict[str, object] = {"similarity cut-off": None}
     args.out.mkdir(parents=True, exist_ok=True)
     sections: list[str] = []
     for label, reranker in variants.items():

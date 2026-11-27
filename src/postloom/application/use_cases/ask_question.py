@@ -10,26 +10,16 @@ author's library, and each kind of question gets the sources that can answer it:
   1. *Named things.* A person, topic or series named in the question is looked up in the
      graph, so "what did Jane ask?" or "which articles are in the caching series?" gets
      facts, not a guess from similar-sounding text.
-  2. *Passages.* Sections of articles, posts and comment threads, found by meaning and by
-     keyword and merged by reciprocal rank fusion. A passage counts as evidence when it
-     is close in meaning or contains most of the question's distinctive words. The best
-     passage of each article or post comes first, a second one only while there is room,
-     so an answer draws on as many of them as possible. A question about
-     a period ("in March", "last month", "since spring") is answered from what was
-     published then. A broad question ("what have people said about...") gets more
-     sources, one per article or post. A follow-up question is also searched together
-     with the question before it, so "and what about part 2?" still finds its subject.
+  2. *Passages.* Sections of articles, posts and comment threads found by meaning (above
+     the similarity cutoff) and by keyword (when they contain most of the question's
+     distinctive words). A follow-up question is also searched together with the
+     question before it, so "and what about part 2?" still finds its subject.
   3. *An overview* of the library (articles with dates, topics and series; the most active
      people), for questions about the library as a whole.
 
 Guard rails, all deterministic:
 - If nothing qualifies, the answer is "not found" *without calling the model*: no cost,
-  and no chance of a confident answer built on unrelated text. Whether anything
-  qualifies is decided by a cross-encoder that reads question and passage together
-  (when one is available: the local English setup), else by a stricter similarity
-  cutoff.
-
-Every number here was chosen on the retrieval benchmark in ``scripts/eval``.
+  and no chance of a confident answer built on unrelated text.
 - Citations are parsed back from the answer. Numbers that match no source are removed
   from the text, the UI shows only the sources that were used, and an answer that cites
   nothing is marked so the reader knows it isn't backed by a source.
@@ -43,10 +33,8 @@ from dataclasses import dataclass
 
 from postloom.application.errors import ApplicationError, ProviderError
 from postloom.application.ports.chat import ChatMessage, ChatModel, Role
-from postloom.application.ports.clock import Clock
 from postloom.application.ports.embeddings import EmbeddingProvider
 from postloom.application.ports.repository import GraphRepository
-from postloom.application.ports.reranker import Reranker
 from postloom.application.ports.search_index import ChunkHit, SearchIndex
 from postloom.application.use_cases.relations import (
     comments_by,
@@ -65,25 +53,9 @@ from postloom.domain.discussion import OWNER, thread_texts
 from postloom.domain.entities import CATEGORY_NAMES, PERSON, Category
 from postloom.domain.graph import EdgeKind, NodeId
 from postloom.domain.people import Person
-from postloom.domain.periods import Period, period_in
 from postloom.domain.text import mentions, plain_letters, significant_terms, term_coverage
 
 MAX_SOURCES = 8
-BROAD_SOURCES = 16
-"""For questions about everything said on a subject, where completeness matters more."""
-PER_ITEM = 2
-"""Passages from one article or post, at most: the best passage of each comes first, a
-second only while there is room, so an answer draws on as many as possible."""
-POOL = 40
-"""Candidates taken from each search method before fusing them."""
-PERIOD_POOL = 400
-"""For a question about a period, enough candidates that its items are all among them."""
-RERANKED = 30
-"""Candidates the cross-encoder reads to decide whether anything answers the question."""
-RRF_K = 60
-EVIDENCE_MARGIN = 0.13
-"""How far below the strict similarity cutoff a passage may be and still count as
-evidence, once the question is known to have an answer."""
 MAX_CONTEXT_CHARS = 40_000
 MAX_HISTORY_MESSAGES = 8
 MAX_NAMED = 2
@@ -136,13 +108,6 @@ _LIBRARY_QUESTION = re.compile(
 )
 """Words that make a question one about the library as a whole, which the overview can
 answer even when no passage matches."""
-_BROAD = re.compile(
-    r"\b(what (have|has|did|do) (people|commenters|readers|others|everyone|anyone) "
-    r"(said|say|asked|ask|written|write|thought|think)|everything|all (the |my )?"
-    r"(comments|posts|articles)|overall|in general|summari[sz]e|summary|themes?|trends?)\b",
-    re.IGNORECASE,
-)
-"""Questions that want everything on a subject rather than one fact."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,22 +138,6 @@ class Answer:
         return self.grounded and not self.sources
 
 
-@dataclass(slots=True)
-class _Candidate:
-    hit: ChunkHit
-    item: NodeId
-    """The article or post the passage belongs to."""
-    coverage: float
-    """Share of the question's distinctive words in the passage."""
-    similarity: float = 0.0
-    """Closeness in meaning; 0 when only keyword search found it."""
-    fused: float = 0.0
-
-    @property
-    def text(self) -> str:
-        return f"{self.hit.title}. {self.hit.heading}. {self.hit.text}"
-
-
 _Item = tuple[NodeId | None, str, str, str, str, NodeId | None]
 """article id, title, section, text, kind, person id: a source before it has a number."""
 
@@ -201,18 +150,12 @@ class AskQuestion:
         repository: GraphRepository,
         embedder: EmbeddingProvider | None,
         min_similarity: float,
-        *,
-        reranker: Reranker | None = None,
-        clock: Clock | None = None,
     ) -> None:
         self._chat = chat
         self._index = index
         self._repository = repository
         self._embedder = embedder
         self._min_similarity = min_similarity
-        self._evidence_similarity = min_similarity - EVIDENCE_MARGIN
-        self._reranker = reranker
-        self._clock = clock
 
     def execute(
         self,
@@ -432,94 +375,33 @@ class AskQuestion:
         return items
 
     def _passages(self, question: str, previous: str | None) -> list[ChunkHit]:
-        """Passages that qualify as evidence, best first: several articles and posts
-        rather than many passages of one, none at all when nothing answers."""
+        """Passages that qualify as evidence, best first, without duplicates."""
         queries = [question, f"{previous} {question}"] if previous else [question]
-        period = self._period(queries[-1])
-        pool = self._candidates(queries, period)
-        evidence = [
-            c
-            for c in pool
-            if c.similarity >= self._evidence_similarity or c.coverage >= KEYWORD_COVERAGE
-        ]
-        if not evidence or not self._answers(queries[-1], pool):
-            return []
-        broad = bool(_BROAD.search(question))
-        limit, per_item = (BROAD_SOURCES, 1) if broad else (MAX_SOURCES, PER_ITEM)
-        # Breadth first: the best passage of as many articles and posts as fit, then
-        # second passages of the best of them while there is room.
-        taken: list[_Candidate] = []
-        for round_ in range(per_item):
-            seen: dict[NodeId, int] = {}
-            for candidate in evidence:
-                seen[candidate.item] = seen.get(candidate.item, 0) + 1
-                if seen[candidate.item] == round_ + 1 and len(taken) < limit:
-                    taken.append(candidate)
-        order = {id(c): n for n, c in enumerate(evidence)}
-        return [c.hit for c in sorted(taken, key=lambda c: order[id(c)])]
+        best: dict[tuple[NodeId, int], tuple[float, ChunkHit]] = {}
 
-    def _period(self, question: str) -> Period | None:
-        if self._clock is None:
-            return None
-        return period_in(question, self._clock.now().date())
-
-    def _candidates(self, queries: list[str], period: Period | None) -> list[_Candidate]:
-        """Keyword and meaning results for each query, fused by reciprocal rank: a passage
-        found by both methods, or high in either, comes first."""
-        limit = PERIOD_POOL if period is not None else POOL
-        found: dict[tuple[NodeId, int], _Candidate] = {}
-
-        def offer(hits: Sequence[ChunkHit], terms: list[str], by_meaning: bool) -> None:
-            rank = 0
-            for hit in hits:
-                item = article_for(self._repository, hit.node)
-                if item is None or not self._published_in(item, period):
-                    continue
-                rank += 1
-                key = (hit.node, hit.index)
-                coverage = term_coverage(terms, f"{hit.title} {hit.heading} {hit.text}")
-                candidate = found.get(key)
-                if candidate is None:
-                    candidate = found[key] = _Candidate(hit, item, coverage)
-                candidate.coverage = max(candidate.coverage, coverage)
-                candidate.fused += 1 / (RRF_K + rank)
-                if by_meaning:
-                    candidate.similarity = max(candidate.similarity, hit.score)
+        def offer(hit: ChunkHit, rank: float) -> None:
+            key = (hit.node, hit.index)
+            if key not in best or rank > best[key][0]:
+                best[key] = (rank, hit)
 
         for query in queries:
-            terms = significant_terms(query)
             if self._embedder is not None:
                 try:
                     vector = self._embedder.embed_query(plain_letters(query))
                 except ProviderError:
                     vector = None  # keyword evidence below still applies
                 if vector is not None:
-                    offer(
-                        self._index.vector_search(vector, self._embedder.name, limit), terms, True
-                    )
-            offer(self._index.keyword_search(query, limit), terms, False)
-        return sorted(found.values(), key=lambda c: c.fused, reverse=True)
-
-    def _published_in(self, item: NodeId, period: Period | None) -> bool:
-        if period is None:
-            return True
-        found = get_item(self._repository, item)
-        return found is not None and found.published_on is not None and found.published_on in period
-
-    def _answers(self, question: str, pool: list[_Candidate]) -> bool:
-        """Whether anything in the pool answers the question. A cross-encoder reads the
-        best candidates with the question; without one, the strict cutoff decides."""
-        if self._reranker is not None:
-            top = pool[:RERANKED]
-            try:
-                scores = self._reranker.scores(question, [c.text for c in top])
-            except ProviderError:
-                scores = None  # e.g. the model can't be downloaded: fall back
-            if scores:
-                return max(scores) >= self._reranker.relevant_score
-        return any(
-            c.similarity >= self._min_similarity or c.coverage >= KEYWORD_COVERAGE for c in pool
-        )
+                    nearest = self._index.vector_search(vector, self._embedder.name, MAX_SOURCES)
+                    for hit in nearest:
+                        if hit.score >= self._min_similarity:
+                            offer(hit, 1.0 + hit.score)  # meaning outranks keywords
+            terms = significant_terms(query)
+            for hit in self._index.keyword_search(query, MAX_SOURCES):
+                coverage = term_coverage(terms, f"{hit.title} {hit.heading} {hit.text}")
+                if coverage >= KEYWORD_COVERAGE:
+                    offer(hit, coverage)
+        ranked = sorted(best.values(), key=lambda item: item[0], reverse=True)
+        return [hit for _, hit in ranked[:MAX_SOURCES]]
 
     def _overview(self) -> str:
         """The library at a glance: enough to count, list and compare."""
